@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>phase (rappture2web)</title>
+  <about>Example of a Rappture &lt;phase&gt; object.
+
+A phase is like a group of input controls, but it represents a whole page within the graphical interface.
+  </about>
+  <command>
+    python3 @tool/phase.py @driver
+  </command>
+</tool>
+<input>
+  <phase id="one">
+    <about> <label>First Page</label> </about>
+    <string id="first">
+      <about> <label>First input</label> </about>
+      <default>one</default>
+    </string>
+  </phase>
+
+  <phase id="two">
+    <about> <label>Second Page</label> </about>
+    <string id="second">
+      <about> <label>Second input</label> </about>
+      <default>two</default>
+    </string>
+  </phase>
+</input>
+</run>

@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>group (rappture2web)</title>
+  <about>Examples of Rappture &lt;group&gt; objects.
+
+Groups provide a way of grouping input elements. A group of groups is drawn as a set of tabs.
+  </about>
+  <command>
+    python3 @tool/group.py @driver
+  </command>
+</tool>
+<input>
+  <group id="tabs">
+    <group id="models">
+      <about> <label>Models</label> </about>
+      <boolean id="recomb">
+        <about> <label>Recombination Model</label> </about>
+        <default>on</default>
+      </boolean>
+      <group id="tau">
+        <about>
+          <label>Minority carrier lifetimes</label>
+          <layout>horizontal</layout>
+        </about>
+        <number id="taun">
+          <about> <label>For electrons</label> </about>
+          <default>1e-6</default>
+        </number>
+        <number id="taup">
+          <about> <label>For holes</label> </about>
+          <default>1e-6</default>
+        </number>
+      </group>
+    </group>
+    <group id="ambient">
+      <about> <label>Ambient</label> </about>
+      <number id="temp">
+        <about> <label>Temperature</label> </about>
+        <units>K</units>
+        <default>300K</default>
+      </number>
+      <group id="loc">
+        <about> <layout>sentence:Location = (${lat},${long})</layout> </about>
+        <number id="lat">
+          <about> <label>Latitude</label> </about>
+          <default>40.42</default>
+        </number>
+        <number id="long">
+          <about> <label>Longitude</label> </about>
+          <default>-86.91</default>
+        </number>
+      </group>
+    </group>
+  </group>
+</input>
+</run>

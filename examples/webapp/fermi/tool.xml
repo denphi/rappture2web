@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>Fermi-Dirac Distribution</title>
+  <about>Computes the Fermi-Dirac distribution function f(E) = 1 / (1 + exp((E - Ef) / kT))
+for a range of energies around the Fermi level.
+
+Uses rappture2web.rp_library — outputs stream live to the browser.</about>
+  <command>python3 @tool/fermi.py @driver</command>
+</tool>
+
+<input>
+  <number id="temperature">
+    <about>
+      <label>Temperature</label>
+      <description>Temperature of the system. Higher temperatures broaden the Fermi-Dirac distribution.</description>
+    </about>
+    <units>K</units>
+    <min>1K</min>
+    <max>5000K</max>
+    <default>300K</default>
+    <preset>
+      <value>4K</value>
+      <label>4K (liquid helium)</label>
+    </preset>
+    <preset>
+      <value>77K</value>
+      <label>77K (liquid nitrogen)</label>
+    </preset>
+    <preset>
+      <value>300K</value>
+      <label>300K (room temperature)</label>
+    </preset>
+    <preset>
+      <value>1000K</value>
+      <label>1000K (high temperature)</label>
+    </preset>
+  </number>
+
+  <number id="Ef">
+    <about>
+      <label>Fermi Level</label>
+      <description>The Fermi energy level Ef. States below Ef are mostly occupied; above Ef mostly empty.</description>
+    </about>
+    <units>eV</units>
+    <min>-5eV</min>
+    <max>5eV</max>
+    <default>0eV</default>
+  </number>
+
+  <number id="erange">
+    <about>
+      <label>Energy Range ±</label>
+      <description>Plot energy from Ef - range to Ef + range.</description>
+    </about>
+    <units>eV</units>
+    <min>0.1eV</min>
+    <max>10eV</max>
+    <default>2eV</default>
+  </number>
+
+  <integer id="npoints">
+    <about>
+      <label>Number of Points</label>
+      <description>Number of sample points along the energy axis.</description>
+    </about>
+    <min>10</min>
+    <max>1000</max>
+    <default>200</default>
+  </integer>
+</input>
+</run>

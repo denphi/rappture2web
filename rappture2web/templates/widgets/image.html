@@ -1,0 +1,14 @@
+<div class="rp-widget rp-image" data-path="{{ widget.path }}" data-type="image"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    <label class="rp-label" title="{{ widget.description }}">
+        {{ widget.label or widget.id }}
+    </label>
+    <div class="rp-image-display" id="img-preview-{{ widget.path | replace('.', '-') }}" style="margin-bottom:4px">
+        {% if widget.default and widget.default.strip() %}
+        <img src="{{ to_data_uri(widget.default) }}" alt="{{ widget.label }}" style="max-width:100%;max-height:200px;display:block">
+        {% endif %}
+    </div>
+    {# Hidden field carries the encoded image data; populated by loader or previewImage #}
+    <input type="hidden" class="rp-image-data rp-input"
+           value="{% if widget.default and widget.default.strip() %}{{ widget.default }}{% endif %}">
+</div>

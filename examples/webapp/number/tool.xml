@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>number (rappture2web)</title>
+  <about>Example of a Rappture &lt;number&gt; object.
+
+Numbers are real values with optional units.
+The description appears in a tooltip when you hover over the number control with your mouse.
+
+When you click the Simulate button, the input numbers will be used to generate output numbers.
+  </about>
+  <uq>off</uq>
+  <command>
+    python3 @tool/number.py @driver
+  </command>
+</tool>
+<input>
+  <number id="temperature">
+    <about>
+      <label>Ambient temperature</label>
+      <description>This is the temperature in the environment around the device.</description>
+    </about>
+    <units>K</units>
+    <min>50K</min>
+    <max>1000K</max>
+    <default>300K</default>
+    <preset>
+      <value>300K</value>
+      <label>300K (room temperature)</label>
+    </preset>
+    <preset>
+      <value>77K</value>
+      <label>77K (liquid nitrogen)</label>
+    </preset>
+  </number>
+
+  <separator/>
+
+  <number id="vsweep">
+    <about>
+      <label>Voltage Sweep +/-</label>
+      <description>This determines the voltage sweep used to obtain results from the model.</description>
+      <icon>
+R0lGODlhGgASAKEBAAAAAP///////////yH+FUNyZWF0ZWQgd2l0aCBUaGUgR0lNUAAh+QQBCgAB
+ACwAAAAAGgASAAACLoyPqcvtD8CRj8VZrYw8h/tRn2eA4Eiaosa1qttC1EmW81qrtbYvdG8DCodE
+RQEAOw==
+      </icon>
+    </about>
+    <units>V</units>
+    <min>0V</min>
+    <max>10V</max>
+    <default>4V</default>
+    <color>purple</color>
+  </number>
+</input>
+</run>

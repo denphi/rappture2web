@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>boolean (rappture2web)</title>
+  <about>Example of a Rappture &lt;boolean&gt; object.
+
+Booleans are logical true/false values. When you click Simulate, the input booleans are echoed to the output.
+  </about>
+  <command>
+    python3 @tool/boolean.py @driver
+  </command>
+</tool>
+<input>
+  <boolean id="iimodel">
+    <about>
+      <label>Impact Ionization Model</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>on</default>
+  </boolean>
+  <boolean id="iimodel1">
+    <about>
+      <label>Impact Ionization Model 1</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>yes</default>
+  </boolean>
+  <boolean id="iimodel2">
+    <about>
+      <label>Impact Ionization Model 2</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>true</default>
+  </boolean>
+  <boolean id="iimodel3">
+    <about>
+      <label>Impact Ionization Model 3</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>1</default>
+  </boolean>
+</input>
+</run>

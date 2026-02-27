@@ -1,0 +1,21 @@
+<div class="rp-widget rp-string" data-path="{{ widget.path }}" data-type="string"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    <label class="rp-label" title="{{ widget.description }}">
+        {{ widget.label or widget.id }}
+    </label>
+    {% if widget.attrs.multiline %}
+    <textarea class="rp-input rp-input-textarea"
+              name="{{ widget.path }}"
+              rows="{{ widget.attrs.height|default(5) }}"
+              cols="{{ widget.attrs.width|default(40) }}"
+              title="{{ widget.description }}"
+              placeholder="{{ widget.hints }}">{{ widget.default }}</textarea>
+    {% else %}
+    <input type="text"
+           class="rp-input rp-input-string"
+           name="{{ widget.path }}"
+           value="{{ widget.default }}"
+           title="{{ widget.description }}"
+           placeholder="{{ widget.hints }}">
+    {% endif %}
+</div>

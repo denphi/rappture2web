@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>integer (rappture2web)</title>
+  <about>Example of a Rappture &lt;integer&gt; object.
+
+Integers are integer values with no units. When you click Simulate, the input integer is echoed to the output.
+  </about>
+  <command>
+    python3 @tool/integer.py @driver
+  </command>
+</tool>
+<input>
+  <integer id="points">
+    <about>
+      <label>Grid points</label>
+      <description>Number of nodes used in the simulation mesh.</description>
+    </about>
+    <min>10</min>
+    <max>1000</max>
+    <default>100</default>
+  </integer>
+</input>
+</run>

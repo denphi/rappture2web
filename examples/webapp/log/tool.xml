@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>log (rappture2web)</title>
+  <about>Example of Rappture &lt;log&gt; output.
+
+Each run can produce an output log--a textual record of simulation results.
+
+When you click the Simulate button, this tool will produce a single &lt;log&gt; element.
+  </about>
+  <command>
+    python3 @tool/log.py @driver
+  </command>
+</tool>
+<input>
+</input>
+</run>

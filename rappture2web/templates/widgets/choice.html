@@ -1,0 +1,15 @@
+<div class="rp-widget rp-choice" data-path="{{ widget.path }}" data-type="choice"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    <label class="rp-label" title="{{ widget.description }}">
+        {{ widget.label or widget.id }}
+    </label>
+    <select class="rp-input rp-input-choice" name="{{ widget.path }}" title="{{ widget.description }}">
+        {% for opt in widget.attrs.options %}
+        <option value="{{ opt.value }}"
+                {% if opt.label == widget.default or opt.value == widget.default %}selected{% endif %}
+                title="{{ opt.description }}">
+            {{ opt.label or opt.value }}
+        </option>
+        {% endfor %}
+    </select>
+</div>

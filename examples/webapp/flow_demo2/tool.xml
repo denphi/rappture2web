@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>2D Half-Plane Flow (demo2)</title>
+  <about>2D vector flow field on a 305×109 regular grid. Visualises the velocity field as coloured arrows.</about>
+  <command>python3 @tool/flow_demo2.py @driver</command>
+</tool>
+<input>
+  <integer id="dummy">
+    <about>
+      <label>Subsample stride</label>
+      <description>Display every Nth point (1 = all, higher = faster).</description>
+    </about>
+    <min>1</min>
+    <max>20</max>
+    <default>5</default>
+  </integer>
+</input>
+</run>

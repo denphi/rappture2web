@@ -1,0 +1,10 @@
+<div class="rp-widget rp-boolean" data-path="{{ widget.path }}" data-type="boolean"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    <label class="rp-label rp-boolean-label" title="{{ widget.description }}">
+        <input type="checkbox"
+               class="rp-input rp-input-boolean"
+               name="{{ widget.path }}"
+               {% if widget.default|lower in ['on', 'yes', 'true', '1'] %}checked{% endif %}>
+        {{ widget.label or widget.id }}
+    </label>
+</div>

@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rappture legacy (exclude everything except our new code)
+/builder/
+/cf/
+/gui/
+/lang/
+/lib/
+/oldtest/
+/p2p/
+/packages/
+/puq/
+/src/
+/tester/
+/video/
+/examples/zoo/
+/examples/objects/
+/examples/c-example/
+/examples/video/
+
+# Build artifacts
+/Makefile.in
+/aclocal.m4
+/configure
+/configure.in
+/missing
+/*.vtk
+/ChangeLog
+
+# Claude internal
+/.claude/
+
+# Rappture2web run cache
+**/.rappture2web/
+
+# Misc
+*.log
+*.tmp

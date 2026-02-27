@@ -1,0 +1,42 @@
+<div class="rp-widget rp-loader" data-path="{{ widget.path }}" data-type="loader"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}
+     data-upload-targets="{{ widget.attrs.upload_targets | join(',') }}"
+     data-download-sources="{{ widget.attrs.download_sources | join(',') }}"
+     data-loader-default="{{ widget.attrs.loader_default or '' }}">
+    <label class="rp-label" title="{{ widget.description }}">
+        {{ widget.label or "Load Example" }}
+    </label>
+    <div class="rp-loader-controls" style="display:flex;flex-direction:column;gap:4px">
+        <select class="rp-input rp-loader-select" style="font-size:13px"
+                onchange="rappture.loadExampleByName(this)">
+            <option value="">— select example —</option>
+        </select>
+        <label style="font-size:11px;color:var(--rp-text-muted);margin-top:2px">or upload XML:
+            <input type="file" accept=".xml" style="font-size:11px;display:block;margin-top:2px"
+                   onchange="rappture.loadExample(this)">
+        </label>
+    </div>
+</div>
+<script>
+(function() {
+    var loaderDiv = document.querySelector('.rp-loader[data-loader-default]');
+    // Find the most recently added loader (this one)
+    var allLoaders = document.querySelectorAll('.rp-loader');
+    var widget = allLoaders[allLoaders.length - 1];
+    var sel = widget.querySelector('.rp-loader-select');
+    var defaultFile = widget.dataset.loaderDefault || '';
+    fetch('/api/loader-examples')
+        .then(function(r) { return r.json(); })
+        .then(function(examples) {
+            examples.forEach(function(ex) {
+                var opt = document.createElement('option');
+                opt.value = ex.filename;
+                opt.textContent = ex.label;
+                if (ex.filename === defaultFile) opt.selected = true;
+                sel.appendChild(opt);
+            });
+            if (sel.value) rappture.loadExampleByName(sel);
+        })
+        .catch(function() {});
+})();
+</script>

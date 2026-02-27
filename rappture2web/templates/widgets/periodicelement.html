@@ -1,0 +1,26 @@
+<div class="rp-widget rp-periodicelement" data-path="{{ widget.path }}" data-type="periodicelement"
+     data-returnvalue="{{ widget.attrs.returnvalue or 'symbol' }}"
+     data-active="{{ widget.attrs.active or '' }}"
+     data-inactive="{{ widget.attrs.inactive or '' }}"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    <label class="rp-label" title="{{ widget.description }}">{{ widget.label or widget.id }}</label>
+    <div class="rp-pe-selected-row">
+        <span class="rp-pe-swatch"></span>
+        <span class="rp-pe-selected-name">{{ widget.default or 'None' }}</span>
+        <input type="hidden" class="rp-input rp-pe-value" name="{{ widget.path }}" value="{{ widget.default or '' }}">
+    </div>
+    <div class="rp-pe-table-wrap">
+        <table class="rp-pe-table"></table>
+    </div>
+    {% if widget.hints %}
+    <small class="rp-hints">{{ widget.hints }}</small>
+    {% endif %}
+</div>
+<script>
+(function() {
+    var wrap = document.currentScript.previousElementSibling;
+    while (wrap && !wrap.classList.contains('rp-periodicelement')) wrap = wrap.previousElementSibling;
+    if (!wrap) return;
+    rappture.initPeriodicElement(wrap);
+})();
+</script>

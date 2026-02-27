@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>table (rappture2web)</title>
+  <about>Example of a Rappture &lt;table&gt; object.
+
+Computes energy levels for a particle in a box (1D quantum well).
+  </about>
+  <command>
+    python3 @tool/table.py @driver
+  </command>
+</tool>
+<input>
+  <number id="L">
+    <about>
+      <label>Box size</label>
+      <description>Size of the 1D quantum well containing an electron</description>
+    </about>
+    <units>nm</units>
+    <min>0.1</min>
+    <default>10</default>
+  </number>
+  <number id="emass">
+    <about>
+      <label>Effective mass</label>
+      <description>Mass of the electron in a crystal, relative to the normal electron mass m0.</description>
+    </about>
+    <min>1e-5</min>
+    <default>0.067</default>
+  </number>
+</input>
+</run>

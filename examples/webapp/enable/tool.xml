@@ -1,0 +1,107 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>enable (rappture2web)</title>
+  <about>Examples of Rappture &lt;enable&gt; attributes.
+
+The &lt;enable&gt; attribute can be used to selectively enable/disable one object based on the value of others.
+  </about>
+  <command>
+    python3 @tool/enable.py @driver
+  </command>
+</tool>
+<input>
+  <choice id="model">
+    <about>
+      <label>Model</label>
+    </about>
+    <option>
+      <about><label>Drift-Diffusion</label></about>
+      <value>dd</value>
+    </option>
+    <option>
+      <about><label>Boltzmann Transport Equation</label></about>
+      <value>bte</value>
+    </option>
+    <option>
+      <about><label>Quantum Mechanical NEGF</label></about>
+      <value>negf</value>
+    </option>
+    <default>Drift-Diffusion</default>
+  </choice>
+
+  <group id="dd">
+    <about>
+      <label>Drift-Diffusion Options</label>
+      <enable>input.choice(model) == "dd"</enable>
+    </about>
+    <boolean id="recomb">
+      <about> <label>Recombination Model</label> </about>
+      <default>off</default>
+    </boolean>
+    <number id="taun">
+      <about>
+        <label>Minority Carrier Lifetime for electrons</label>
+        <enable>input.group(dd).boolean(recomb)</enable>
+      </about>
+      <default>1e-6</default>
+    </number>
+    <number id="taup">
+      <about>
+        <label>Minority Carrier Lifetime for holes</label>
+        <enable>input.group(dd).boolean(recomb)</enable>
+      </about>
+      <default>1e-6</default>
+    </number>
+  </group>
+  <group id="bte">
+    <about>
+      <label>Boltzmann Transport Equation Options</label>
+      <enable>input.choice(model) == "bte"</enable>
+    </about>
+    <number id="temp">
+      <about> <label>Temperature</label> </about>
+      <units>K</units>
+      <preset>
+        <value>300K</value>
+        <label>300K (room temperature)</label>
+      </preset>
+      <preset>
+        <value>77K</value>
+        <label>77K (liquid nitrogen)</label>
+      </preset>
+      <default>300K</default>
+    </number>
+    <integer id="secret">
+      <about>
+        <label>Secret input number</label>
+        <enable>no</enable>
+      </about>
+      <default>7</default>
+    </integer>
+  </group>
+  <group id="negf">
+    <about>
+      <label>Quantum Mechanical Options</label>
+      <enable>input.choice(model) == "negf"</enable>
+    </about>
+    <number id="tbe">
+      <about> <label>Tight-binding Energy</label> </about>
+      <units>eV</units>
+      <min>0eV</min>
+      <max>10eV</max>
+      <default>3.12eV</default>
+    </number>
+    <number id="tau">
+      <about>
+        <label>High-energy lifetime</label>
+        <enable>input.(negf).(tbe):eV &gt;= 3</enable>
+      </about>
+      <units>ns</units>
+      <min>0s</min>
+      <max>1s</max>
+      <default>10ns</default>
+    </number>
+  </group>
+</input>
+</run>

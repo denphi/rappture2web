@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>3D Scalar Field Viewer</title>
+  <about>Computes a 3D Gaussian scalar field f(x,y,z) = exp(-r²/σ²) on a regular grid and visualises it as a coloured point cloud.</about>
+  <command>python3 @tool/field3d.py @driver</command>
+</tool>
+
+<input>
+  <number id="sigma">
+    <about>
+      <label>Gaussian Width σ</label>
+      <description>Standard deviation of the Gaussian blob.</description>
+    </about>
+    <units>m</units>
+    <min>0.1m</min>
+    <max>2.0m</max>
+    <default>0.5m</default>
+    <preset>
+      <value>0.3m</value>
+      <label>Narrow (0.3)</label>
+    </preset>
+    <preset>
+      <value>0.5m</value>
+      <label>Medium (0.5)</label>
+    </preset>
+    <preset>
+      <value>1.0m</value>
+      <label>Wide (1.0)</label>
+    </preset>
+  </number>
+
+  <integer id="npts">
+    <about>
+      <label>Grid Points per Axis</label>
+      <description>Number of sample points along each axis (total = npts³).</description>
+    </about>
+    <min>5</min>
+    <max>30</max>
+    <default>15</default>
+  </integer>
+
+  <number id="cx">
+    <about>
+      <label>Center X</label>
+      <description>X coordinate of the Gaussian centre.</description>
+    </about>
+    <units>m</units>
+    <min>-1.0m</min>
+    <max>1.0m</max>
+    <default>0.0m</default>
+  </number>
+
+  <number id="cy">
+    <about>
+      <label>Center Y</label>
+      <description>Y coordinate of the Gaussian centre.</description>
+    </about>
+    <units>m</units>
+    <min>-1.0m</min>
+    <max>1.0m</max>
+    <default>0.0m</default>
+  </number>
+
+  <number id="cz">
+    <about>
+      <label>Center Z</label>
+      <description>Z coordinate of the Gaussian centre.</description>
+    </about>
+    <units>m</units>
+    <min>-1.0m</min>
+    <max>1.0m</max>
+    <default>0.0m</default>
+  </number>
+</input>
+</run>

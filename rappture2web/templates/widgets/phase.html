@@ -1,0 +1,10 @@
+<div class="rp-widget rp-phase" data-path="{{ widget.path }}" data-type="phase"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    <div class="rp-phase-header">{{ widget.label or widget.id }}</div>
+    <div class="rp-phase-content">
+        {% for child in widget.children %}
+            {% set widget = child %}
+            {% include "widgets/" + child.type + ".html" ignore missing %}
+        {% endfor %}
+    </div>
+</div>

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>curve (rappture2web)</title>
+  <about>Example of a Rappture &lt;curve&gt; object.
+
+Curves are a list of (x,y) data points, representing discrete samples of a function y(x).
+
+When you click the Simulate button, the inputs will be used to generate output curves.
+  </about>
+  <command>
+    python3 @tool/curve.py @driver
+  </command>
+</tool>
+<input>
+  <integer id="points">
+    <about>
+      <label>Number of points</label>
+      <description>Determines the number of data points in all output curves.</description>
+    </about>
+    <min>2</min>
+    <max>1000</max>
+    <default>10</default>
+  </integer>
+</input>
+</run>

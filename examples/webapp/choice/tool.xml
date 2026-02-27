@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>choice (rappture2web)</title>
+  <about>Example of a Rappture &lt;choice&gt; object.
+
+Choices are a set of mutually exclusive options. When you click Simulate, the selected choice is echoed in the output.
+  </about>
+  <command>
+    python3 @tool/choice.py @driver
+  </command>
+</tool>
+<input>
+  <choice id="stats">
+    <about>
+      <label>Carrier Statistics</label>
+      <description>Determines the model for carrier statistics used in bandgap narrowing calculations.</description>
+    </about>
+    <option>
+      <about>
+        <label>Boltzmann</label>
+        <description>From the Boltzmann transport equation</description>
+      </about>
+      <value>bte</value>
+    </option>
+    <option>
+      <about>
+        <label>Fermi</label>
+        <description>Fermi-Dirac statistics</description>
+      </about>
+    </option>
+    <option>
+      <about>
+        <label>2D Gas</label>
+        <description>Includes confinement at material interface</description>
+      </about>
+      <value>2deg</value>
+    </option>
+    <default>Boltzmann</default>
+  </choice>
+</input>
+</run>

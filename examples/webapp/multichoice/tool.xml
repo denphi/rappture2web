@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>multichoice (rappture2web)</title>
+  <about>Example of a Rappture &lt;multichoice&gt; object.
+
+MultiChoices are a set of combinable options.
+When you click the Simulate button, the selected choices are echoed in the output.
+  </about>
+  <command>
+    python3 @tool/multichoice.py @driver
+  </command>
+</tool>
+<input>
+  <multichoice id="countries">
+    <about>
+      <label>African Countries</label>
+      <description>Choose the countries to analyze.</description>
+    </about>
+    <option>
+      <about>
+        <label>South Africa</label>
+        <description>South Africa</description>
+      </about>
+      <value>ZAF</value>
+    </option>
+    <option>
+      <about>
+        <label>Zimbabwe</label>
+        <description>Zimbabwe</description>
+      </about>
+      <value>ZWE</value>
+    </option>
+    <option>
+      <about>
+        <label>Swaziland</label>
+        <description>Swaziland</description>
+      </about>
+      <value>SWZ</value>
+    </option>
+    <default>Zimbabwe</default>
+  </multichoice>
+</input>
+</run>

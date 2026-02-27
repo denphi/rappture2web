@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>histogram (rappture2web)</title>
+  <about>Example of a Rappture &lt;histogram&gt; object.
+
+Histograms are a list of (x,y) data points. When you click Simulate, the inputs generate output histograms.
+  </about>
+  <command>
+    python3 @tool/histogram.py @driver
+  </command>
+</tool>
+<input>
+  <integer id="points">
+    <about>
+      <label>Number of points</label>
+      <description>Determines the number of data points in all output histograms.</description>
+    </about>
+    <min>2</min>
+    <max>1000</max>
+    <default>10</default>
+  </integer>
+</input>
+</run>

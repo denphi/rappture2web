@@ -1,0 +1,17 @@
+<div class="rp-widget rp-multichoice" data-path="{{ widget.path }}" data-type="multichoice"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    <label class="rp-label" title="{{ widget.description }}">
+        {{ widget.label or widget.id }}
+    </label>
+    <div class="rp-multichoice-options">
+        {% for opt in widget.attrs.options %}
+        <label class="rp-multichoice-option" title="{{ opt.description }}">
+            <input type="checkbox"
+                   name="{{ widget.path }}"
+                   value="{{ opt.value }}"
+                   {% if opt.label in widget.default.split(',') or opt.value in widget.default.split(',') %}checked{% endif %}>
+            {{ opt.label or opt.value }}
+        </label>
+        {% endfor %}
+    </div>
+</div>

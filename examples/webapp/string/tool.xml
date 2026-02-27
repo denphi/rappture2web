@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>string (rappture2web)</title>
+  <about>Example of a Rappture &lt;string&gt; object.
+
+Strings are bits of text--single line or multiple lines. When you click Simulate, the input strings are echoed to the output.
+  </about>
+  <command>
+    python3 @tool/string.py @driver
+  </command>
+</tool>
+<input>
+  <string id="title">
+    <about>
+      <label>Title</label>
+      <description>This text will be used as the title for all plots.</description>
+    </about>
+    <default>untitled</default>
+  </string>
+
+  <separator/>
+
+  <string id="indeck">
+    <about>
+      <label>Input</label>
+      <description>This is the control file for the program.</description>
+      <hints>EXAMPLE:  .print ac vm(11) mag(i(vcc))</hints>
+    </about>
+    <size>40x10</size>
+    <default>Enter your SPICE commands
+in this area.</default>
+  </string>
+</input>
+</run>

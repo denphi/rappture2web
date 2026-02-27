@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block scripts %}
+<script>rappture._toolKey = {{ tool_xml_path | tojson }};</script>
+{% endblock %}
+
+{% block content %}
+<div class="rp-layout">
+    <aside class="rp-sidebar">
+        <div class="rp-about" title="{{ tool.about }}">
+            <p>{{ tool.about[:200] }}{% if tool.about|length > 200 %}...{% endif %}</p>
+        </div>
+        <form id="rp-form" class="rp-form">
+            {% for widget in inputs %}
+                {% include "widgets/" + widget.type + ".html" ignore missing %}
+            {% endfor %}
+            <div class="rp-actions">
+                <button type="button" id="rp-simulate-btn" class="rp-btn rp-btn-simulate" onclick="rappture.simulate()">
+                    Simulate
+                </button>
+                <span id="rp-status" class="rp-status"></span>
+            </div>
+        </form>
+
+        <!-- Run history -->
+        <div class="rp-run-history-panel">
+            <div class="rp-run-history-header">
+                <label class="rp-run-select-all-label">
+                    <input type="checkbox" id="rp-select-all" onchange="rappture.toggleSelectAll(this)">
+                    Run History
+                </label>
+            </div>
+            <div id="rp-run-history" class="rp-run-history">
+                <span class="rp-run-empty">No runs yet</span>
+            </div>
+        </div>
+    </aside>
+    <section class="rp-content">
+        <div id="rp-results" class="rp-results">
+            <div class="rp-results-placeholder">
+                <p>Click <strong>Simulate</strong> to run the tool and see results here.</p>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}

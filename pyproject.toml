@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rappture2web"
+version = "0.1.0"
+description = "Web-based Rappture tool interface - renders XML tool definitions as interactive web applications"
+readme = "README"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.6",
+    "lxml>=4.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "httpx>=0.24.0",
+]
+
+[project.scripts]
+rappture2web = "rappture2web.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rappture2web*"]
+
+[tool.setuptools.package-data]
+rappture2web = ["templates/**/*.html", "static/**/*"]

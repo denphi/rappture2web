@@ -1,0 +1,48 @@
+{% if widget.attrs.is_tabbed %}
+{# Group of groups renders as tabs #}
+<div class="rp-widget rp-group rp-group-tabbed" data-path="{{ widget.path }}" data-type="group"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    {% if widget.label %}
+    <div class="rp-group-header">{{ widget.label }}</div>
+    {% endif %}
+    <div class="rp-tabs">
+        <div class="rp-tab-buttons">
+            {% for child in widget.children %}
+            {% if child.type == 'group' %}
+            <button type="button"
+                    class="rp-tab-btn {% if loop.first %}active{% endif %}"
+                    onclick="rappture.switchTab(this, '{{ widget.path }}-tab-{{ loop.index0 }}')">
+                {{ child.label or child.id }}
+            </button>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% for child in widget.children %}
+        {% if child.type == 'group' %}
+        <div class="rp-tab-panel {% if loop.first %}active{% endif %}"
+             id="{{ widget.path }}-tab-{{ loop.index0 }}">
+            {% for subchild in child.children %}
+                {% set widget = subchild %}
+                {% include "widgets/" + subchild.type + ".html" ignore missing %}
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+{# Regular group renders with border #}
+<fieldset class="rp-widget rp-group {% if widget.attrs.layout == 'horizontal' %}rp-group-horizontal{% endif %}"
+          data-path="{{ widget.path }}" data-type="group"
+          {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    {% if widget.label %}
+    <legend class="rp-group-legend">{{ widget.label }}</legend>
+    {% endif %}
+    <div class="rp-group-content {% if widget.attrs.layout == 'horizontal' %}rp-horizontal{% endif %}">
+        {% for child in widget.children %}
+            {% set widget = child %}
+            {% include "widgets/" + child.type + ".html" ignore missing %}
+        {% endfor %}
+    </div>
+</fieldset>
+{% endif %}

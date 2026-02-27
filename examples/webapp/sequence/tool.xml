@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>sequence (rappture2web)</title>
+  <about>Example of a Rappture &lt;sequence&gt; object.
+
+When you click Simulate, the input image is rotated several times to produce an animated sequence.
+  </about>
+  <command>
+    python3 @tool/sequence.py @driver
+  </command>
+</tool>
+<input>
+  <image>
+    <about><diffs>ignore</diffs></about>
+    <resize>height=200</resize>
+  </image>
+  <integer id="nframes">
+    <about>
+      <label>Number of frames</label>
+      <description>Determines the number of frames in the output sequence.</description>
+    </about>
+    <min>2</min>
+    <max>50</max>
+    <default>4</default>
+  </integer>
+</input>
+</run>

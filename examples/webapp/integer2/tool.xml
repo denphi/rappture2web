@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>integer2 (rappture2web)</title>
+  <about>Example of a Rappture &lt;integer&gt; object with colors.
+Each integer object has a different color range.
+  </about>
+  <command>
+    python3 @tool/integer2.py @driver
+  </command>
+</tool>
+<input>
+  <integer id="input1">
+    <about>
+      <label>Widgets</label>
+      <description>Number of widgets. Color range is from red to blue</description>
+      <color>10 red 20 blue</color>
+    </about>
+    <min>10</min>
+    <max>20</max>
+    <default>10</default>
+  </integer>
+  <integer id="input2">
+    <about>
+      <label>Randomness</label>
+      <description>Pick a number. Color range goes from yellow to green to blue.</description>
+      <color>-10 yellow 0 green 10 blue</color>
+    </about>
+    <min>-10</min>
+    <max>10</max>
+    <default>0</default>
+  </integer>
+  <integer id="input3">
+    <about>
+      <label>Magic</label>
+      <description>Magic value. Color range is spectrum from 400nm to 700nm.</description>
+      <color>0 400nm 20 700nm</color>
+    </about>
+    <min>0</min>
+    <max>20</max>
+    <default>10</default>
+  </integer>
+</input>
+</run>

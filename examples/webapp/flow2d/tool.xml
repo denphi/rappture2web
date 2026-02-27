@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>2D Flow Visualizer</title>
+  <about>Simulates 2D lid-driven cavity flow using a simple iterative solver and visualises the resulting velocity field as arrows coloured by magnitude.</about>
+  <command>python3 @tool/flow2d.py @driver</command>
+</tool>
+
+<input>
+  <integer id="npts">
+    <about>
+      <label>Grid Size</label>
+      <description>Number of grid points along each axis (N×N grid).</description>
+    </about>
+    <min>8</min>
+    <max>40</max>
+    <default>20</default>
+  </integer>
+
+  <number id="viscosity">
+    <about>
+      <label>Kinematic Viscosity</label>
+      <description>Fluid viscosity (affects Reynolds number).</description>
+    </about>
+    <units>m2/s</units>
+    <min>0.001m2/s</min>
+    <max>1.0m2/s</max>
+    <default>0.1m2/s</default>
+    <preset>
+      <value>0.01m2/s</value>
+      <label>Low (Re≈100)</label>
+    </preset>
+    <preset>
+      <value>0.1m2/s</value>
+      <label>Medium (Re≈10)</label>
+    </preset>
+    <preset>
+      <value>0.5m2/s</value>
+      <label>High viscosity</label>
+    </preset>
+  </number>
+
+  <number id="lid_vel">
+    <about>
+      <label>Lid Velocity</label>
+      <description>Velocity of the moving lid at the top of the cavity.</description>
+    </about>
+    <units>m/s</units>
+    <min>0.1m/s</min>
+    <max>2.0m/s</max>
+    <default>1.0m/s</default>
+  </number>
+</input>
+</run>

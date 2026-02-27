@@ -1,0 +1,14 @@
+<div class="rp-widget rp-note" data-path="{{ widget.path }}" data-type="note"
+     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+    {% if widget.label %}
+    <div class="rp-note-label">{{ widget.label }}</div>
+    {% endif %}
+    {% set contents = widget.attrs.contents or widget.description %}
+    {% if contents %}
+        {% if contents.startswith('html://') %}
+        <div class="rp-note-text">{{ contents[7:] | safe }}</div>
+        {% else %}
+        <div class="rp-note-text">{{ contents }}</div>
+        {% endif %}
+    {% endif %}
+</div>

@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>field (rappture2web)</title>
+  <about>Example of a Rappture &lt;field&gt; object.
+
+Fields are a set of values defined on a mesh. When you click Simulate, the inputs generate output fields.
+  </about>
+  <command>
+    python3 @tool/field.py @driver
+  </command>
+</tool>
+<input>
+  <string id="formula">
+    <about>
+      <label>Formula</label>
+      <description>Formula used to calculate the value of the field.</description>
+      <hints>Example: 2*x*y + z</hints>
+    </about>
+    <default>x*y*z</default>
+  </string>
+  <separator/>
+  <choice id="3D">
+    <about>
+      <label>3D Rendering</label>
+      <description>Determines the mesh type and method used for 3D rendering</description>
+    </about>
+    <option>
+      <about>
+        <label>Isosurface (Uniform Grid)</label>
+        <description>Renders a series of isosurfaces using a uniform 3D grid mesh.</description>
+      </about>
+      <value>grid</value>
+    </option>
+    <option>
+      <about>
+        <label>Isosurface (Unstructured Grid)</label>
+        <description>Renders a series of isosurfaces using an unstructured 3D grid mesh.</description>
+      </about>
+      <value>unstructured</value>
+    </option>
+    <default>grid</default>
+  </choice>
+</input>
+</run>
