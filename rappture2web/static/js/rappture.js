@@ -184,7 +184,8 @@ const rappture = {
         const widget = selectElem.closest('.rp-widget');
         const targetsAttr = widget && widget.dataset.uploadTargets;
         const targets = targetsAttr ? targetsAttr.split(',').filter(Boolean) : null;
-        fetch('/api/loader-examples/' + encodeURIComponent(filename))
+        const pattern = (widget && widget.dataset.example) || '*.xml';
+        fetch('/api/loader-examples/' + encodeURIComponent(filename) + '?pattern=' + encodeURIComponent(pattern))
             .then(r => r.json())
             .then(data => { if (data.content) this._applyExampleXml(data.content, targets); })
             .catch(() => {});
@@ -200,6 +201,32 @@ const rappture = {
         const reader = new FileReader();
         reader.onload = e => this._applyExampleXml(e.target.result, targets);
         reader.readAsText(file);
+    },
+
+    // ── Upload run XML ────────────────────────────────────────────────────────
+
+    triggerUploadRun() {
+        document.getElementById('rp-upload-run-input').value = '';
+        document.getElementById('rp-upload-run-input').click();
+    },
+
+    async uploadRunFile(input) {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        this._setStatus('Uploading ' + file.name + '...');
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+            const resp = await fetch('/api/upload-run', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (!resp.ok || data.error) {
+                this._setStatus('Upload failed: ' + (data.error || resp.statusText));
+            } else {
+                this._setStatus('');
+            }
+        } catch (e) {
+            this._setStatus('Upload error: ' + e.message);
+        }
     },
 
     // ── Simulate ─────────────────────────────────────────────────────────────
@@ -255,7 +282,7 @@ const rappture = {
             return;
         }
 
-        // ── Group curves/histograms that share about.group into one tab ──────
+        // ── Group curves/histograms/fields that share about.group into one tab ──
         // Preserve insertion order: group tab appears where the first member appears.
         const groupedMap = {};   // groupName -> merged data object
         const mergedEntries = [];
@@ -274,7 +301,6 @@ const rappture = {
                         _runColor: output._runColor,
                         _runLabel: output._runLabel,
                     };
-                    // Insert group placeholder at this position
                     mergedEntries.push(['__grp__' + grpName, groupedMap[grpName]]);
                 }
                 const ct = (output.curve_type || '').toLowerCase() || (output.type === 'histogram' ? 'bar' : 'line');
@@ -285,6 +311,19 @@ const rappture = {
                         trace,
                     });
                 });
+            } else if (output.type === 'field' && output.group) {
+                // Group fields by group name into one tab; members selectable via dropdown
+                const grpName = output.group;
+                if (!groupedMap[grpName]) {
+                    groupedMap[grpName] = {
+                        type: 'field_group',
+                        label: grpName,
+                        group: grpName,
+                        _members: [],
+                    };
+                    mergedEntries.push(['__fgrp__' + grpName, groupedMap[grpName]]);
+                }
+                groupedMap[grpName]._members.push({ id, label: output.label || id, field: output });
             } else {
                 mergedEntries.push([id, output]);
             }
@@ -530,6 +569,49 @@ const rappture = {
     // ── Output renderers ─────────────────────────────────────────────────────
 
     outputRenderers: {
+        field_group(id, data) {
+            // Multiple fields sharing a group: render with a dropdown to select which field to show
+            const members = data._members || [];
+            if (members.length === 0) return null;
+            if (members.length === 1) {
+                // Only one member — render directly
+                return this.outputRenderers.field.call(this, members[0].id, members[0].field);
+            }
+            // Multiple members: wrap in a container with a selector
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'display:flex;flex-direction:column;height:100%;min-height:0';
+
+            const bar = document.createElement('div');
+            bar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--rp-bg-alt,#f8fafc);border-bottom:1px solid var(--rp-border)';
+            bar.innerHTML = '<span style="font-size:12px;color:var(--rp-text-muted)">Field:</span>';
+
+            const sel = document.createElement('select');
+            sel.style.cssText = 'font-size:12px;padding:2px 6px;border-radius:3px;border:1px solid var(--rp-border)';
+            members.forEach((m, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = m.label || m.id;
+                sel.appendChild(opt);
+            });
+            bar.appendChild(sel);
+            wrapper.appendChild(bar);
+
+            const content = document.createElement('div');
+            content.style.cssText = 'flex:1;min-height:0;overflow:auto';
+            wrapper.appendChild(content);
+
+            const renderMember = (idx) => {
+                content.innerHTML = '';
+                const m = members[idx];
+                const elem = this.outputRenderers.field.call(this, m.id, m.field);
+                if (elem) content.appendChild(elem);
+            };
+
+            sel.addEventListener('change', () => renderMember(parseInt(sel.value)));
+            renderMember(0);
+            return wrapper;
+        },
+
         curve(id, data) {
             const label = (data.about && data.about.label) || data.label || id;
             const item = rappture.createOutputItem(label, 'plot');
@@ -666,6 +748,13 @@ const rappture = {
                 </label>
               </div>
               <div class="rp-panel-section">
+                <div class="rp-panel-title">Theme</div>
+                <select id="plt-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                  <option value="light" selected>Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </div>
+              <div class="rp-panel-section">
                 <div class="rp-panel-title">Download</div>
                 <div class="rp-panel-btns">
                   <button class="rp-3d-btn" id="plt-dl-svg-${id}">SVG</button>
@@ -736,6 +825,20 @@ const rappture = {
                         cp.querySelector(`#plt-mkr-${id}`).addEventListener('change', applyTraces);
                     }
                 }
+                // Theme
+                const _applyTheme = () => {
+                    const dark = cp.querySelector(`#plt-theme-${id}`).value === 'dark';
+                    Plotly.relayout(plotDiv, {
+                        paper_bgcolor: dark ? '#1a1a2e' : 'white',
+                        plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
+                        'xaxis.color': dark ? '#ccd6f6' : '#444',
+                        'yaxis.color': dark ? '#ccd6f6' : '#444',
+                        'xaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                        'yaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                        font: { color: dark ? '#ccd6f6' : '#444' },
+                    });
+                };
+                cp.querySelector(`#plt-theme-${id}`).addEventListener('change', _applyTheme);
                 // Download buttons
                 cp.querySelector(`#plt-dl-svg-${id}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, plotLabel, 'svg'));
@@ -822,6 +925,13 @@ const rappture = {
                 </label>
               </div>
               <div class="rp-panel-section">
+                <div class="rp-panel-title">Theme</div>
+                <select id="ht-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                  <option value="light" selected>Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </div>
+              <div class="rp-panel-section">
                 <div class="rp-panel-title">Download</div>
                 <div class="rp-panel-btns">
                   <button class="rp-3d-btn" id="ht-dl-svg-${id}">SVG</button>
@@ -856,6 +966,19 @@ const rappture = {
                 cp.querySelectorAll('input[type=text], input[type=checkbox]').forEach(el => {
                     el.addEventListener('input', applyLayout);
                 });
+                const _applyHtTheme = () => {
+                    const dark = cp.querySelector(`#ht-theme-${id}`).value === 'dark';
+                    Plotly.relayout(plotDiv, {
+                        paper_bgcolor: dark ? '#1a1a2e' : 'white',
+                        plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
+                        'xaxis.color': dark ? '#ccd6f6' : '#444',
+                        'yaxis.color': dark ? '#ccd6f6' : '#444',
+                        'xaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                        'yaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                        font: { color: dark ? '#ccd6f6' : '#444' },
+                    });
+                };
+                cp.querySelector(`#ht-theme-${id}`).addEventListener('change', _applyHtTheme);
                 cp.querySelector(`#ht-dl-svg-${id}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, htLabel, 'svg'));
                 cp.querySelector(`#ht-dl-eps-${id}`).addEventListener('click', () =>
@@ -925,10 +1048,214 @@ const rappture = {
 
         table(id, data) {
             const item = rappture.createOutputItem((data.about && data.about.label) || data.label || id, 'table');
-            const pre = document.createElement('pre');
-            pre.style.cssText = 'font-size:13px;overflow:auto;max-height:300px';
-            pre.textContent = data.data || '';
-            item.querySelector('.rp-output-body').appendChild(pre);
+            item.classList.add('rp-output-plot-item');
+            const body = item.querySelector('.rp-output-body');
+
+            const rows = data.rows || [];
+            const eIdx = data.energy_col;
+            const lIdx = data.label_col;
+            const cols = data.columns || [];
+
+            // ── Energy level viewer (Plotly) ───────────────────────────────
+            if (eIdx != null && rows.length > 0) {
+                const eUnits = cols[eIdx] ? cols[eIdx].units : 'eV';
+
+                // Helper: parse one dataset into sorted levels + HOMO/LUMO indices
+                const _parseLevels = (r) => {
+                    const lvls = r.map(row => ({
+                        value: parseFloat(row[eIdx]),
+                        label: lIdx != null ? (row[lIdx] || '') : '',
+                    })).filter(l => isFinite(l.value));
+                    lvls.sort((a, b) => a.value - b.value);
+                    const hi = lvls.findIndex(l =>
+                        l.label.toLowerCase() === 'homo' || l.label.toLowerCase() === 'ground state');
+                    const li = hi >= 0 ? hi + 1 : -1;
+                    return { lvls, hi, li };
+                };
+
+                const { lvls: levels, hi: homoIdx, li: lumoIdx } = _parseLevels(rows);
+
+                // Zoom range: a bit above/below HOMO-LUMO gap (or first 3 levels)
+                const zLo = homoIdx >= 0 ? levels[homoIdx].value : levels[0].value;
+                const zHi = lumoIdx > 0 && lumoIdx < levels.length ? levels[lumoIdx].value : (levels[1] ? levels[1].value : levels[0].value);
+                const zPad = (zHi - zLo) * 0.8 + 0.1;
+                const zoomRange = [zLo - zPad, zHi + zPad];
+
+                const plotDiv = document.createElement('div');
+                plotDiv.style.cssText = 'width:100%;height:420px';
+                body.style.cssText = 'padding:0;display:flex;flex-direction:column';
+                body.appendChild(plotDiv);
+
+                // ── Build traces for one run's levels ──────────────────────
+                // xSuffix/ySuffix: '' for overview, '2' for zoom
+                const _makeTraces = (lvls, hi, li, color, runLabel, xSuffix, ySuffix, zoomOnly) => {
+                    const xa = 'x' + xSuffix;
+                    const ya = 'y' + ySuffix;
+                    const traces = [];
+                    const normalColor = color || '#60a5fa';
+                    const homoColor  = color || '#f59e0b';
+                    const lumoColor  = color || '#34d399';
+
+                    // Gap shading on both panels
+                    if (hi >= 0 && li > 0 && li < lvls.length) {
+                        traces.push({
+                            type: 'scatter', mode: 'lines',
+                            x: [0, 1, 1, 0, 0], y: [lvls[hi].value, lvls[hi].value, lvls[li].value, lvls[li].value, lvls[hi].value],
+                            xaxis: xa, yaxis: ya,
+                            fill: 'toself', fillcolor: 'rgba(37,99,235,0.1)',
+                            line: { color: 'transparent', width: 0 },
+                            hoverinfo: 'skip', showlegend: false,
+                        });
+                    }
+
+                    // Normal levels (overview only — zoom shows HOMO/LUMO only)
+                    if (!zoomOnly) {
+                        const normals = lvls.filter((_, i) => i !== hi && i !== li);
+                        if (normals.length) {
+                            const tips = normals.flatMap(l => {
+                                const t = `${runLabel ? runLabel + ' ' : ''}${l.label ? l.label + ': ' : ''}${l.value} ${eUnits}<extra></extra>`;
+                                return [t, t, null];
+                            });
+                            traces.push({
+                                type: 'scatter', mode: 'lines',
+                                x: normals.flatMap(() => [0.05, 0.75, null]),
+                                y: normals.flatMap(l => [l.value, l.value, null]),
+                                xaxis: xa, yaxis: ya,
+                                line: { color: normalColor, width: 1.5 },
+                                hovertemplate: tips,
+                                showlegend: false,
+                            });
+                        }
+                    }
+
+                    // HOMO
+                    if (hi >= 0 && hi < lvls.length) {
+                        const h = lvls[hi];
+                        const tip = `${runLabel ? runLabel + ' ' : ''}HOMO: ${h.value} ${eUnits}<extra></extra>`;
+                        traces.push({
+                            type: 'scatter', mode: 'lines',
+                            x: [0.05, 0.75, null], y: [h.value, h.value, null],
+                            xaxis: xa, yaxis: ya,
+                            line: { color: homoColor, width: 2.5 },
+                            hovertemplate: [tip, tip, null],
+                            showlegend: false,
+                        });
+                    }
+
+                    // LUMO
+                    if (li > 0 && li < lvls.length) {
+                        const l = lvls[li];
+                        const tip = `${runLabel ? runLabel + ' ' : ''}LUMO: ${l.value} ${eUnits}<extra></extra>`;
+                        traces.push({
+                            type: 'scatter', mode: 'lines',
+                            x: [0.05, 0.75, null], y: [l.value, l.value, null],
+                            xaxis: xa, yaxis: ya,
+                            line: { color: lumoColor, width: 2.5 },
+                            hovertemplate: [tip, tip, null],
+                            showlegend: false,
+                        });
+                    }
+
+                    return traces;
+                };
+
+                // ── Annotations for HOMO/LUMO labels ──────────────────────
+                const _makeAnnotations = (lvls, hi, li, color, xSuffix, ySuffix) => {
+                    const xa = 'x' + xSuffix;
+                    const ya = 'y' + ySuffix;
+                    const anns = [];
+                    const homoColor = color || '#f59e0b';
+                    const lumoColor = color || '#34d399';
+                    if (hi >= 0 && hi < lvls.length) {
+                        anns.push({
+                            x: 0.77, y: lvls[hi].value, xref: xa, yref: ya,
+                            text: `<b>HOMO</b> ${lvls[hi].value} ${eUnits}`,
+                            showarrow: false, xanchor: 'left',
+                            font: { size: 10, color: homoColor },
+                        });
+                    }
+                    if (li > 0 && li < lvls.length) {
+                        anns.push({
+                            x: 0.77, y: lvls[li].value, xref: xa, yref: ya,
+                            text: `<b>LUMO</b> ${lvls[li].value} ${eUnits}`,
+                            showarrow: false, xanchor: 'left',
+                            font: { size: 10, color: lumoColor },
+                        });
+                    }
+                    if (hi >= 0 && li > 0 && li < lvls.length) {
+                        const gap = lvls[li].value - lvls[hi].value;
+                        const midE = (lvls[hi].value + lvls[li].value) / 2;
+                        anns.push({
+                            x: 0.4, y: midE, xref: xa, yref: ya,
+                            text: `Eg=${gap.toPrecision(3)} ${eUnits}`,
+                            showarrow: false, xanchor: 'center',
+                            font: { size: 9, color: '#93c5fd' },
+                            bgcolor: 'rgba(248,250,252,0.85)', borderpad: 2,
+                        });
+                    }
+                    return anns;
+                };
+
+                const allTraces = [];
+                const allAnnotations = [];
+
+                // Overview (left): all levels on yaxis
+                allTraces.push(..._makeTraces(levels, homoIdx, lumoIdx, null, '', '', '', false));
+                // Zoom (right): HOMO+LUMO only on yaxis2
+                allTraces.push(..._makeTraces(levels, homoIdx, lumoIdx, null, '', '2', '2', true));
+                allAnnotations.push(..._makeAnnotations(levels, homoIdx, lumoIdx, null, '', ''));
+                allAnnotations.push(..._makeAnnotations(levels, homoIdx, lumoIdx, null, '2', '2'));
+
+                Plotly.newPlot(plotDiv, allTraces, {
+                    paper_bgcolor: 'transparent',
+                    margin: { l: 55, r: 8, t: 30, b: 40 },
+                    grid: { rows: 1, columns: 2, pattern: 'independent', columnwidth: [0.5, 0.5] },
+                    xaxis:  { visible: false, range: [0, 1], fixedrange: true, domain: [0, 0.48] },
+                    xaxis2: { visible: false, range: [0, 1], fixedrange: true, domain: [0.52, 1] },
+                    yaxis: {
+                        title: { text: `Energy (${eUnits})`, font: { size: 11 } },
+                        tickfont: { size: 10 }, gridcolor: '#e2e8f0',
+                    },
+                    yaxis2: {
+                        range: zoomRange, tickfont: { size: 10 }, gridcolor: '#e2e8f0',
+                        anchor: 'x2',
+                    },
+                    annotations: [
+                        { text: 'All levels', x: 0.24, xref: 'paper', y: 1.04, yref: 'paper',
+                          showarrow: false, font: { size: 11, color: '#64748b' }, xanchor: 'center' },
+                        { text: 'HOMO / LUMO zoom', x: 0.76, xref: 'paper', y: 1.04, yref: 'paper',
+                          showarrow: false, font: { size: 11, color: '#64748b' }, xanchor: 'center' },
+                        ...allAnnotations,
+                    ],
+                    hovermode: 'closest', showlegend: false,
+                }, { responsive: true, displayModeBar: true, displaylogo: false,
+                     modeBarButtonsToRemove: ['select2d', 'lasso2d'] })
+                    .then(() => Plotly.Plots.resize(plotDiv));
+
+                // Store helpers on the item for compare rendering
+                item._rpEnergyMeta = { eUnits, _parseLevels, _makeTraces, _makeAnnotations };
+
+            } else {
+                // ── Plain HTML table fallback ──────────────────────────────
+                const tbl = document.createElement('table');
+                tbl.className = 'rp-data-table';
+                if (cols.length > 0) {
+                    const thead = document.createElement('thead');
+                    thead.innerHTML = '<tr>' + cols.map(c =>
+                        `<th>${c.label}${c.units ? ' (' + c.units + ')' : ''}</th>`
+                    ).join('') + '</tr>';
+                    tbl.appendChild(thead);
+                }
+                const tbody = document.createElement('tbody');
+                rows.forEach(r => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = r.map(cell => `<td>${cell}</td>`).join('');
+                    tbody.appendChild(tr);
+                });
+                tbl.appendChild(tbody);
+                body.appendChild(tbl);
+            }
+
             return item;
         },
 
@@ -954,42 +1281,126 @@ const rappture = {
                 return item;
             }
 
+            const n = data.elements.length;
+            const indexLabel = data.index_label || 'Frame';
+
+            // SVG icons for sequence controls
+            const _svgReset  = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="2" y="2" width="2" height="12"/><polygon points="4,8 14,2 14,14"/></svg>';
+            const _svgPrev   = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><polygon points="9,2 1,8 9,14"/><polygon points="15,2 7,8 15,14"/></svg>';
+            const _svgNext   = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><polygon points="7,2 15,8 7,14"/><polygon points="1,2 9,8 1,14"/></svg>';
+            const _svgPlay   = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><polygon points="3,2 13,8 3,14"/></svg>';
+            const _svgPause  = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>';
+
             const controls = document.createElement('div');
-            controls.style.marginBottom = '10px';
-            const slider = document.createElement('input');
-            slider.type = 'range';
-            slider.min = 0;
-            slider.max = data.elements.length - 1;
-            slider.value = 0;
-            slider.style.width = '100%';
+            controls.className = 'rp-seq-controls';
+            // Prev button
+            const prevBtn = document.createElement('button');
+            prevBtn.type = 'button'; prevBtn.className = 'rp-seq-btn'; prevBtn.innerHTML = _svgPrev;
+            prevBtn.title = 'Previous frame';
+            // Label
             const lbl = document.createElement('span');
-            lbl.textContent = 'Frame: ' + (data.elements[0].index || '0');
+            lbl.className = 'rp-seq-label';
+            lbl.textContent = indexLabel + ' 1 / ' + n;
+            // Next button
+            const nextBtn = document.createElement('button');
+            nextBtn.type = 'button'; nextBtn.className = 'rp-seq-btn'; nextBtn.innerHTML = _svgNext;
+            nextBtn.title = 'Next frame';
+            // Slider row
+            const sliderWrap = document.createElement('div');
+            sliderWrap.className = 'rp-seq-slider-wrap';
+            const slider = document.createElement('input');
+            slider.type = 'range'; slider.className = 'rp-seq-slider';
+            slider.min = 0; slider.max = n - 1; slider.value = 0;
+            // Tick marks
+            const datalist = document.createElement('datalist');
+            datalist.id = 'rp-seq-ticks-' + id.replace(/[^a-z0-9]/gi, '_');
+            for (let i = 0; i < n; i++) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.label = data.elements[i].index !== undefined ? String(data.elements[i].index) : String(i);
+                datalist.appendChild(opt);
+            }
+            slider.setAttribute('list', datalist.id);
+            sliderWrap.appendChild(datalist);
+            sliderWrap.appendChild(slider);
+
+            // Play / Pause / Reset buttons
+            const playBtn = document.createElement('button');
+            playBtn.type = 'button'; playBtn.className = 'rp-seq-btn rp-seq-play'; playBtn.innerHTML = _svgPlay; playBtn.title = 'Play';
+            const pauseBtn = document.createElement('button');
+            pauseBtn.type = 'button'; pauseBtn.className = 'rp-seq-btn rp-seq-pause'; pauseBtn.innerHTML = _svgPause; pauseBtn.title = 'Pause'; pauseBtn.style.display = 'none';
+            const resetBtn = document.createElement('button');
+            resetBtn.type = 'button'; resetBtn.className = 'rp-seq-btn rp-seq-reset'; resetBtn.innerHTML = _svgReset; resetBtn.title = 'Reset';
+
+            const topRow = document.createElement('div');
+            topRow.className = 'rp-seq-top-row';
+            topRow.appendChild(resetBtn);
+            topRow.appendChild(prevBtn);
+            topRow.appendChild(lbl);
+            topRow.appendChild(nextBtn);
+            topRow.appendChild(playBtn);
+            topRow.appendChild(pauseBtn);
+            controls.appendChild(topRow);
+            controls.appendChild(sliderWrap);
+
             const plotDiv = document.createElement('div');
             plotDiv.className = 'rp-output-plot';
 
-            controls.appendChild(slider);
-            controls.appendChild(lbl);
             body.appendChild(controls);
             body.appendChild(plotDiv);
 
-            const renderFrame = (idx) => {
-                const el = data.elements[idx];
-                lbl.textContent = 'Frame: ' + (el.index || idx);
-                for (const [oid, odata] of Object.entries(el.outputs)) {
-                    if (odata.type === 'curve' && odata.traces) {
-                        const _ct = (odata.curve_type || (odata.about && odata.about.type) || 'line').toLowerCase();
-                        const _pt = (_ct === 'bar') ? 'bar' : 'scatter';
-                        const _pm = (_ct === 'scatter') ? 'markers' : 'lines';
-                        const traces = odata.traces.map(t => ({
-                            x: t.x, y: t.y, type: _pt, mode: _pm,
-                        }));
-                        Plotly.react(plotDiv, traces, { margin: { t: 20, r: 20, b: 50, l: 60 } });
-                        break;
-                    }
-                }
+            let _seqTimer = null;
+            const _seqStop = () => {
+                if (_seqTimer) { clearInterval(_seqTimer); _seqTimer = null; }
+                playBtn.style.display = ''; pauseBtn.style.display = 'none';
             };
 
-            slider.addEventListener('input', () => renderFrame(parseInt(slider.value)));
+            const renderFrame = (idx) => {
+                slider.value = idx;
+                const el = data.elements[idx];
+                prevBtn.disabled = idx === 0;
+                nextBtn.disabled = idx === n - 1;
+                lbl.textContent = indexLabel + ': ' + (el.index !== undefined ? el.index : idx);
+                // Destroy any Three.js viewers in previous frame before clearing
+                plotDiv.querySelectorAll('canvas').forEach(c => {
+                    if (c._rpRenderer) { try { c._rpRenderer.dispose(); } catch(e) {} }
+                });
+                plotDiv.innerHTML = '';
+                for (const [oid, odata] of Object.entries(el.outputs || {})) {
+                    const renderer = rappture.outputRenderers[odata.type];
+                    if (renderer) {
+                        const rendered = renderer.call(rappture.outputRenderers, oid, odata);
+                        if (rendered) {
+                            // Strip the outer output-item wrapper — just use the body content
+                            const inner = rendered.querySelector('.rp-output-body');
+                            if (inner) {
+                                plotDiv.appendChild(inner);
+                            } else {
+                                plotDiv.appendChild(rendered);
+                            }
+                        }
+                        break; // render first output per frame
+                    }
+                }
+                if (idx === n - 1) _seqStop();
+            };
+
+            slider.addEventListener('input', () => { _seqStop(); renderFrame(parseInt(slider.value)); });
+            prevBtn.addEventListener('click', () => { _seqStop(); const v = Math.max(0, parseInt(slider.value) - 1); renderFrame(v); });
+            nextBtn.addEventListener('click', () => { _seqStop(); const v = Math.min(n - 1, parseInt(slider.value) + 1); renderFrame(v); });
+            resetBtn.addEventListener('click', () => { _seqStop(); renderFrame(0); });
+            playBtn.addEventListener('click', () => {
+                let cur = parseInt(slider.value);
+                if (cur >= n - 1) cur = 0;
+                renderFrame(cur);
+                playBtn.style.display = 'none'; pauseBtn.style.display = '';
+                _seqTimer = setInterval(() => {
+                    cur = parseInt(slider.value) + 1;
+                    if (cur >= n) { _seqStop(); return; }
+                    renderFrame(cur);
+                }, 600);
+            });
+            pauseBtn.addEventListener('click', _seqStop);
             requestAnimationFrame(() => renderFrame(0));
             return item;
         },
@@ -1113,6 +1524,13 @@ const rappture = {
                     <label>Contour #<input type="range" id="fld2-nc-${id}" min="3" max="30" value="10" step="1"></label>
                   </div>
                   <div class="rp-panel-section">
+                    <div class="rp-panel-title">Theme</div>
+                    <select id="fld2-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                      <option value="light" selected>Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                  </div>
+                  <div class="rp-panel-section">
                     <div class="rp-panel-title">Download</div>
                     <div class="rp-panel-btns">
                       <button class="rp-3d-btn" id="fld2-svg-${id}">SVG</button>
@@ -1197,6 +1615,20 @@ const rappture = {
                     // Apply restored state to the plot immediately
                     applyLayout();
 
+                    const _applyFld2Theme = () => {
+                        const dark = cp.querySelector(`#fld2-theme-${id}`).value === 'dark';
+                        Plotly.relayout(plotDiv, {
+                            paper_bgcolor: dark ? '#1a1a2e' : 'white',
+                            plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
+                            'xaxis.color': dark ? '#ccd6f6' : '#444',
+                            'yaxis.color': dark ? '#ccd6f6' : '#444',
+                            'xaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                            'yaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                            font: { color: dark ? '#ccd6f6' : '#444' },
+                        });
+                    };
+                    cp.querySelector(`#fld2-theme-${id}`).addEventListener('change', _applyFld2Theme);
+
                     const fldLabel = ((data.about && data.about.label) || data.label || id).replace(/[^a-z0-9]/gi, '_');
                     cp.querySelector(`#fld2-svg-${id}`).addEventListener('click', () =>
                         rappture._downloadPlot(plotDiv, fldLabel, 'svg'));
@@ -1236,10 +1668,13 @@ const rappture = {
                 const units = firstMesh.units || '';
                 const mkLbl = (ax) => ax + (units ? ` [${units}]` : '');
 
+                let _vmin3d = Infinity, _vmax3d = -Infinity;
+                for (let i = 0; i < pv.length; i++) { if (pv[i] < _vmin3d) _vmin3d = pv[i]; if (pv[i] > _vmax3d) _vmax3d = pv[i]; }
+
                 const traces = [{
                     type: 'volume',
                     x: px, y: py, z: pz, value: pv,
-                    isomin: Math.min(...pv), isomax: Math.max(...pv),
+                    isomin: _vmin3d, isomax: _vmax3d,
                     opacity: 0.2,
                     surface: { count: 8 },
                     colorscale: 'Viridis',
@@ -1278,8 +1713,8 @@ const rappture = {
                     <div class="rp-panel-title">Volume</div>
                     <label>Opacity<input type="range" id="fld3-op-${id}" min="0.01" max="1" step="0.01" value="0.2"></label>
                     <label>Surfaces<input type="range" id="fld3-ns-${id}" min="2" max="20" step="1" value="8"></label>
-                    <label>Min value<input type="number" id="fld3-lo-${id}" value="${Math.min(...pv).toFixed(4)}" step="any" style="${inputStyle}"></label>
-                    <label>Max value<input type="number" id="fld3-hi-${id}" value="${Math.max(...pv).toFixed(4)}" step="any" style="${inputStyle}"></label>
+                    <label>Min value<input type="number" id="fld3-lo-${id}" value="${_vmin3d.toFixed(4)}" step="any" style="${inputStyle}"></label>
+                    <label>Max value<input type="number" id="fld3-hi-${id}" value="${_vmax3d.toFixed(4)}" step="any" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Color scale</div>
@@ -1388,6 +1823,261 @@ const rappture = {
                 return item;
             }
 
+            // ── VTK STRUCTURED_POINTS → Plotly volume ────────────────────
+            const isVtkStructured = firstComp && firstComp.vtk_type === 'structured_points'
+                && firstComp.grid_data && firstComp.grid_data.nx;
+
+            if (isVtkStructured) {
+                // Expand ALL VTK components (e.g. wf + shape) into separate coordinate arrays
+                const vtkComps = (data.components || []).filter(c => c.vtk_type === 'structured_points' && c.grid_data);
+
+                const expandVtk = (gd) => {
+                    const { nx, ny, nz, dx, dy, dz, ox, oy, oz } = gd;
+                    const total = nx * ny * nz;
+                    const px = new Float32Array(total);
+                    const py = new Float32Array(total);
+                    const pz = new Float32Array(total);
+                    const pv = new Float32Array(total);
+                    let k = 0;
+                    for (let iz = 0; iz < nz; iz++)
+                        for (let iy = 0; iy < ny; iy++)
+                            for (let ix = 0; ix < nx; ix++, k++) {
+                                px[k] = ox + ix * dx;
+                                py[k] = oy + iy * dy;
+                                pz[k] = oz + iz * dz;
+                                pv[k] = gd.values[k] ?? 0;
+                            }
+                    let vmin = Infinity, vmax = -Infinity;
+                    for (let i = 0; i < pv.length; i++) { if (pv[i] < vmin) vmin = pv[i]; if (pv[i] > vmax) vmax = pv[i]; }
+                    return { px, py, pz, pv, vmin, vmax, scalar: gd.scalar_name || '' };
+                };
+
+                // Pre-expand all components
+                const expanded = vtkComps.map(c => ({ ...expandVtk(c.grid_data), comp_id: c.comp_id, style: c.style || '' }));
+                const main = expanded[0];  // primary field (wf)
+                const vmin = main.vmin, vmax = main.vmax;
+
+                // Parse style string "-color X -opacity Y -levels N"
+                const parseStyle = (styleStr) => {
+                    const m = (key) => { const r = new RegExp(`-${key}\\s+(\\S+)`); const m2 = r.exec(styleStr); return m2 ? m2[1] : null; };
+                    return { color: m('color'), opacity: parseFloat(m('opacity') || '0.2'), levels: parseInt(m('levels') || '3') };
+                };
+
+                // Title: prefer label from about, fall back to scalar name, never use raw id
+                const fldLabelVtk = (data.label && data.label !== id ? data.label : '')
+                    || main.scalar || id;
+                const colorscales = ['Viridis','Plasma','Inferno','Magma','Cividis','RdBu','Spectral','Jet','Hot','Blues'];
+                const inputStyle = 'width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0';
+
+                // (toggle handled by sidecar tab below)
+
+                const cp = document.createElement('div');
+                cp.className = 'rp-3d-panel';
+                cp.style.maxHeight = '520px';
+                cp.innerHTML = `
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Title</div>
+                    <label>Plot<input type="text" id="fld3v-ttl-${id}" value="${fldLabelVtk}" placeholder="(none)" style="${inputStyle}"></label>
+                    <label>Colorbar<input type="text" id="fld3v-cbtl-${id}" value="${main.scalar || ''}" placeholder="(none)" style="${inputStyle}"></label>
+                  </div>
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Render Mode</div>
+                    <div class="rp-panel-btns">
+                      <button class="rp-3d-btn active" id="fld3v-iso-${id}">Isosurfaces</button>
+                      <button class="rp-3d-btn" id="fld3v-vol-${id}">Volume</button>
+                    </div>
+                  </div>
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Axes</div>
+                    <label>X Label<input type="text" id="fld3v-xl-${id}" value="X" style="${inputStyle}"></label>
+                    <label>Y Label<input type="text" id="fld3v-yl-${id}" value="Y" style="${inputStyle}"></label>
+                    <label>Z Label<input type="text" id="fld3v-zl-${id}" value="Z" style="${inputStyle}"></label>
+                    <label style="margin-top:4px">Aspect
+                      <select id="fld3v-asp-${id}" style="${inputStyle}">
+                        <option value="data" selected>Data (proportional)</option>
+                        <option value="cube">Cube</option>
+                        <option value="auto">Auto</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Field: ${main.scalar || 'wf'}</div>
+                    <label>Surfaces<input type="range" id="fld3v-ns-${id}" min="1" max="20" step="1" value="10"><span id="fld3v-ns-v-${id}">10</span></label>
+                    <label>Opacity<input type="range" id="fld3v-op-${id}" min="0.05" max="1" step="0.05" value="0.6"><span id="fld3v-op-v-${id}">0.6</span></label>
+                    <label>Value Min<input type="number" id="fld3v-lo-${id}" value="${vmin.toFixed(4)}" step="any" style="${inputStyle}"></label>
+                    <label>Value Max<input type="number" id="fld3v-hi-${id}" value="${vmax.toFixed(4)}" step="any" style="${inputStyle}"></label>
+                  </div>
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Color Scale</div>
+                    <select id="fld3v-cs-${id}" style="${inputStyle}">${colorscales.map(c=>`<option${c==='Viridis'?' selected':''}>${c}</option>`).join('')}</select>
+                    <label style="margin-top:4px;flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-rev-${id}"> Reverse</label>
+                  </div>
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Display</div>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-leg-${id}" checked> Legend</label>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-xgrid-${id}" checked> X Grid</label>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-ygrid-${id}" checked> Y Grid</label>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-zgrid-${id}" checked> Z Grid</label>
+                  </div>
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Theme</div>
+                    <select id="fld3v-theme-${id}" style="${inputStyle}">
+                      <option value="light" selected>Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                  </div>
+                  <div class="rp-panel-section">
+                    <div class="rp-panel-title">Download</div>
+                    <div class="rp-panel-btns">
+                      <button class="rp-3d-btn" id="fld3v-svg-${id}">SVG</button>
+                      <button class="rp-3d-btn" id="fld3v-png-${id}">PNG</button>
+                    </div>
+                  </div>`;
+
+                const plotDiv = document.createElement('div');
+                plotDiv.className = 'rp-output-plot';
+                plotDiv.style.cssText = 'flex:1;min-height:400px;min-width:0';
+
+                // ── Collapsible sidecar ───────────────────────────────────
+                const panelWrap = document.createElement('div');
+                panelWrap.className = 'rp-3d-panel-wrap';
+
+                const tab = document.createElement('div');
+                tab.className = 'rp-3d-panel-tab';
+                tab.title = 'Toggle control panel';
+                tab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+
+                panelWrap.appendChild(tab);
+                panelWrap.appendChild(cp);
+
+                const outerWrap = document.createElement('div');
+                outerWrap.style.cssText = 'display:flex;width:100%;min-height:400px;align-items:stretch';
+                outerWrap.appendChild(plotDiv);
+                outerWrap.appendChild(panelWrap);
+                body.appendChild(outerWrap);
+
+                tab.addEventListener('click', () => {
+                    panelWrap.classList.toggle('collapsed');
+                    setTimeout(() => Plotly.relayout(plotDiv, { autosize: true }), 220);
+                });
+
+                let _vtkMode = 'iso'; // 'iso' | 'vol'
+
+                setTimeout(() => {
+                    const _getLayout = () => {
+                        const dark = cp.querySelector(`#fld3v-theme-${id}`).value === 'dark';
+                        const asp  = cp.querySelector(`#fld3v-asp-${id}`).value;
+                        const showleg = cp.querySelector(`#fld3v-leg-${id}`).checked;
+                        const xgrid = cp.querySelector(`#fld3v-xgrid-${id}`).checked;
+                        const ygrid = cp.querySelector(`#fld3v-ygrid-${id}`).checked;
+                        const zgrid = cp.querySelector(`#fld3v-zgrid-${id}`).checked;
+                        const ttl   = cp.querySelector(`#fld3v-ttl-${id}`).value;
+                        const xl    = cp.querySelector(`#fld3v-xl-${id}`).value;
+                        const yl    = cp.querySelector(`#fld3v-yl-${id}`).value;
+                        const zl    = cp.querySelector(`#fld3v-zl-${id}`).value;
+                        const axColor = dark ? '#ccd6f6' : '#444';
+                        const gridColor = dark ? '#2a2a4e' : '#e0e0e0';
+                        const cam = plotDiv._fullLayout && plotDiv._fullLayout.scene
+                            ? plotDiv._fullLayout.scene.camera : null;
+                        return {
+                            scene: {
+                                xaxis: { title: xl, color: axColor, showgrid: xgrid, gridcolor: gridColor },
+                                yaxis: { title: yl, color: axColor, showgrid: ygrid, gridcolor: gridColor },
+                                zaxis: { title: zl, color: axColor, showgrid: zgrid, gridcolor: gridColor },
+                                bgcolor: dark ? '#16213e' : '#f8fafc',
+                                aspectmode: asp,
+                                ...(cam ? { camera: cam } : {}),
+                            },
+                            title: { text: ttl, font: { color: dark ? '#ccd6f6' : '#333' } },
+                            showlegend: showleg,
+                            legend: { x: 0, y: 1, bgcolor: dark ? 'rgba(26,26,46,0.8)' : 'rgba(255,255,255,0.8)', font: { size: 10, color: dark ? '#ccd6f6' : '#333' } },
+                            margin: { t: 50, r: 20, b: 20, l: 20 },
+                            paper_bgcolor: dark ? '#1a1a2e' : 'white',
+                            font: { color: dark ? '#ccd6f6' : '#333' },
+                            autosize: true,
+                        };
+                    };
+
+                    const _mkTracesVtk = (cs, rev, op, ns, lo, hi) => {
+                        const caps = _vtkMode === 'vol'
+                            ? { x: { show: true }, y: { show: true }, z: { show: true } }
+                            : { x: { show: false }, y: { show: false }, z: { show: false } };
+                        const cbtl = cp.querySelector(`#fld3v-cbtl-${id}`).value;
+                        const traces = [{
+                            type: 'volume',
+                            name: main.scalar || 'wf',
+                            x: Array.from(main.px), y: Array.from(main.py), z: Array.from(main.pz),
+                            value: Array.from(main.pv),
+                            isomin: lo, isomax: hi, opacity: op,
+                            surface: { count: ns }, colorscale: cs, reversescale: rev,
+                            colorbar: { title: { text: cbtl } },
+                            showscale: true, showlegend: true, caps,
+                        }];
+                        expanded.slice(1).forEach((c) => {
+                            const sty = parseStyle(c.style);
+                            traces.push({
+                                type: 'volume',
+                                name: c.comp_id || 'overlay',
+                                x: Array.from(c.px), y: Array.from(c.py), z: Array.from(c.pz),
+                                value: Array.from(c.pv),
+                                isomin: c.vmin + (c.vmax - c.vmin) * 0.3, isomax: c.vmax,
+                                opacity: sty.opacity,
+                                surface: { count: sty.levels || 3 },
+                                colorscale: [[0,'rgba(0,200,0,0)'],[1,'rgba(0,200,0,1)']],
+                                showscale: false, showlegend: true,
+                                caps: { x: { show: false }, y: { show: false }, z: { show: false } },
+                            });
+                        });
+                        return traces;
+                    };
+
+                    const applyVtk = () => {
+                        const cs  = cp.querySelector(`#fld3v-cs-${id}`).value;
+                        const rev = cp.querySelector(`#fld3v-rev-${id}`).checked;
+                        const op  = parseFloat(cp.querySelector(`#fld3v-op-${id}`).value);
+                        const ns  = parseInt(cp.querySelector(`#fld3v-ns-${id}`).value);
+                        const lo  = parseFloat(cp.querySelector(`#fld3v-lo-${id}`).value);
+                        const hi  = parseFloat(cp.querySelector(`#fld3v-hi-${id}`).value);
+                        cp.querySelector(`#fld3v-ns-v-${id}`).textContent = ns;
+                        cp.querySelector(`#fld3v-op-v-${id}`).textContent = op.toFixed(2);
+                        Plotly.react(plotDiv, _mkTracesVtk(cs, rev, op, ns, lo, hi), _getLayout());
+                    };
+
+                    Plotly.newPlot(plotDiv,
+                        _mkTracesVtk('Viridis', false, 0.6, 10, vmin, vmax),
+                        _getLayout(), { responsive: true });
+
+                    // Render mode toggle
+                    const isoBtn = cp.querySelector(`#fld3v-iso-${id}`);
+                    const volBtn = cp.querySelector(`#fld3v-vol-${id}`);
+                    isoBtn.addEventListener('click', () => {
+                        _vtkMode = 'iso';
+                        isoBtn.classList.add('active'); volBtn.classList.remove('active');
+                        applyVtk();
+                    });
+                    volBtn.addEventListener('click', () => {
+                        _vtkMode = 'vol';
+                        volBtn.classList.add('active'); isoBtn.classList.remove('active');
+                        applyVtk();
+                    });
+
+                    cp.querySelectorAll('input[type=range], input[type=number]').forEach(el =>
+                        el.addEventListener('input', applyVtk));
+                    cp.querySelectorAll('input[type=text]').forEach(el =>
+                        el.addEventListener('input', applyVtk));
+                    cp.querySelectorAll('select, input[type=checkbox]').forEach(el =>
+                        el.addEventListener('change', applyVtk));
+
+                    const fname = fldLabelVtk.replace(/[^a-z0-9]/gi, '_');
+                    cp.querySelector(`#fld3v-svg-${id}`).addEventListener('click', () =>
+                        Plotly.downloadImage(plotDiv, { format: 'svg', filename: fname }));
+                    cp.querySelector(`#fld3v-png-${id}`).addEventListener('click', () =>
+                        Plotly.downloadImage(plotDiv, { format: 'png', filename: fname }));
+                }, 50);
+
+                return item;
+            }
+
             // ── 3D unstructured scalar field → Plotly isosurface ─────────
             const is3DUnstructuredScalar = firstMesh && firstMesh.mesh_type === 'unstructured'
                 && firstMesh.points && firstMesh.points.length > 0
@@ -1395,42 +2085,25 @@ const rappture = {
                 && firstMesh.points[0] && firstMesh.points[0].length === 3;
 
             if (is3DUnstructuredScalar) {
+                // Use pre-interpolated uniform grid if available (scipy griddata on server),
+                // otherwise fall back to raw scattered points (isosurface may look sparse).
+                const gd = firstComp.grid_data;
                 const pts = firstMesh.points;
                 const vals = firstComp.values || [];
-                const px = pts.map(p => p[0]);
-                const py = pts.map(p => p[1]);
-                const pz = pts.map(p => p[2]);
-                const pv = pts.map((_, i) => vals[i] ?? 0);
-                const vmin = Math.min(...pv), vmax = Math.max(...pv);
+                const px = gd ? gd.x : pts.map(p => p[0]);
+                const py = gd ? gd.y : pts.map(p => p[1]);
+                const pz = gd ? gd.z : pts.map(p => p[2]);
+                const pv = gd ? gd.value : pts.map((_, i) => vals[i] ?? 0);
+                // Use reduce instead of spread to avoid JS argument-count limit on large arrays
+                let vmin = Infinity, vmax = -Infinity;
+                for (let i = 0; i < pv.length; i++) {
+                    const v = pv[i]; if (v < vmin) vmin = v; if (v > vmax) vmax = v;
+                }
+                console.log('[rp field] id=%s gd=%s pts=%d vmin=%s vmax=%s', id, !!gd, px.length, vmin, vmax);
 
                 const fldLabel3u = ((data.about && data.about.label) || data.label || id);
                 const units3u = firstMesh.units || '';
                 const mkLbl3u = (ax) => ax + (units3u ? ` [${units3u}]` : '');
-
-                const traces = [{
-                    type: 'isosurface',
-                    x: px, y: py, z: pz, value: pv,
-                    isomin: vmin, isomax: vmax,
-                    surface: { count: 5 },
-                    colorscale: 'Viridis', reversescale: false,
-                    showscale: true,
-                    caps: { x: { show: false }, y: { show: false }, z: { show: false } },
-                }];
-                const layout = {
-                    scene: {
-                        xaxis: { title: mkLbl3u('X') },
-                        yaxis: { title: mkLbl3u('Y') },
-                        zaxis: { title: mkLbl3u('Z') },
-                    },
-                    title: { text: fldLabel3u },
-                    margin: { t: 50, r: 20, b: 20, l: 20 },
-                    paper_bgcolor: 'white', autosize: true,
-                };
-
-                const plotDiv = document.createElement('div');
-                plotDiv.className = 'rp-output-plot';
-                plotDiv.id = 'fld3u-' + id;
-                plotDiv.style.cssText = 'flex:1;min-height:400px;min-width:0';
 
                 const colorscales = ['Viridis','Plasma','Inferno','Magma','Cividis','RdBu','Spectral','Jet','Hot','Blues'];
                 const cp = document.createElement('div');
@@ -1445,7 +2118,7 @@ const rappture = {
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Isosurfaces</div>
-                    <label>Surfaces<input type="range" id="fld3u-ns-${id}" min="1" max="20" step="1" value="5"><span id="fld3u-ns-v-${id}">5</span></label>
+                    <label>Surfaces<input type="range" id="fld3u-ns-${id}" min="1" max="20" step="1" value="10"><span id="fld3u-ns-v-${id}">10</span></label>
                     <label>Opacity<input type="range" id="fld3u-op-${id}" min="0.05" max="1" step="0.05" value="0.6"><span id="fld3u-op-v-${id}">0.6</span></label>
                     <label>Value Min<input type="number" id="fld3u-lo-${id}" value="${vmin.toFixed(4)}" step="any"></label>
                     <label>Value Max<input type="number" id="fld3u-hi-${id}" value="${vmax.toFixed(4)}" step="any"></label>
@@ -1456,9 +2129,21 @@ const rappture = {
                     <label style="margin-top:4px"><input type="checkbox" id="fld3u-rev-${id}"> Reverse</label>
                   </div>
                   <div class="rp-panel-section">
+                    <div class="rp-panel-title">Theme</div>
+                    <select id="fld3u-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                      <option value="light" selected>Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                  </div>
+                  <div class="rp-panel-section">
                     <div class="rp-panel-title">Download</div>
                     <button class="rp-3d-btn" id="fld3u-png-${id}">PNG</button>
                   </div>`;
+
+                const plotDiv = document.createElement('div');
+                plotDiv.className = 'rp-output-plot';
+                plotDiv.id = 'fld3u-' + id;
+                plotDiv.style.cssText = 'flex:1;min-height:400px;min-width:0';
 
                 const outerWrap = document.createElement('div');
                 outerWrap.style.cssText = 'display:flex;width:100%;height:100%;min-height:0';
@@ -1486,43 +2171,82 @@ const rappture = {
                         if (rev && s['fld3u-rev'] !== undefined) rev.checked = s['fld3u-rev'];
                     } catch(e) {}
                 };
+
+                // Build stacked surface slices (one per Z level) — matches Rappture's
+                // semi-transparent planar slab rendering style.
+                const _mkTraces3u = (cs, rev, op, ns, lo, hi) => {
+                    if (!gd) {
+                        // No grid data: fall back to isosurface on raw points
+                        return [{
+                            type: 'isosurface',
+                            x: px, y: py, z: pz, value: pv,
+                            isomin: lo, isomax: hi, opacity: op,
+                            surface: { count: ns }, colorscale: cs, reversescale: rev,
+                            showscale: true,
+                            caps: { x: { show: false }, y: { show: false }, z: { show: false } },
+                        }];
+                    }
+                    // Render as Plotly volume with isosurfaces — matches Rappture's 3D contour style
+                    return [{
+                        type: 'volume',
+                        x: px, y: py, z: pz, value: pv,
+                        isomin: lo, isomax: hi,
+                        opacity: op,
+                        surface: { count: ns },
+                        colorscale: cs, reversescale: rev,
+                        showscale: true,
+                        caps: { x: { show: false }, y: { show: false }, z: { show: false } },
+                    }];
+                };
+
+                const _mkLayout3u = (xl, yl, zl, ttl, cam) => ({
+                    scene: {
+                        xaxis: { title: xl },
+                        yaxis: { title: yl },
+                        zaxis: { title: zl },
+                        ...(cam ? { camera: cam } : {}),
+                    },
+                    title: { text: ttl },
+                    margin: { t: 50, r: 20, b: 20, l: 20 },
+                    paper_bgcolor: 'white', autosize: true,
+                });
+
+                // Read saved panel state and derive initial render params
                 _fld3uLoad();
+                const _initCs  = cp.querySelector(`#fld3u-cs-${id}`).value || 'Viridis';
+                const _initRev = cp.querySelector(`#fld3u-rev-${id}`).checked;
+                const _initOp  = parseFloat(cp.querySelector(`#fld3u-op-${id}`).value) || 0.6;
+                const _initNs  = parseInt(cp.querySelector(`#fld3u-ns-${id}`).value) || 10;
+                const _initLo  = parseFloat(cp.querySelector(`#fld3u-lo-${id}`).value);
+                const _initHi  = parseFloat(cp.querySelector(`#fld3u-hi-${id}`).value);
 
                 setTimeout(() => {
-                    Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
+                    Plotly.newPlot(plotDiv,
+                        _mkTraces3u(_initCs, _initRev, _initOp, _initNs,
+                            isFinite(_initLo) ? _initLo : vmin,
+                            isFinite(_initHi) ? _initHi : vmax),
+                        _mkLayout3u(mkLbl3u('X'), mkLbl3u('Y'), mkLbl3u('Z'), fldLabel3u, null),
+                        { responsive: true });
 
                     const applyOpts3u = () => {
-                        const cs = cp.querySelector(`#fld3u-cs-${id}`).value;
+                        const cs  = cp.querySelector(`#fld3u-cs-${id}`).value;
                         const rev = cp.querySelector(`#fld3u-rev-${id}`).checked;
-                        const op = parseFloat(cp.querySelector(`#fld3u-op-${id}`).value);
-                        const ns = parseInt(cp.querySelector(`#fld3u-ns-${id}`).value);
-                        const lo = parseFloat(cp.querySelector(`#fld3u-lo-${id}`).value);
-                        const hi = parseFloat(cp.querySelector(`#fld3u-hi-${id}`).value);
+                        const op  = parseFloat(cp.querySelector(`#fld3u-op-${id}`).value);
+                        const ns  = parseInt(cp.querySelector(`#fld3u-ns-${id}`).value);
+                        const lo  = parseFloat(cp.querySelector(`#fld3u-lo-${id}`).value);
+                        const hi  = parseFloat(cp.querySelector(`#fld3u-hi-${id}`).value);
                         cp.querySelector(`#fld3u-ns-v-${id}`).textContent = ns;
                         cp.querySelector(`#fld3u-op-v-${id}`).textContent = op;
                         _fld3uSave();
-                        Plotly.react(plotDiv, [{
-                            type: 'isosurface',
-                            x: px, y: py, z: pz, value: pv,
-                            isomin: lo, isomax: hi,
-                            opacity: op,
-                            surface: { count: ns },
-                            colorscale: cs, reversescale: rev,
-                            showscale: true,
-                            caps: { x: { show: false }, y: { show: false }, z: { show: false } },
-                        }], {
-                            ...plotDiv._fullLayout ? {
-                                scene: {
-                                    xaxis: { title: cp.querySelector(`#fld3u-xl-${id}`).value },
-                                    yaxis: { title: cp.querySelector(`#fld3u-yl-${id}`).value },
-                                    zaxis: { title: cp.querySelector(`#fld3u-zl-${id}`).value },
-                                    camera: plotDiv._fullLayout.scene.camera,
-                                },
-                                'title.text': cp.querySelector(`#fld3u-ttl-${id}`).value,
-                            } : {},
-                            margin: { t: 50, r: 20, b: 20, l: 20 },
-                            paper_bgcolor: 'white', autosize: true,
-                        });
+                        const cam = plotDiv._fullLayout && plotDiv._fullLayout.scene
+                            ? plotDiv._fullLayout.scene.camera : null;
+                        Plotly.react(plotDiv, _mkTraces3u(cs, rev, op, ns, lo, hi),
+                            _mkLayout3u(
+                                cp.querySelector(`#fld3u-xl-${id}`).value,
+                                cp.querySelector(`#fld3u-yl-${id}`).value,
+                                cp.querySelector(`#fld3u-zl-${id}`).value,
+                                cp.querySelector(`#fld3u-ttl-${id}`).value,
+                                cam));
                     };
 
                     cp.querySelectorAll('input, select').forEach(el =>
@@ -1532,7 +2256,22 @@ const rappture = {
                         el.addEventListener('input', applyOpts3u)
                     );
 
-                    applyOpts3u();
+                    const _applyFld3uTheme = () => {
+                        const dark = cp.querySelector(`#fld3u-theme-${id}`).value === 'dark';
+                        Plotly.relayout(plotDiv, {
+                            paper_bgcolor: dark ? '#1a1a2e' : 'white',
+                            plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
+                            'scene.bgcolor': dark ? '#16213e' : '#f8fafc',
+                            'scene.xaxis.color': dark ? '#ccd6f6' : '#444',
+                            'scene.yaxis.color': dark ? '#ccd6f6' : '#444',
+                            'scene.zaxis.color': dark ? '#ccd6f6' : '#444',
+                            'scene.xaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                            'scene.yaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                            'scene.zaxis.gridcolor': dark ? '#2a2a4e' : '#e0e0e0',
+                            font: { color: dark ? '#ccd6f6' : '#444' },
+                        });
+                    };
+                    cp.querySelector(`#fld3u-theme-${id}`).addEventListener('change', _applyFld3uTheme);
 
                     cp.querySelector(`#fld3u-png-${id}`).addEventListener('click', () =>
                         Plotly.downloadImage(plotDiv, { format: 'png', filename: fldLabel3u.replace(/[^a-z0-9]/gi, '_') }));
@@ -1694,8 +2433,8 @@ const rappture = {
                 <div class="rp-panel-title">Flow</div>
                 <div class="rp-panel-btns">
                   ${particlePlaneBtns}
-                  <button class="rp-3d-btn" id="par-rst-${id}" title="Re-seed all particles">↺ Reset</button>
-                  <button class="rp-3d-btn active" id="par-pause-${id}" title="Pause/resume particle animation">⏸ Pause</button>
+                  <button class="rp-3d-btn" id="par-rst-${id}" title="Re-seed all particles"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5V1l3 2.5L8 6V4.5A3.5 3.5 0 1 0 11.5 8h2z"/></svg>Reset</button>
+                  <button class="rp-3d-btn active" id="par-pause-${id}" title="Pause/resume particle animation"><svg class="rp-flow-pause-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg><svg class="rp-flow-play-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px;display:none"><polygon points="3,2 13,8 3,14"/></svg><span class="rp-flow-pause-label">Pause</span></button>
                 </div>
                 <label>Count<input type="range" min="2" max="80" value="40" step="1" id="pc-${id}"></label>
                 <label>Speed<input type="range" min="0" max="500" value="100" step="10" id="spd-${id}"></label>
@@ -2353,7 +3092,9 @@ const rappture = {
                 if (pauseBtn) {
                     pauseBtn.addEventListener('click', () => {
                         particlesPaused = !particlesPaused;
-                        pauseBtn.textContent = particlesPaused ? '▶ Play' : '⏸ Pause';
+                        pauseBtn.querySelector('.rp-flow-pause-icon').style.display = particlesPaused ? 'none' : '';
+                        pauseBtn.querySelector('.rp-flow-play-icon').style.display = particlesPaused ? '' : 'none';
+                        pauseBtn.querySelector('.rp-flow-pause-label').textContent = particlesPaused ? 'Play' : 'Pause';
                         pauseBtn.classList.toggle('active', !particlesPaused);
                     });
                 }
@@ -2512,7 +3253,9 @@ const rappture = {
                 // Priority: in-memory (current session) > localStorage > defaults
                 r._color = (prev && prev._color) || (saved[r.run_id] && saved[r.run_id].color) || null;
                 r._checked = prev ? prev._checked : (saved[r.run_id] ? saved[r.run_id].checked : false);
-                if (prev && prev.outputs) r.outputs = prev.outputs;
+                // Do not carry over cached outputs — always re-fetch from server to
+                // ensure grid_data and other computed fields are up to date.
+                // r.outputs is intentionally not restored here.
                 this._assignRunColor(r);
                 if (selectNewest) r._checked = (i === 0);
             });
@@ -2570,14 +3313,14 @@ const rappture = {
             const upBtn = document.createElement('button');
             upBtn.className = 'rp-run-reorder-btn';
             upBtn.title = 'Move up';
-            upBtn.textContent = '▲';
+            upBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="8,3 14,13 2,13"/></svg>';
             upBtn.disabled = isTop;
             upBtn.addEventListener('click', () => this._moveRun(idx, -1));
 
             const downBtn = document.createElement('button');
             downBtn.className = 'rp-run-reorder-btn';
             downBtn.title = 'Move down';
-            downBtn.textContent = '▼';
+            downBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="8,13 14,3 2,3"/></svg>';
             downBtn.disabled = idx === this._runs.length - 1;
             downBtn.addEventListener('click', () => this._moveRun(idx, 1));
 
@@ -2593,11 +3336,18 @@ const rappture = {
             statusSpan.className = 'rp-run-status';
             statusSpan.textContent = run.status === 'success' ? '' : run.status;
 
+            // Upload badge
+            const uploadBadge = document.createElement('span');
+            uploadBadge.className = 'rp-run-upload-badge';
+            uploadBadge.style.display = run.source === 'upload' ? '' : 'none';
+            uploadBadge.title = 'Uploaded run — cannot be compared with simulated runs';
+            uploadBadge.innerHTML = '<svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M8 2L4 7h3v5h2V7h3z"/><rect x="2" y="13" width="12" height="1.5" rx="0.75"/></svg>';
+
             // Delete
             const delBtn = document.createElement('button');
             delBtn.className = 'rp-run-delete';
             delBtn.title = 'Delete run';
-            delBtn.textContent = '×';
+            delBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><line x1="2" y1="2" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><line x1="14" y1="2" x2="2" y2="14" stroke="currentColor" stroke-width="2"/></svg>';
             delBtn.addEventListener('click', () => this.deleteRun(run.run_id));
 
             row.appendChild(cb);
@@ -2606,6 +3356,7 @@ const rappture = {
             row.appendChild(downBtn);
             row.appendChild(labelSpan);
             row.appendChild(statusSpan);
+            row.appendChild(uploadBadge);
             row.appendChild(delBtn);
             panel.appendChild(row);
 
@@ -2816,6 +3567,18 @@ const rappture = {
                 coloredOutputs[k] = { ...v, _runColor: run._color, _runLabel: run.label };
             }
             this.renderOutputs(coloredOutputs, run.log || '');
+            return;
+        }
+        // Multiple: check for mixed uploaded/simulated sources
+        const hasUploaded = checked.some(r => r.source === 'upload');
+        const hasSimulated = checked.some(r => r.source !== 'upload');
+        if (hasUploaded && hasSimulated) {
+            document.getElementById('rp-results').innerHTML =
+                '<div class="rp-results-placeholder rp-results-warn">' +
+                '<p><strong>Cannot compare uploaded and simulated runs.</strong></p>' +
+                '<p>Uploaded runs may be from a different tool configuration. ' +
+                'Select only simulated runs or only uploaded runs to compare.</p>' +
+                '</div>';
             return;
         }
         // Multiple: overlay on same plots (top run = first = highlighted)
@@ -3351,6 +4114,269 @@ const rappture = {
                 }
                 panels[id] = { elem: item, label: outerLabel };
 
+            } else if (type === 'table') {
+                // ── Multi-run energy level compare ────────────────────────
+                const tblLabel = (firstData.about && firstData.about.label) || firstData.label || id;
+                const item = this.createOutputItem(tblLabel, 'table');
+                item.classList.add('rp-output-plot-item');
+                const body = item.querySelector('.rp-output-body');
+                const eUnits = (firstData.columns && firstData.columns[firstData.energy_col]) ? firstData.columns[firstData.energy_col].units : 'eV';
+
+                const _parseLvls = (rows, eidx, lidx) => {
+                    const lvls = rows.map(r => ({
+                        value: parseFloat(r[eidx]),
+                        label: lidx != null ? (r[lidx] || '') : '',
+                    })).filter(l => isFinite(l.value));
+                    lvls.sort((a, b) => a.value - b.value);
+                    const hi = lvls.findIndex(l => l.label.toLowerCase() === 'homo' || l.label.toLowerCase() === 'ground state');
+                    return { lvls, hi, li: hi >= 0 ? hi + 1 : -1 };
+                };
+
+                // Compute shared zoom range across all runs
+                let zLoAll = Infinity, zHiAll = -Infinity;
+                sources.forEach(({ data: d }) => {
+                    const { lvls, hi, li } = _parseLvls(d.rows || [], d.energy_col, d.label_col);
+                    if (hi >= 0) zLoAll = Math.min(zLoAll, lvls[hi].value);
+                    if (li > 0 && li < lvls.length) zHiAll = Math.max(zHiAll, lvls[li].value);
+                });
+                if (!isFinite(zLoAll)) { zLoAll = 0; zHiAll = 1; }
+                const zPadAll = (zHiAll - zLoAll) * 0.8 + 0.1;
+                const zoomRange = [zLoAll - zPadAll, zHiAll + zPadAll];
+
+                const RUN_COLORS = ['#3b82f6','#f59e0b','#34d399','#f87171','#a78bfa','#fb923c','#38bdf8','#4ade80'];
+                const allTraces = [];
+                const allAnnotations = [
+                    { text: 'All levels', x: 0.24, xref: 'paper', y: 1.04, yref: 'paper',
+                      showarrow: false, font: { size: 11, color: '#64748b' }, xanchor: 'center' },
+                    { text: 'HOMO / LUMO zoom', x: 0.76, xref: 'paper', y: 1.04, yref: 'paper',
+                      showarrow: false, font: { size: 11, color: '#64748b' }, xanchor: 'center' },
+                ];
+
+                sources.forEach(({ run, data: d }, si) => {
+                    const color = run._color || RUN_COLORS[si % RUN_COLORS.length];
+                    const { lvls, hi, li } = _parseLvls(d.rows || [], d.energy_col, d.label_col);
+                    const runLabel = run.label || `Run ${si + 1}`;
+
+                    // Overview traces (xaxis='x')
+                    const normals = lvls.filter((_, i) => i !== hi && i !== li);
+                    if (normals.length) {
+                        allTraces.push({
+                            type: 'scatter', mode: 'lines',
+                            x: normals.flatMap(() => [0.05, 0.75, null]),
+                            y: normals.flatMap(l => [l.value, l.value, null]),
+                            xaxis: 'x', yaxis: 'y',
+                            line: { color, width: 1.5 },
+                            hovertemplate: normals.flatMap(l => {
+                                const t = `${runLabel} ${l.label ? l.label+': ' : ''}${l.value} ${eUnits}<extra></extra>`;
+                                return [t, t, null];
+                            }),
+                            name: runLabel, legendgroup: runLabel, showlegend: si === 0 || true,
+                        });
+                    }
+                    if (hi >= 0) allTraces.push({
+                        type: 'scatter', mode: 'lines',
+                        x: [0.05, 0.75, null], y: [lvls[hi].value, lvls[hi].value, null],
+                        xaxis: 'x', yaxis: 'y', line: { color, width: 2.5 },
+                        hovertemplate: [`${runLabel} HOMO: ${lvls[hi].value} ${eUnits}<extra></extra>`, `${runLabel} HOMO: ${lvls[hi].value} ${eUnits}<extra></extra>`, null],
+                        name: runLabel + ' HOMO', legendgroup: runLabel, showlegend: false,
+                    });
+                    if (li > 0 && li < lvls.length) allTraces.push({
+                        type: 'scatter', mode: 'lines',
+                        x: [0.05, 0.75, null], y: [lvls[li].value, lvls[li].value, null],
+                        xaxis: 'x', yaxis: 'y', line: { color, width: 2.5, dash: 'dash' },
+                        hovertemplate: [`${runLabel} LUMO: ${lvls[li].value} ${eUnits}<extra></extra>`, `${runLabel} LUMO: ${lvls[li].value} ${eUnits}<extra></extra>`, null],
+                        name: runLabel + ' LUMO', legendgroup: runLabel, showlegend: false,
+                    });
+
+                    // Zoom traces (xaxis='x2') — only HOMO + LUMO
+                    if (hi >= 0) allTraces.push({
+                        type: 'scatter', mode: 'lines',
+                        x: [0.05, 0.75, null], y: [lvls[hi].value, lvls[hi].value, null],
+                        xaxis: 'x2', yaxis: 'y',
+                        line: { color, width: 2.5 },
+                        hovertemplate: [`${runLabel} HOMO: ${lvls[hi].value} ${eUnits}<extra></extra>`, `${runLabel} HOMO: ${lvls[hi].value} ${eUnits}<extra></extra>`, null],
+                        name: runLabel, legendgroup: runLabel, showlegend: si >= 0,
+                    });
+                    if (li > 0 && li < lvls.length) allTraces.push({
+                        type: 'scatter', mode: 'lines',
+                        x: [0.05, 0.75, null], y: [lvls[li].value, lvls[li].value, null],
+                        xaxis: 'x2', yaxis: 'y',
+                        line: { color, width: 2.5, dash: 'dash' },
+                        hovertemplate: [`${runLabel} LUMO: ${lvls[li].value} ${eUnits}<extra></extra>`, `${runLabel} LUMO: ${lvls[li].value} ${eUnits}<extra></extra>`, null],
+                        name: runLabel + ' LUMO', legendgroup: runLabel, showlegend: false,
+                    });
+
+                    // HOMO/LUMO labels on zoom panel (first run only to avoid clutter)
+                    if (si === 0) {
+                        if (hi >= 0) allAnnotations.push({
+                            x: 0.77, y: lvls[hi].value, xref: 'x2', yref: 'y',
+                            text: `<b>HOMO</b>`, showarrow: false, xanchor: 'left',
+                            font: { size: 10, color },
+                        });
+                        if (li > 0 && li < lvls.length) allAnnotations.push({
+                            x: 0.77, y: lvls[li].value, xref: 'x2', yref: 'y',
+                            text: `<b>LUMO</b>`, showarrow: false, xanchor: 'left',
+                            font: { size: 10, color },
+                        });
+                    }
+                });
+
+                const plotDiv = document.createElement('div');
+                plotDiv.style.cssText = 'width:100%;height:420px';
+                body.style.cssText = 'padding:0;display:flex;flex-direction:column';
+                body.appendChild(plotDiv);
+
+                // Legend entries: one per run (solid line)
+                sources.forEach(({ run }, si) => {
+                    const color = run._color || RUN_COLORS[si % RUN_COLORS.length];
+                    allTraces.push({
+                        type: 'scatter', mode: 'lines',
+                        x: [null], y: [null],
+                        xaxis: 'x', yaxis: 'y',
+                        line: { color, width: 2.5 },
+                        name: run.label || `Run ${si + 1}`,
+                        showlegend: true,
+                    });
+                });
+
+                // Update all zoom traces to use yaxis2
+                allTraces.forEach(t => { if (t.xaxis === 'x2') t.yaxis = 'y2'; });
+                allAnnotations.forEach(a => { if (a.xref === 'x2') a.yref = 'y2'; });
+
+                Plotly.newPlot(plotDiv, allTraces, {
+                    paper_bgcolor: 'transparent',
+                    margin: { l: 55, r: 8, t: 30, b: 40 },
+                    grid: { rows: 1, columns: 2, pattern: 'independent', columnwidth: [0.5, 0.5] },
+                    xaxis:  { visible: false, range: [0, 1], fixedrange: true, domain: [0, 0.48] },
+                    xaxis2: { visible: false, range: [0, 1], fixedrange: true, domain: [0.52, 1] },
+                    yaxis: {
+                        title: { text: `Energy (${eUnits})`, font: { size: 11 } },
+                        tickfont: { size: 10 }, gridcolor: '#e2e8f0',
+                    },
+                    yaxis2: {
+                        range: zoomRange, tickfont: { size: 10 }, gridcolor: '#e2e8f0',
+                        anchor: 'x2', overlaying: undefined,
+                    },
+                    annotations: allAnnotations,
+                    hovermode: 'closest', showlegend: true,
+                    legend: { orientation: 'h', y: -0.12 },
+                }, { responsive: true, displayModeBar: true, displaylogo: false,
+                     modeBarButtonsToRemove: ['select2d', 'lasso2d'] })
+                    .then(() => Plotly.Plots.resize(plotDiv));
+
+                panels[id] = { elem: item, label: tblLabel };
+
+            } else if (type === 'sequence') {
+                // ── Multi-run sequence compare ────────────────────────────
+                const seqLabel = (firstData.about && firstData.about.label) || firstData.label || id;
+                const item = this.createOutputItem(seqLabel, 'sequence');
+                const body = item.querySelector('.rp-output-body');
+
+                // Use the max frame count across all runs
+                const maxFrames = Math.max(...sources.map(s => (s.data.elements || []).length));
+                if (maxFrames === 0) { body.textContent = 'No sequence data'; panels[id] = { elem: item, label: seqLabel }; continue; }
+
+                const indexLabel = firstData.index_label || 'Frame';
+                const controls = document.createElement('div');
+                controls.className = 'rp-seq-controls';
+                const _svgReset2  = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="2" y="2" width="2" height="12"/><polygon points="4,8 14,2 14,14"/></svg>';
+                const _svgPrev2   = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><polygon points="9,2 1,8 9,14"/><polygon points="15,2 7,8 15,14"/></svg>';
+                const _svgNext2   = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><polygon points="7,2 15,8 7,14"/><polygon points="1,2 9,8 1,14"/></svg>';
+                const _svgPlay2   = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><polygon points="3,2 13,8 3,14"/></svg>';
+                const _svgPause2  = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg>';
+                const cPrev = document.createElement('button');
+                cPrev.type = 'button'; cPrev.className = 'rp-seq-btn'; cPrev.innerHTML = _svgPrev2; cPrev.title = 'Previous frame';
+                const lbl = document.createElement('span');
+                lbl.className = 'rp-seq-label';
+                lbl.textContent = indexLabel + ' 1 / ' + maxFrames;
+                const cNext = document.createElement('button');
+                cNext.type = 'button'; cNext.className = 'rp-seq-btn'; cNext.innerHTML = _svgNext2; cNext.title = 'Next frame';
+                const cPlay = document.createElement('button');
+                cPlay.type = 'button'; cPlay.className = 'rp-seq-btn rp-seq-play'; cPlay.innerHTML = _svgPlay2; cPlay.title = 'Play';
+                const cPause = document.createElement('button');
+                cPause.type = 'button'; cPause.className = 'rp-seq-btn rp-seq-pause'; cPause.innerHTML = _svgPause2; cPause.title = 'Pause'; cPause.style.display = 'none';
+                const cReset = document.createElement('button');
+                cReset.type = 'button'; cReset.className = 'rp-seq-btn rp-seq-reset'; cReset.innerHTML = _svgReset2; cReset.title = 'Reset';
+                const cTopRow = document.createElement('div');
+                cTopRow.className = 'rp-seq-top-row';
+                cTopRow.appendChild(cReset); cTopRow.appendChild(cPrev); cTopRow.appendChild(lbl); cTopRow.appendChild(cNext); cTopRow.appendChild(cPlay); cTopRow.appendChild(cPause);
+                const cSliderWrap = document.createElement('div');
+                cSliderWrap.className = 'rp-seq-slider-wrap';
+                const slider = document.createElement('input');
+                slider.type = 'range'; slider.className = 'rp-seq-slider';
+                slider.min = 0; slider.max = maxFrames - 1; slider.value = 0;
+                cSliderWrap.appendChild(slider);
+                controls.appendChild(cTopRow);
+                controls.appendChild(cSliderWrap);
+                body.appendChild(controls);
+
+                let _cTimer = null;
+                const _cStop = () => {
+                    if (_cTimer) { clearInterval(_cTimer); _cTimer = null; }
+                    cPlay.style.display = ''; cPause.style.display = 'none';
+                };
+
+                // Container for side-by-side run frames
+                const framesRow = document.createElement('div');
+                framesRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start';
+                body.appendChild(framesRow);
+
+                const renderSeqCompareFrame = (frameIdx) => {
+                    framesRow.innerHTML = '';
+                    slider.value = frameIdx;
+                    cPrev.disabled = frameIdx === 0;
+                    cNext.disabled = frameIdx === maxFrames - 1;
+                    lbl.textContent = indexLabel + ' ' + (frameIdx + 1) + ' / ' + maxFrames;
+                    sources.forEach(({ run, data }) => {
+                        const elems = data.elements || [];
+                        const el = elems[Math.min(frameIdx, elems.length - 1)];
+                        if (!el) return;
+                        const runColor = run._color || '#3b82f6';
+                        const runName = run.label || `Run ${run.run_num || '?'}`;
+                        const cell = document.createElement('div');
+                        cell.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:200px;flex:1';
+                        const runLbl = document.createElement('div');
+                        runLbl.style.cssText = `font-size:11px;font-weight:600;color:${runColor};background:${runColor}22;border:1px solid ${runColor};border-radius:3px;padding:2px 8px`;
+                        runLbl.textContent = runName;
+                        cell.appendChild(runLbl);
+                        const frameDiv = document.createElement('div');
+                        frameDiv.style.cssText = 'width:100%';
+                        for (const [oid, odata] of Object.entries(el.outputs || {})) {
+                            const renderer = rappture.outputRenderers[odata.type];
+                            if (renderer) {
+                                const rendered = renderer.call(rappture.outputRenderers, oid, odata);
+                                if (rendered) {
+                                    const inner = rendered.querySelector('.rp-output-body');
+                                    frameDiv.appendChild(inner || rendered);
+                                }
+                                break;
+                            }
+                        }
+                        cell.appendChild(frameDiv);
+                        framesRow.appendChild(cell);
+                    });
+                    if (frameIdx >= maxFrames - 1) _cStop();
+                };
+
+                slider.addEventListener('input', () => { _cStop(); renderSeqCompareFrame(parseInt(slider.value)); });
+                cPrev.addEventListener('click', () => { _cStop(); renderSeqCompareFrame(Math.max(0, parseInt(slider.value) - 1)); });
+                cNext.addEventListener('click', () => { _cStop(); renderSeqCompareFrame(Math.min(maxFrames - 1, parseInt(slider.value) + 1)); });
+                cReset.addEventListener('click', () => { _cStop(); renderSeqCompareFrame(0); });
+                cPlay.addEventListener('click', () => {
+                    let cur = parseInt(slider.value);
+                    if (cur >= maxFrames - 1) cur = 0;
+                    renderSeqCompareFrame(cur);
+                    cPlay.style.display = 'none'; cPause.style.display = '';
+                    _cTimer = setInterval(() => {
+                        cur = parseInt(slider.value) + 1;
+                        if (cur >= maxFrames) { _cStop(); return; }
+                        renderSeqCompareFrame(cur);
+                    }, 600);
+                });
+                cPause.addEventListener('click', _cStop);
+                requestAnimationFrame(() => renderSeqCompareFrame(0));
+                panels[id] = { elem: item, label: seqLabel };
+
             } else {
                 const renderer = this.outputRenderers[type];
                 if (renderer) {
@@ -3719,6 +4745,35 @@ const rappture = {
             const el = this._peFindElement(initVal);
             if (el) this._peSelect(widget, el, returnvalue, true);
         }
+
+        // Toggle table visibility on click of selected row
+        const tableWrap = widget.querySelector('.rp-pe-table-wrap');
+        const selectedRow = widget.querySelector('.rp-pe-selected-row');
+        selectedRow.addEventListener('click', (e) => {
+            const isOpen = tableWrap.style.display !== 'none';
+            // Close all other open tables first
+            document.querySelectorAll('.rp-pe-table-wrap').forEach(w => { w.style.display = 'none'; });
+            document.querySelectorAll('.rp-pe-arrow').forEach(a => { a.classList.remove('rp-pe-arrow-open'); });
+            if (!isOpen) {
+                tableWrap.style.display = '';
+                widget.querySelector('.rp-pe-arrow').classList.add('rp-pe-arrow-open');
+            }
+            e.stopPropagation();
+        });
+
+        // Close when clicking outside
+        document.addEventListener('click', () => {
+            tableWrap.style.display = 'none';
+            const arrow = widget.querySelector('.rp-pe-arrow');
+            if (arrow) arrow.classList.remove('rp-pe-arrow-open');
+        });
+
+        // Close and update when an element is selected
+        table.addEventListener('click', () => {
+            tableWrap.style.display = 'none';
+            const arrow = widget.querySelector('.rp-pe-arrow');
+            if (arrow) arrow.classList.remove('rp-pe-arrow-open');
+        });
     },
 
     _peSelect(widget, el, returnvalue, silent) {
@@ -3736,6 +4791,20 @@ const rappture = {
         nameEl.textContent = `${el[1]} (${el[0]}, ${el[2]})`;
         hiddenIn.value = this._peFormatValue(el, returnvalue);
         if (!silent) hiddenIn.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+
+    // ── Phase tabs ───────────────────────────────────────────────────────────
+
+    switchPhase(path) {
+        // Hide all panels, deactivate all tabs
+        document.querySelectorAll('.rp-phase-panel').forEach(p => p.style.display = 'none');
+        document.querySelectorAll('.rp-phase-tab').forEach(t => t.classList.remove('rp-phase-tab-active'));
+        // Show selected panel and activate its tab
+        const panelId = 'phase-panel-' + path.replace(/[.()\s]/g, '_');
+        const panel = document.getElementById(panelId);
+        if (panel) panel.style.display = '';
+        const tab = document.querySelector(`.rp-phase-tab[data-phase="${path}"]`);
+        if (tab) tab.classList.add('rp-phase-tab-active');
     },
 
     // ── Preset / tab helpers ─────────────────────────────────────────────────

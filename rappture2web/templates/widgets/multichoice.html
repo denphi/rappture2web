@@ -1,17 +1,21 @@
+{% set group_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-multichoice" data-path="{{ widget.path }}" data-type="multichoice"
      {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
-    <label class="rp-label" title="{{ widget.description }}">
-        {{ widget.label or widget.id }}
-    </label>
-    <div class="rp-multichoice-options">
-        {% for opt in widget.attrs.options %}
-        <label class="rp-multichoice-option" title="{{ opt.description }}">
-            <input type="checkbox"
-                   name="{{ widget.path }}"
-                   value="{{ opt.value }}"
-                   {% if opt.label in widget.default.split(',') or opt.value in widget.default.split(',') %}checked{% endif %}>
-            {{ opt.label or opt.value }}
-        </label>
-        {% endfor %}
-    </div>
+    <fieldset class="rp-multichoice-fieldset">
+        <legend class="rp-label" title="{{ widget.description }}">{{ widget.label or widget.id }}</legend>
+        {% if widget.description %}
+        <span id="{{ group_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
+        {% endif %}
+        <div class="rp-multichoice-options" {% if widget.description %}aria-describedby="{{ group_id }}-desc"{% endif %}>
+            {% for opt in widget.attrs.options %}
+            <label class="rp-multichoice-option" title="{{ opt.description }}">
+                <input type="checkbox"
+                       name="{{ widget.path }}"
+                       value="{{ opt.value }}"
+                       {% if opt.label in widget.default.split(',') or opt.value in widget.default.split(',') %}checked{% endif %}>
+                {{ opt.label or opt.value }}
+            </label>
+            {% endfor %}
+        </div>
+    </fieldset>
 </div>

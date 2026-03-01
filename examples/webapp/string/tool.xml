@@ -7,7 +7,7 @@
 Strings are bits of text--single line or multiple lines. When you click Simulate, the input strings are echoed to the output.
   </about>
   <command>
-    python3 @tool/string.py @driver
+    python3 @tool/run_string.py @driver
   </command>
 </tool>
 <input>

@@ -5,38 +5,77 @@
 {% endblock %}
 
 {% block content %}
+{% set has_phases = inputs | selectattr('type', 'equalto', 'phase') | list | length == inputs | length and inputs | length > 0 %}
 <div class="rp-layout">
-    <aside class="rp-sidebar">
-        <div class="rp-about" title="{{ tool.about }}">
+    <aside class="rp-sidebar" role="complementary" aria-label="Tool inputs and controls">
+        <div class="rp-about" aria-label="{{ tool.about }}">
             <p>{{ tool.about[:200] }}{% if tool.about|length > 200 %}...{% endif %}</p>
         </div>
-        <form id="rp-form" class="rp-form">
+        <form id="rp-form" class="rp-form" aria-label="Simulation inputs">
+            {% if has_phases %}
+            {# Phase tab strip #}
+            <div class="rp-phase-tabs" role="tablist" aria-label="Simulation phases">
+                {% for widget in inputs %}
+                {% set panel_id = "phase-panel-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+                {% set tab_id = "phase-tab-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+                <button type="button"
+                        id="{{ tab_id }}"
+                        class="rp-phase-tab{% if loop.first %} rp-phase-tab-active{% endif %}"
+                        role="tab"
+                        aria-selected="{{ 'true' if loop.first else 'false' }}"
+                        aria-controls="{{ panel_id }}"
+                        data-phase="{{ widget.path }}"
+                        onclick="rappture.switchPhase('{{ widget.path }}')">
+                    {{ widget.label or widget.id }}
+                </button>
+                {% endfor %}
+            </div>
+            {% for widget in inputs %}
+            {% set panel_id = "phase-panel-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+            {% set tab_id = "phase-tab-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+            <div class="rp-phase-panel"
+                 id="{{ panel_id }}"
+                 role="tabpanel"
+                 aria-labelledby="{{ tab_id }}"
+                 {% if not loop.first %}style="display:none"{% endif %}>
+                {% for child in widget.children %}
+                    {% set widget = child %}
+                    {% include "widgets/" + child.type + ".html" ignore missing %}
+                {% endfor %}
+            </div>
+            {% endfor %}
+            {% else %}
             {% for widget in inputs %}
                 {% include "widgets/" + widget.type + ".html" ignore missing %}
             {% endfor %}
+            {% endif %}
             <div class="rp-actions">
                 <button type="button" id="rp-simulate-btn" class="rp-btn rp-btn-simulate" onclick="rappture.simulate()">
                     Simulate
                 </button>
-                <span id="rp-status" class="rp-status"></span>
+                <button type="button" class="rp-btn rp-btn-upload" onclick="rappture.triggerUploadRun()" aria-label="Upload a run.xml output file">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true" focusable="false" style="vertical-align:middle;margin-right:4px"><path d="M8 1L4 5h3v5h2V5h3L8 1zm-5 11v1h10v-1H3z"/></svg>Upload XML
+                </button>
+                <input type="file" id="rp-upload-run-input" accept=".xml" style="display:none" aria-label="Upload run XML file" onchange="rappture.uploadRunFile(this)">
+                <span id="rp-status" class="rp-status" role="status" aria-live="polite" aria-atomic="true"></span>
             </div>
         </form>
 
         <!-- Run history -->
-        <div class="rp-run-history-panel">
+        <section class="rp-run-history-panel" aria-label="Run history">
             <div class="rp-run-history-header">
                 <label class="rp-run-select-all-label">
-                    <input type="checkbox" id="rp-select-all" onchange="rappture.toggleSelectAll(this)">
+                    <input type="checkbox" id="rp-select-all" onchange="rappture.toggleSelectAll(this)" aria-label="Select all runs">
                     Run History
                 </label>
             </div>
-            <div id="rp-run-history" class="rp-run-history">
+            <div id="rp-run-history" class="rp-run-history" role="list" aria-label="Simulation runs">
                 <span class="rp-run-empty">No runs yet</span>
             </div>
-        </div>
+        </section>
     </aside>
-    <section class="rp-content">
-        <div id="rp-results" class="rp-results">
+    <section class="rp-content" aria-label="Simulation results">
+        <div id="rp-results" class="rp-results" aria-live="polite" aria-label="Output results">
             <div class="rp-results-placeholder">
                 <p>Click <strong>Simulate</strong> to run the tool and see results here.</p>
             </div>

@@ -1,17 +1,24 @@
 {% if widget.attrs.is_tabbed %}
 {# Group of groups renders as tabs #}
+{% set tablist_id = "grp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-group rp-group-tabbed" data-path="{{ widget.path }}" data-type="group"
      {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
     {% if widget.label %}
-    <div class="rp-group-header">{{ widget.label }}</div>
+    <div class="rp-group-header" id="{{ tablist_id }}-header">{{ widget.label }}</div>
     {% endif %}
     <div class="rp-tabs">
-        <div class="rp-tab-buttons">
+        <div class="rp-tab-buttons" role="tablist" aria-label="{{ widget.label or widget.id }}">
             {% for child in widget.children %}
             {% if child.type == 'group' %}
+            {% set tab_id = tablist_id ~ "-tab-" ~ loop.index0 %}
+            {% set panel_id = widget.path ~ "-tab-" ~ loop.index0 %}
             <button type="button"
+                    id="{{ tab_id }}"
                     class="rp-tab-btn {% if loop.first %}active{% endif %}"
-                    onclick="rappture.switchTab(this, '{{ widget.path }}-tab-{{ loop.index0 }}')">
+                    role="tab"
+                    aria-selected="{{ 'true' if loop.first else 'false' }}"
+                    aria-controls="{{ panel_id | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') }}"
+                    onclick="rappture.switchTab(this, '{{ panel_id }}')">
                 {{ child.label or child.id }}
             </button>
             {% endif %}
@@ -19,8 +26,13 @@
         </div>
         {% for child in widget.children %}
         {% if child.type == 'group' %}
+        {% set tab_id = tablist_id ~ "-tab-" ~ loop.index0 %}
+        {% set panel_id = widget.path ~ "-tab-" ~ loop.index0 %}
         <div class="rp-tab-panel {% if loop.first %}active{% endif %}"
-             id="{{ widget.path }}-tab-{{ loop.index0 }}">
+             id="{{ panel_id | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') }}"
+             role="tabpanel"
+             aria-labelledby="{{ tab_id }}"
+             {% if not loop.first %}hidden{% endif %}>
             {% for subchild in child.children %}
                 {% set widget = subchild %}
                 {% include "widgets/" + subchild.type + ".html" ignore missing %}

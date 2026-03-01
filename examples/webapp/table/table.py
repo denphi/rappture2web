@@ -21,7 +21,7 @@ m_kg = emass * 9.11e-31          # kg
 h = 4.13566743e-15   # eV·s
 J2eV = 6.241506363e17
 
-nhomo = random.randint(1, 20)
+nhomo = 1
 
 rows = []
 for n in range(1, 21):

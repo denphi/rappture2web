@@ -11,6 +11,14 @@ When you click Simulate, the input image is rotated several times to produce an 
   </command>
 </tool>
 <input>
+  <loader>
+    <about>
+      <label>Image</label>
+      <description>Use this to load different images.</description>
+    </about>
+    <example>*.xml</example>
+    <default>nanohub.xml</default>
+  </loader>
   <image>
     <about><diffs>ignore</diffs></about>
     <resize>height=200</resize>

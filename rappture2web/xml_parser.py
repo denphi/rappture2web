@@ -646,13 +646,47 @@ def _parse_image_output(elem):
 
 
 def _parse_table_output(elem):
-    """Parse a <table> output element."""
+    """Parse a <table> output element into structured columns + rows."""
     about = elem.find("about")
-    # Tables can have column definitions and data
+    label = _get_text(about, "label") if about is not None else ""
+
+    # Parse column definitions
+    columns = []
+    for col in elem.findall("column"):
+        col_about = col.find("about")
+        col_label = _get_text(col_about, "label") if col_about is not None else col.get("id", "")
+        columns.append({
+            "id": col.get("id", col_label),
+            "label": col_label,
+            "units": _get_text(col, "units") or "",
+        })
+
+    # Parse whitespace-delimited data rows
+    data_text = _get_text(elem, "data") or ""
+    rows = []
+    for line in data_text.strip().splitlines():
+        parts = line.split()
+        if parts:
+            rows.append(parts)
+
+    # Detect energy column: any column whose units are an energy unit
+    _ENERGY_UNITS = {"ev", "mev", "kev", "j", "kj", "kcal", "hartree", "ry", "rydberg", "cm-1", "thz"}
+    energy_col_idx = None
+    label_col_idx = None
+    for i, col in enumerate(columns):
+        u = col["units"].lower().replace(" ", "")
+        if u in _ENERGY_UNITS:
+            energy_col_idx = i
+        elif not col["units"]:
+            label_col_idx = i
+
     return {
         "type": "table",
-        "label": _get_text(about, "label") if about is not None else "",
-        "data": elem.text.strip() if elem.text else "",
+        "label": label,
+        "columns": columns,
+        "rows": rows,
+        "energy_col": energy_col_idx,
+        "label_col": label_col_idx,
     }
 
 
@@ -710,6 +744,119 @@ def _parse_mesh_element(elem):
     return result
 
 
+def _interpolate_to_grid(points, values, grid_n=20):
+    """Interpolate unstructured 3D scalar data onto a uniform NxNxN grid.
+
+    Returns a dict with flat x/y/z/value arrays ready for Plotly isosurface,
+    or None if scipy is not available or interpolation fails.
+    """
+    try:
+        import numpy as np
+        from scipy.interpolate import griddata
+    except ImportError:
+        return None
+
+    pts = np.array(points, dtype=float)
+    vals = np.array(values, dtype=float)
+
+    xmin, xmax = pts[:, 0].min(), pts[:, 0].max()
+    ymin, ymax = pts[:, 1].min(), pts[:, 1].max()
+    zmin, zmax = pts[:, 2].min(), pts[:, 2].max()
+
+    # Avoid degenerate axes
+    if xmax == xmin: xmax = xmin + 1.0
+    if ymax == ymin: ymax = ymin + 1.0
+    if zmax == zmin: zmax = zmin + 1.0
+
+    xi = np.linspace(xmin, xmax, grid_n)
+    yi = np.linspace(ymin, ymax, grid_n)
+    zi = np.linspace(zmin, zmax, grid_n)
+
+    gx, gy, gz = np.meshgrid(xi, yi, zi, indexing='ij')
+    grid_pts = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+
+    try:
+        vi = griddata(pts, vals, grid_pts, method='linear', fill_value=float('nan'))
+        # Fill NaN holes with nearest-neighbour so isosurface has no gaps
+        nan_mask = np.isnan(vi)
+        if nan_mask.any():
+            vi_nn = griddata(pts, vals, grid_pts[nan_mask], method='nearest')
+            vi[nan_mask] = vi_nn
+    except Exception:
+        return None
+
+    return {
+        "x": gx.ravel().tolist(),
+        "y": gy.ravel().tolist(),
+        "z": gz.ravel().tolist(),
+        "value": vi.tolist(),
+        "nx": grid_n, "ny": grid_n, "nz": grid_n,
+    }
+
+
+def _decode_rp_enc(text):
+    """Decode a @@RP-ENC:zb64 or @@RP-ENC:b64 encoded string to bytes."""
+    import zlib as _zlib
+    text = text.strip()
+    if text.startswith("@@RP-ENC:zb64"):
+        raw = base64.b64decode(text[len("@@RP-ENC:zb64"):].strip())
+        return _zlib.decompress(raw, 47)  # wbits=47 → auto-detect zlib/gzip
+    elif text.startswith("@@RP-ENC:b64"):
+        return base64.b64decode(text[len("@@RP-ENC:b64"):].strip())
+    return text.encode()
+
+
+def _parse_vtk_legacy(vtk_bytes):
+    """Parse VTK legacy ASCII STRUCTURED_POINTS into grid_data dict.
+
+    Returns dict with keys: nx, ny, nz, dx, dy, dz, ox, oy, oz, values (flat list), len.
+    Returns None if format is unsupported.
+    """
+    try:
+        text = vtk_bytes.decode("utf-8", errors="replace")
+        lines = text.splitlines()
+        dims = spacing = origin = None
+        scalar_name = None
+        values = []
+        reading_scalars = False
+        for line in lines:
+            ls = line.strip()
+            if ls.upper().startswith("DIMENSIONS"):
+                parts = ls.split()
+                dims = (int(parts[1]), int(parts[2]), int(parts[3]))
+            elif ls.upper().startswith("SPACING"):
+                parts = ls.split()
+                spacing = (float(parts[1]), float(parts[2]), float(parts[3]))
+            elif ls.upper().startswith("ORIGIN"):
+                parts = ls.split()
+                origin = (float(parts[1]), float(parts[2]), float(parts[3]))
+            elif ls.upper().startswith("SCALARS"):
+                parts = ls.split()
+                scalar_name = parts[1] if len(parts) > 1 else "scalar"
+                reading_scalars = False  # wait for LOOKUP_TABLE
+            elif ls.upper().startswith("LOOKUP_TABLE"):
+                reading_scalars = True
+            elif reading_scalars and ls:
+                for tok in ls.split():
+                    try:
+                        values.append(float(tok))
+                    except ValueError:
+                        pass
+        if dims is None or spacing is None or origin is None or not values:
+            return None
+        nx, ny, nz = dims
+        return {
+            "nx": nx, "ny": ny, "nz": nz,
+            "dx": spacing[0], "dy": spacing[1], "dz": spacing[2],
+            "ox": origin[0], "oy": origin[1], "oz": origin[2],
+            "values": values,
+            "len": len(values),
+            "scalar_name": scalar_name or "scalar",
+        }
+    except Exception:
+        return None
+
+
 def _parse_field_output(elem, mesh_registry=None):
     """Parse a <field> output element, resolving mesh references."""
     import re as _re2
@@ -719,6 +866,28 @@ def _parse_field_output(elem, mesh_registry=None):
 
     components = []
     for comp in elem.findall("component"):
+        comp_id = comp.get("id", "")
+        vtk_text = _get_text(comp, "vtk")
+        style_text = _get_text(comp, "style") or ""
+
+        # Handle VTK-encoded components (@@RP-ENC:zb64 or raw VTK text)
+        if vtk_text:
+            vtk_bytes = _decode_rp_enc(vtk_text) if vtk_text.strip().startswith("@@RP-ENC") else vtk_text.encode()
+            vtk_grid = _parse_vtk_legacy(vtk_bytes)
+            if vtk_grid:
+                components.append({
+                    "comp_id": comp_id,
+                    "mesh_ref": None,
+                    "mesh": None,
+                    "values": [],  # values are in grid_data to avoid duplication
+                    "extents": 1,
+                    "flow": None,
+                    "grid_data": vtk_grid,
+                    "style": style_text,
+                    "vtk_type": "structured_points",
+                })
+            continue
+
         mesh_ref = _get_text(comp, "mesh")
         values_text = _get_text(comp, "values")
         extents = int(float(_get_text(comp, "extents") or "1"))
@@ -794,12 +963,22 @@ def _parse_field_output(elem, mesh_registry=None):
                 "boxes":       boxes,
             }
 
+        # For unstructured 3D scalar fields, pre-interpolate onto a uniform grid
+        # so the JS isosurface renderer (Plotly) gets a proper volumetric dataset.
+        grid_data = None
+        if (mesh_data and mesh_data.get("mesh_type") == "unstructured"
+                and mesh_data.get("dim", 3) == 3
+                and extents == 1
+                and len(values) == len(mesh_data.get("points", []))):
+            grid_data = _interpolate_to_grid(mesh_data["points"], values)
+
         components.append({
             "mesh_ref": mesh_ref,
             "mesh": mesh_data,
             "values": values,
             "extents": extents,
             "flow": flow,
+            "grid_data": grid_data,
         })
 
     return {
@@ -826,11 +1005,17 @@ def _parse_sequence_output(elem):
                     el_outputs[gc_id] = _parse_curve_output(gc)
                 elif gc.tag == "field":
                     el_outputs[gc_id] = _parse_field_output(gc)
+                elif gc.tag == "image":
+                    el_outputs[gc_id] = _parse_image_output(gc)
         elements.append({"index": idx, "outputs": el_outputs})
+
+    index_elem = elem.find("index")
+    index_label = _get_text(index_elem, "label") if index_elem is not None else "Frame"
 
     return {
         "type": "sequence",
         "label": _get_text(about, "label") if about is not None else "",
+        "index_label": index_label,
         "elements": elements,
     }
 

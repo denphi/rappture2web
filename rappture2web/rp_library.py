@@ -131,6 +131,8 @@ class _OutputStore:
         self._outputs: dict[str, dict] = {}
         # Track append accumulation for xy data
         self._xy_buffers: dict[str, str] = {}
+        # Accumulated log text
+        self._log_lines: list[str] = []
 
     def put(self, path: str, value, append: bool = False):
         """Store an output value and optionally stream it to the server."""
@@ -213,9 +215,9 @@ class _OutputStore:
             node[last] = str(value) if value is not None else ""
 
     def log(self, text: str):
-        """Send a log message to the server (or print to stderr in file mode)."""
+        """Send a log message to the server (or accumulate for XML in file mode)."""
         if self._is_file:
-            print(f"[rp_library] log: {text}", file=sys.stderr)
+            self._log_lines.append(text)
             return
         self._http_post("/api/log", {"text": text})
 
@@ -457,6 +459,13 @@ class _OutputStore:
                     out_el = ET.SubElement(output_elem, out_type)
                     out_el.set("id", out_id)
                 _write_rec(out_el, rec, skip=("type", "id"))
+
+            # Write accumulated log lines as <output><log>...</log>
+            if self._log_lines:
+                log_el = output_elem.find("log")
+                if log_el is None:
+                    log_el = ET.SubElement(output_elem, "log")
+                log_el.text = "\n".join(self._log_lines)
 
             tree.write(self._file_path, encoding="unicode", xml_declaration=True)
         except Exception as exc:

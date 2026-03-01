@@ -4,20 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ tool.title }} - Rappture</title>
-    <link rel="stylesheet" href="/static/css/rappture.css">
+    <link rel="stylesheet" href="/static/css/rappture.css?v=20260301f">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     {% block head %}{% endblock %}
 </head>
 <body>
-    <header class="rp-header">
+    <a href="#rp-main-content" class="rp-skip-link">Skip to main content</a>
+    <header class="rp-header" role="banner">
         <h1 class="rp-title">{{ tool.title }}</h1>
     </header>
-    <main class="rp-main">
+    <main id="rp-main-content" class="rp-main" role="main">
         {% block content %}{% endblock %}
     </main>
-    <script src="/static/js/rappture.js?v=20260227az"></script>
+    <script src="/static/js/rappture.js?v=20260301f"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

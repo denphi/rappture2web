@@ -1,20 +1,25 @@
+{% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-integer" data-path="{{ widget.path }}" data-type="integer"
      {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}
      {% if widget.color %}data-color="{{ widget.color }}"{% elif widget.attrs.color %}data-color="{{ widget.attrs.color }}"{% endif %}>
-    <label class="rp-label" title="{{ widget.description }}">
+    <label class="rp-label" for="{{ input_id }}" title="{{ widget.description }}">
         {{ widget.label or widget.id }}
     </label>
     <input type="number"
+           id="{{ input_id }}"
            class="rp-input rp-input-integer"
            name="{{ widget.path }}"
            value="{{ widget.default | strip_units }}"
            {% if widget.attrs.min %}min="{{ widget.attrs.min | strip_units }}"{% endif %}
            {% if widget.attrs.max %}max="{{ widget.attrs.max | strip_units }}"{% endif %}
            step="1"
-           title="{{ widget.description }}"
+           {% if widget.description %}aria-describedby="{{ input_id }}-desc"{% endif %}
            {% if widget.color or widget.attrs.color %}oninput="rappture.updateInputColor(this)" onchange="rappture.updateInputColor(this)"{% endif %}>
+    {% if widget.description %}
+    <span id="{{ input_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
+    {% endif %}
     {% if widget.color or widget.attrs.color %}
-    <div class="rp-color-bar" style="height:6px;border-radius:3px;margin-top:3px"></div>
+    <div class="rp-color-bar" aria-hidden="true" style="height:6px;border-radius:3px;margin-top:3px"></div>
     {% endif %}
     {% if widget.hints %}
     <small class="rp-hints">{{ widget.hints }}</small>

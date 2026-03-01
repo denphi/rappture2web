@@ -1,9 +1,17 @@
+{% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-choice" data-path="{{ widget.path }}" data-type="choice"
      {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
-    <label class="rp-label" title="{{ widget.description }}">
+    <label class="rp-label" for="{{ input_id }}" title="{{ widget.description }}">
         {{ widget.label or widget.id }}
     </label>
-    <select class="rp-input rp-input-choice" name="{{ widget.path }}" title="{{ widget.description }}">
+    {% if widget.description %}
+    <span id="{{ input_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
+    {% endif %}
+    <select id="{{ input_id }}"
+            class="rp-input rp-input-choice"
+            name="{{ widget.path }}"
+            aria-label="{{ widget.label or widget.id }}"
+            {% if widget.description %}aria-describedby="{{ input_id }}-desc"{% endif %}>
         {% for opt in widget.attrs.options %}
         <option value="{{ opt.value }}"
                 {% if opt.label == widget.default or opt.value == widget.default %}selected{% endif %}

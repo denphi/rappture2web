@@ -1,16 +1,26 @@
+{% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-periodicelement" data-path="{{ widget.path }}" data-type="periodicelement"
      data-returnvalue="{{ widget.attrs.returnvalue or 'symbol' }}"
      data-active="{{ widget.attrs.active or '' }}"
      data-inactive="{{ widget.attrs.inactive or '' }}"
      {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
-    <label class="rp-label" title="{{ widget.description }}">{{ widget.label or widget.id }}</label>
-    <div class="rp-pe-selected-row">
-        <span class="rp-pe-swatch"></span>
-        <span class="rp-pe-selected-name">{{ widget.default or 'None' }}</span>
+    <label class="rp-label" id="{{ input_id }}-label">{{ widget.label or widget.id }}</label>
+    <button type="button"
+            class="rp-pe-selected-row"
+            aria-haspopup="dialog"
+            aria-labelledby="{{ input_id }}-label"
+            aria-describedby="{{ input_id }}-selected">
+        <span class="rp-pe-swatch" aria-hidden="true"></span>
+        <span id="{{ input_id }}-selected" class="rp-pe-selected-name">{{ widget.default or 'None' }}</span>
+        <svg class="rp-pe-arrow" viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true" focusable="false"><polygon points="2,5 14,5 8,12"/></svg>
         <input type="hidden" class="rp-input rp-pe-value" name="{{ widget.path }}" value="{{ widget.default or '' }}">
-    </div>
-    <div class="rp-pe-table-wrap">
-        <table class="rp-pe-table"></table>
+    </button>
+    <div class="rp-pe-table-wrap"
+         role="dialog"
+         aria-modal="true"
+         aria-label="Periodic table — select an element"
+         style="display:none">
+        <table class="rp-pe-table" role="grid" aria-label="Periodic table of elements"></table>
     </div>
     {% if widget.hints %}
     <small class="rp-hints">{{ widget.hints }}</small>

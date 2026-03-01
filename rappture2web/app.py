@@ -9,7 +9,7 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -288,19 +288,37 @@ async def api_get_outputs():
 
 # ─── Loader examples endpoint ────────────────────────────────────────────────
 
+def _loader_search_dir(tool_dir: Path, pattern: str) -> Path:
+    """Return the directory to search for loader examples.
+
+    If the pattern contains a path prefix (e.g. 'examples/*.xml'), use that
+    subdirectory.  If an 'examples/' subdir exists, prefer it.  Otherwise
+    fall back to tool_dir itself.
+    """
+    from pathlib import PurePosixPath
+    parent = str(PurePosixPath(pattern).parent)
+    if parent and parent != ".":
+        candidate = tool_dir / parent
+        if candidate.is_dir():
+            return candidate
+    if (tool_dir / "examples").is_dir():
+        return tool_dir / "examples"
+    return tool_dir
+
+
 @app.get("/api/loader-examples")
 async def api_loader_examples(pattern: str = "*.xml"):
     """Return list of example XML files for loader widgets."""
     if _tool_xml_path is None:
         return JSONResponse([])
     tool_dir = Path(_tool_xml_path).parent
-    examples_dir = tool_dir / "examples"
-    if not examples_dir.is_dir():
-        return JSONResponse([])
-    import glob as _glob
+    search_dir = _loader_search_dir(tool_dir, pattern)
     from xml.etree import ElementTree as ET
+    glob_pattern = Path(pattern).name  # just the filename glob part
     results = []
-    for fpath in sorted(examples_dir.glob(pattern)):
+    for fpath in sorted(search_dir.glob(glob_pattern)):
+        if fpath.name == "tool.xml":
+            continue
         label = fpath.stem
         try:
             tree = ET.parse(fpath)
@@ -317,14 +335,15 @@ async def api_loader_examples(pattern: str = "*.xml"):
 
 
 @app.get("/api/loader-examples/{filename}")
-async def api_loader_example_file(filename: str):
+async def api_loader_example_file(filename: str, pattern: str = "*.xml"):
     """Return the content of a specific example XML file."""
     if _tool_xml_path is None:
         return JSONResponse({"error": "No tool loaded"}, status_code=404)
     tool_dir = Path(_tool_xml_path).parent
-    fpath = (tool_dir / "examples" / filename).resolve()
-    # Safety: ensure file is within the examples directory
-    if not str(fpath).startswith(str((tool_dir / "examples").resolve())):
+    search_dir = _loader_search_dir(tool_dir, pattern)
+    fpath = (search_dir / filename).resolve()
+    # Safety: ensure file is within tool_dir
+    if not str(fpath).startswith(str(tool_dir.resolve())):
         return JSONResponse({"error": "Invalid path"}, status_code=403)
     if not fpath.exists():
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -346,6 +365,7 @@ async def api_get_runs():
             "status": run["status"],
             "cached": False,
             "inputs": run["inputs"],
+            "source": run.get("source", "simulated"),
         })
     return JSONResponse(summary)
 
@@ -390,6 +410,48 @@ async def api_reorder_runs(request: Request):
     return JSONResponse({"ok": True})
 
 
+# ─── Upload run XML ───────────────────────────────────────────────────────────
+
+@app.post("/api/upload-run")
+async def api_upload_run(file: UploadFile = File(...)):
+    """Accept an uploaded run.xml, parse its outputs, and add to history."""
+    import tempfile
+    from .xml_parser import parse_run_xml
+
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        outputs = parse_run_xml(tmp_path)
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed to parse XML: {exc}"}, status_code=400)
+    finally:
+        os.unlink(tmp_path)
+
+    run_record = _history.add(
+        input_values={},
+        outputs=outputs,
+        log="",
+        status="success",
+    )
+    label = Path(file.filename).stem if file.filename else "uploaded"
+    _history.update_run(run_record["run_id"], label=label, source="upload")
+
+    await _broadcast({
+        "type": "done",
+        "status": "success",
+        "outputs": outputs,
+        "log": "",
+        "run_id": run_record["run_id"],
+        "run_num": run_record["run_num"],
+        "cached": False,
+        "source": "upload",
+    })
+    return JSONResponse({"ok": True, "run_id": run_record["run_id"], "run_num": run_record["run_num"]})
+
+
 # ─── Tool metadata ────────────────────────────────────────────────────────────
 
 @app.get("/api/tool")
@@ -413,7 +475,8 @@ async def websocket_endpoint(ws: WebSocket):
         "log": _session["log"],
         "runs": [
             {"run_id": r["run_id"], "run_num": r["run_num"],
-             "label": r["label"], "status": r["status"]}
+             "label": r["label"], "status": r["status"],
+             "source": r.get("source", "simulated")}
             for r in _history.runs
         ],
     })

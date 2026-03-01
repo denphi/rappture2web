@@ -2,7 +2,8 @@
      {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}
      data-upload-targets="{{ widget.attrs.upload_targets | join(',') }}"
      data-download-sources="{{ widget.attrs.download_sources | join(',') }}"
-     data-loader-default="{{ widget.attrs.loader_default or '' }}">
+     data-loader-default="{{ widget.attrs.loader_default or '' }}"
+     data-example="{{ widget.attrs.example or '*.xml' }}">
     <label class="rp-label" title="{{ widget.description }}">
         {{ widget.label or "Load Example" }}
     </label>
@@ -19,13 +20,12 @@
 </div>
 <script>
 (function() {
-    var loaderDiv = document.querySelector('.rp-loader[data-loader-default]');
-    // Find the most recently added loader (this one)
     var allLoaders = document.querySelectorAll('.rp-loader');
     var widget = allLoaders[allLoaders.length - 1];
     var sel = widget.querySelector('.rp-loader-select');
     var defaultFile = widget.dataset.loaderDefault || '';
-    fetch('/api/loader-examples')
+    var pattern = widget.dataset.example || '*.xml';
+    fetch('/api/loader-examples?pattern=' + encodeURIComponent(pattern))
         .then(function(r) { return r.json(); })
         .then(function(examples) {
             examples.forEach(function(ex) {
