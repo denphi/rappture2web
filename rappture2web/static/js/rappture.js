@@ -3,6 +3,42 @@
  * Handles form collection, simulation, enable/disable conditions,
  * WebSocket live output streaming, and run history browsing.
  */
+
+/**
+ * Run `fn` once `el` has non-zero dimensions.
+ * If already visible, runs immediately (inside requestAnimationFrame).
+ * Otherwise waits for IntersectionObserver to fire when el becomes visible.
+ */
+function _whenVisible(el, fn) {
+    const tryRun = () => {
+        const w = el.clientWidth, h = el.clientHeight;
+        if (w > 0 && h > 0) { fn(); return true; }
+        return false;
+    };
+    if (!tryRun()) {
+        const io = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                io.disconnect();
+                requestAnimationFrame(() => tryRun());
+            }
+        }, { threshold: 0 });
+        io.observe(el);
+    }
+}
+
+/**
+ * Create a ResizeObserver that ignores the first N callbacks (Plotly init reflow)
+ * then resizes plotDiv height to match el on subsequent changes.
+ */
+function _plotResizeObserver(el, plotDiv, skip) {
+    let _skip = skip || 1;
+    return new ResizeObserver(() => {
+        if (_skip > 0) { _skip--; return; }
+        const nh = el.clientHeight;
+        if (nh > 50) { plotDiv.style.height = nh + 'px'; Plotly.relayout(plotDiv, { height: nh }); }
+    });
+}
+
 const rappture = {
 
     // ── WebSocket ────────────────────────────────────────────────────────────
@@ -347,54 +383,81 @@ const rappture = {
         const ids = Object.keys(panels);
         if (ids.length === 0) return;
 
-        // Remember the currently active tab label so we can restore it after re-render
-        const prevActiveBtn = container.querySelector('.rp-output-tab-btn.active');
-        const prevActiveLabel = prevActiveBtn ? prevActiveBtn.textContent : null;
+        // Remember the currently active label so we can restore it after re-render
+        const prevSel = container.querySelector('.rp-output-selector');
+        const prevActiveLabel = prevSel ? prevSel.value : null;
 
         container.innerHTML = '';
 
-        // Tab bar
-        const tabBar = document.createElement('div');
-        tabBar.className = 'rp-output-tabs';
+        // Selector bar
+        const bar = document.createElement('div');
+        bar.className = 'rp-output-tabs';
+
+        const lbl = document.createElement('label');
+        lbl.className = 'rp-sr-only';
+        lbl.setAttribute('for', 'rp-output-selector');
+        lbl.textContent = 'Select output';
+        bar.appendChild(lbl);
+
+        const sel = document.createElement('select');
+        sel.className = 'rp-output-selector';
+        sel.id = 'rp-output-selector';
+        sel.setAttribute('aria-label', 'Select output to display');
+        bar.appendChild(sel);
 
         // Panel wrapper
         const panelWrap = document.createElement('div');
         panelWrap.className = 'rp-output-panels';
 
-        // Determine which index should be active: match by label, else first
+        // Determine which index should be active
         const activeIdx = prevActiveLabel
             ? Math.max(0, ids.findIndex(id => panels[id].label === prevActiveLabel))
             : 0;
 
+        const _switchTo = (idx) => {
+            panelWrap.querySelectorAll('.rp-output-panel').forEach(p => p.classList.remove('active'));
+            const activePanelId = 'rp-panel-' + ids[idx];
+            const activePanel = document.getElementById(activePanelId);
+            if (activePanel) {
+                activePanel.classList.add('active');
+                requestAnimationFrame(() => {
+                    const plotDiv = activePanel.querySelector('.rp-output-plot');
+                    if (plotDiv && window.Plotly) Plotly.Plots.resize(plotDiv);
+                    // Trigger ResizeObserver for Three.js canvases that just became visible
+                    activePanel.querySelectorAll('canvas').forEach(c => {
+                        c.dispatchEvent(new Event('resize'));
+                        const wrap = c.parentElement;
+                        if (wrap) wrap.dispatchEvent(new Event('resize'));
+                    });
+                });
+            }
+        };
+
         ids.forEach((id, i) => {
             const { elem, label } = panels[id];
-            const isActive = i === activeIdx;
+            const panelId = 'rp-panel-' + id;
 
-            // Tab button
-            const btn = document.createElement('button');
-            btn.className = 'rp-output-tab-btn' + (isActive ? ' active' : '');
-            btn.textContent = label;
-            btn.dataset.target = 'rp-panel-' + id;
-            btn.addEventListener('click', () => {
-                tabBar.querySelectorAll('.rp-output-tab-btn').forEach(b => b.classList.remove('active'));
-                panelWrap.querySelectorAll('.rp-output-panel').forEach(p => p.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById('rp-panel-' + id).classList.add('active');
-                // Trigger Plotly resize in case it was hidden during render
-                const plotDiv = elem.querySelector('.rp-output-plot');
-                if (plotDiv && window.Plotly) Plotly.Plots.resize(plotDiv);
-            });
-            tabBar.appendChild(btn);
+            const opt = document.createElement('option');
+            opt.value = label;
+            opt.textContent = label;
+            if (i === activeIdx) opt.selected = true;
+            sel.appendChild(opt);
 
-            // Panel div
             const panel = document.createElement('div');
-            panel.className = 'rp-output-panel' + (isActive ? ' active' : '');
-            panel.id = 'rp-panel-' + id;
+            panel.className = 'rp-output-panel' + (i === activeIdx ? ' active' : '');
+            panel.id = panelId;
+            panel.setAttribute('role', 'region');
+            panel.setAttribute('aria-label', label);
             panel.appendChild(elem);
             panelWrap.appendChild(panel);
         });
 
-        container.appendChild(tabBar);
+        sel.addEventListener('change', () => {
+            const idx = sel.selectedIndex;
+            _switchTo(idx);
+        });
+
+        container.appendChild(bar);
         container.appendChild(panelWrap);
     },
 
@@ -479,38 +542,65 @@ const rappture = {
             if (!elem) return;
         }
 
-        let tabBar = container.querySelector('.rp-output-tabs');
+        let bar = container.querySelector('.rp-output-tabs');
+        let sel = container.querySelector('.rp-output-selector');
         let panelWrap = container.querySelector('.rp-output-panels');
 
-        if (!tabBar) {
-            tabBar = document.createElement('div');
-            tabBar.className = 'rp-output-tabs';
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'rp-output-tabs';
+
+            const lbl = document.createElement('label');
+            lbl.className = 'rp-sr-only';
+            lbl.setAttribute('for', 'rp-output-selector');
+            lbl.textContent = 'Select output';
+            bar.appendChild(lbl);
+
+            sel = document.createElement('select');
+            sel.className = 'rp-output-selector';
+            sel.id = 'rp-output-selector';
+            sel.setAttribute('aria-label', 'Select output to display');
+            bar.appendChild(sel);
+
             panelWrap = document.createElement('div');
             panelWrap.className = 'rp-output-panels';
-            container.appendChild(tabBar);
+            container.appendChild(bar);
             container.appendChild(panelWrap);
+
+            sel.addEventListener('change', () => {
+                const panelId = sel.options[sel.selectedIndex].dataset.panel;
+                panelWrap.querySelectorAll('.rp-output-panel').forEach(p => p.classList.remove('active'));
+                const activePanel = document.getElementById(panelId);
+                if (activePanel) {
+                    activePanel.classList.add('active');
+                    requestAnimationFrame(() => {
+                        const plotDiv = activePanel.querySelector('.rp-output-plot');
+                        if (plotDiv && window.Plotly) Plotly.Plots.resize(plotDiv);
+                        activePanel.querySelectorAll('canvas').forEach(c => {
+                            const wrap = c.parentElement;
+                            if (wrap) wrap.dispatchEvent(new Event('resize'));
+                        });
+                    });
+                }
+            });
         }
 
-        const isFirst = tabBar.children.length === 0;
+        const isFirst = sel.options.length === 0;
         const label = labelText || id;
+        const panelId = 'rp-panel-' + id;
 
-        const btn = document.createElement('button');
-        btn.className = 'rp-output-tab-btn' + (isFirst ? ' active' : '');
-        btn.textContent = label;
-        btn.dataset.target = 'rp-panel-' + id;
-        btn.addEventListener('click', () => {
-            tabBar.querySelectorAll('.rp-output-tab-btn').forEach(b => b.classList.remove('active'));
-            panelWrap.querySelectorAll('.rp-output-panel').forEach(p => p.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById('rp-panel-' + id).classList.add('active');
-            const plotDiv = elem.querySelector('.rp-output-plot');
-            if (plotDiv && window.Plotly) Plotly.Plots.resize(plotDiv);
-        });
-        tabBar.appendChild(btn);
+        const opt = document.createElement('option');
+        opt.value = label;
+        opt.textContent = label;
+        opt.dataset.panel = panelId;
+        if (isFirst) opt.selected = true;
+        sel.appendChild(opt);
 
         const panel = document.createElement('div');
         panel.className = 'rp-output-panel' + (isFirst ? ' active' : '');
-        panel.id = 'rp-panel-' + id;
+        panel.id = panelId;
+        panel.setAttribute('role', 'region');
+        panel.setAttribute('aria-label', label);
         panel.appendChild(elem);
         panelWrap.appendChild(panel);
     },
@@ -614,6 +704,7 @@ const rappture = {
 
         curve(id, data) {
             const label = (data.about && data.about.label) || data.label || id;
+            const sid = id.replace(/[^a-z0-9_-]/gi, '_');
             const item = rappture.createOutputItem(label, 'plot');
             item.classList.add('rp-output-plot-item');
             const body = item.querySelector('.rp-output-body');
@@ -621,7 +712,7 @@ const rappture = {
             const plotDiv = document.createElement('div');
             plotDiv.className = 'rp-output-plot';
             plotDiv.id = 'plot-' + id;
-            body.appendChild(plotDiv);
+            // plotDiv appended to outerWrap below
 
             // ── Initial axis labels from data ─────────────────────────────
             const xLabel0 = data.xaxis ? data.xaxis.label || '' : '';
@@ -702,54 +793,54 @@ const rappture = {
             cp.innerHTML = `
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Title</div>
-                <label>Plot title<input type="text" id="plt-title-${id}" value="" placeholder="(none)"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
+                <label>Plot title<input type="text" id="plt-title-${sid}" value="" placeholder="(none)"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">X Axis</div>
-                <label>Label<input type="text" id="plt-xl-${id}" value="${xLabel0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
-                <label>Units<input type="text" id="plt-xu-${id}" value="${xUnits0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
+                <label>Label<input type="text" id="plt-xl-${sid}" value="${xLabel0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
+                <label>Units<input type="text" id="plt-xu-${sid}" value="${xUnits0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
                 <label style="flex-direction:row;align-items:center;gap:6px;margin-top:2px">
-                  <input type="checkbox" id="plt-xlog-${id}" ${data.xaxis && data.xaxis.scale === 'log' ? 'checked' : ''}> Log scale
+                  <input type="checkbox" id="plt-xlog-${sid}" ${data.xaxis && data.xaxis.scale === 'log' ? 'checked' : ''}> Log scale
                 </label>
                 <label style="flex-direction:row;align-items:center;gap:6px">
-                  <input type="checkbox" id="plt-xgrid-${id}" checked> Grid
+                  <input type="checkbox" id="plt-xgrid-${sid}" checked> Grid
                 </label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Y Axis</div>
-                <label>Label<input type="text" id="plt-yl-${id}" value="${yLabel0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
-                <label>Units<input type="text" id="plt-yu-${id}" value="${yUnits0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
+                <label>Label<input type="text" id="plt-yl-${sid}" value="${yLabel0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
+                <label>Units<input type="text" id="plt-yu-${sid}" value="${yUnits0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
                 <label style="flex-direction:row;align-items:center;gap:6px;margin-top:2px">
-                  <input type="checkbox" id="plt-ylog-${id}" ${yIsLog ? 'checked' : ''}> Log scale
+                  <input type="checkbox" id="plt-ylog-${sid}" ${yIsLog ? 'checked' : ''}> Log scale
                 </label>
                 <label style="flex-direction:row;align-items:center;gap:6px">
-                  <input type="checkbox" id="plt-ygrid-${id}" checked> Grid
+                  <input type="checkbox" id="plt-ygrid-${sid}" checked> Grid
                 </label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Display</div>
                 ${_isMixed ? `` : _curveType === 'bar' ? `
-                <label>Bar gap<input type="range" id="plt-bargap-${id}" min="0" max="0.8" value="0.1" step="0.05"></label>
+                <label>Bar gap<input type="range" id="plt-bargap-${sid}" min="0" max="0.8" value="0.1" step="0.05"></label>
                 ` : _curveType === 'scatter' ? `
-                <label>Marker size<input type="range" id="plt-mkrsize-${id}" min="2" max="20" value="6" step="1"></label>
+                <label>Marker size<input type="range" id="plt-mkrsize-${sid}" min="2" max="20" value="6" step="1"></label>
                 ` : `
-                <label>Line width<input type="range" id="plt-lw-${id}" min="1" max="8" value="2" step="0.5"></label>
+                <label>Line width<input type="range" id="plt-lw-${sid}" min="1" max="8" value="2" step="0.5"></label>
                 <label style="flex-direction:row;align-items:center;gap:6px">
-                  <input type="checkbox" id="plt-mkr-${id}"> Markers
+                  <input type="checkbox" id="plt-mkr-${sid}"> Markers
                 </label>
                 `}
                 <label style="flex-direction:row;align-items:center;gap:6px">
-                  <input type="checkbox" id="plt-leg-${id}" ${traces.length > 1 ? 'checked' : ''}> Legend
+                  <input type="checkbox" id="plt-leg-${sid}" ${traces.length > 1 ? 'checked' : ''}> Legend
                 </label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Theme</div>
-                <select id="plt-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                <select id="plt-theme-${sid}" style="width:100%;font-size:12px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
                   <option value="light" selected>Light</option>
                   <option value="dark">Dark</option>
                 </select>
@@ -757,12 +848,29 @@ const rappture = {
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Download</div>
                 <div class="rp-panel-btns">
-                  <button class="rp-3d-btn" id="plt-dl-svg-${id}">SVG</button>
-                  <button class="rp-3d-btn" id="plt-dl-eps-${id}">EPS</button>
-                  <button class="rp-3d-btn" id="plt-dl-png-${id}">PNG</button>
+                  <button class="rp-3d-btn" id="plt-dl-svg-${sid}">SVG</button>
+                  <button class="rp-3d-btn" id="plt-dl-eps-${sid}">EPS</button>
+                  <button class="rp-3d-btn" id="plt-dl-png-${sid}">PNG</button>
                 </div>
               </div>`;
-            body.appendChild(cp);
+            // ── Collapsible sidecar ───────────────────────────────────
+            const panelWrap = document.createElement('div');
+            panelWrap.className = 'rp-3d-panel-wrap';
+            const sideTab = document.createElement('div');
+            sideTab.className = 'rp-3d-panel-tab';
+            sideTab.title = 'Toggle control panel';
+            sideTab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+            panelWrap.appendChild(sideTab);
+            panelWrap.appendChild(cp);
+            const outerWrap = document.createElement('div');
+            outerWrap.style.cssText = 'display:flex;flex:1;min-width:0;min-height:0;align-items:stretch;';
+            outerWrap.appendChild(plotDiv);
+            outerWrap.appendChild(panelWrap);
+            body.appendChild(outerWrap);
+            sideTab.addEventListener('click', () => {
+                panelWrap.classList.toggle('collapsed');
+                setTimeout(() => Plotly.relayout(plotDiv, { autosize: true }), 220);
+            });
 
             // Helper: rebuild axis title from label + units fields
             const axTitle = (lEl, uEl) => {
@@ -772,19 +880,19 @@ const rappture = {
 
             // Helper: apply current panel state to Plotly
             const applyLayout = () => {
-                const xl = cp.querySelector(`#plt-xl-${id}`);
-                const xu = cp.querySelector(`#plt-xu-${id}`);
-                const yl = cp.querySelector(`#plt-yl-${id}`);
-                const yu = cp.querySelector(`#plt-yu-${id}`);
+                const xl = cp.querySelector(`#plt-xl-${sid}`);
+                const xu = cp.querySelector(`#plt-xu-${sid}`);
+                const yl = cp.querySelector(`#plt-yl-${sid}`);
+                const yu = cp.querySelector(`#plt-yu-${sid}`);
                 Plotly.relayout(plotDiv, {
-                    'title.text':         cp.querySelector(`#plt-title-${id}`).value,
+                    'title.text':         cp.querySelector(`#plt-title-${sid}`).value,
                     'xaxis.title':        axTitle(xl, xu),
-                    'xaxis.type':         cp.querySelector(`#plt-xlog-${id}`).checked ? 'log' : 'linear',
-                    'xaxis.showgrid':     cp.querySelector(`#plt-xgrid-${id}`).checked,
+                    'xaxis.type':         cp.querySelector(`#plt-xlog-${sid}`).checked ? 'log' : 'linear',
+                    'xaxis.showgrid':     cp.querySelector(`#plt-xgrid-${sid}`).checked,
                     'yaxis.title':        axTitle(yl, yu),
-                    'yaxis.type':         cp.querySelector(`#plt-ylog-${id}`).checked ? 'log' : 'linear',
-                    'yaxis.showgrid':     cp.querySelector(`#plt-ygrid-${id}`).checked,
-                    'showlegend':         cp.querySelector(`#plt-leg-${id}`).checked,
+                    'yaxis.type':         cp.querySelector(`#plt-ylog-${sid}`).checked ? 'log' : 'linear',
+                    'yaxis.showgrid':     cp.querySelector(`#plt-ygrid-${sid}`).checked,
+                    'showlegend':         cp.querySelector(`#plt-leg-${sid}`).checked,
                 });
             };
 
@@ -792,14 +900,14 @@ const rappture = {
                 if (_isMixed) {
                     // mixed: no single control; nothing to do
                 } else if (_curveType === 'bar') {
-                    const gap = parseFloat(cp.querySelector(`#plt-bargap-${id}`).value);
+                    const gap = parseFloat(cp.querySelector(`#plt-bargap-${sid}`).value);
                     Plotly.relayout(plotDiv, { bargap: gap });
                 } else if (_curveType === 'scatter') {
-                    const sz = parseFloat(cp.querySelector(`#plt-mkrsize-${id}`).value);
+                    const sz = parseFloat(cp.querySelector(`#plt-mkrsize-${sid}`).value);
                     Plotly.restyle(plotDiv, { 'marker.size': sz });
                 } else {
-                    const lw  = parseFloat(cp.querySelector(`#plt-lw-${id}`).value);
-                    const mkr = cp.querySelector(`#plt-mkr-${id}`).checked;
+                    const lw  = parseFloat(cp.querySelector(`#plt-lw-${sid}`).value);
+                    const mkr = cp.querySelector(`#plt-mkr-${sid}`).checked;
                     Plotly.restyle(plotDiv, {
                         'line.width': lw,
                         mode: mkr ? 'lines+markers' : 'lines',
@@ -809,25 +917,25 @@ const rappture = {
 
             // Render plot then wire up controls
             const plotLabel = label.replace(/[^a-z0-9]/gi, '_');
-            setTimeout(() => {
-                Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
+            _whenVisible(outerWrap, () => {
+                Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
                 // Wire controls after plot exists
                 cp.querySelectorAll('input[type=text], input[type=checkbox]').forEach(el => {
                     el.addEventListener('input', applyLayout);
                 });
                 if (!_isMixed) {
                     if (_curveType === 'bar') {
-                        cp.querySelector(`#plt-bargap-${id}`).addEventListener('input', applyTraces);
+                        cp.querySelector(`#plt-bargap-${sid}`).addEventListener('input', applyTraces);
                     } else if (_curveType === 'scatter') {
-                        cp.querySelector(`#plt-mkrsize-${id}`).addEventListener('input', applyTraces);
+                        cp.querySelector(`#plt-mkrsize-${sid}`).addEventListener('input', applyTraces);
                     } else {
-                        cp.querySelector(`#plt-lw-${id}`).addEventListener('input', applyTraces);
-                        cp.querySelector(`#plt-mkr-${id}`).addEventListener('change', applyTraces);
+                        cp.querySelector(`#plt-lw-${sid}`).addEventListener('input', applyTraces);
+                        cp.querySelector(`#plt-mkr-${sid}`).addEventListener('change', applyTraces);
                     }
                 }
                 // Theme
                 const _applyTheme = () => {
-                    const dark = cp.querySelector(`#plt-theme-${id}`).value === 'dark';
+                    const dark = cp.querySelector(`#plt-theme-${sid}`).value === 'dark';
                     Plotly.relayout(plotDiv, {
                         paper_bgcolor: dark ? '#1a1a2e' : 'white',
                         plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
@@ -838,13 +946,13 @@ const rappture = {
                         font: { color: dark ? '#ccd6f6' : '#444' },
                     });
                 };
-                cp.querySelector(`#plt-theme-${id}`).addEventListener('change', _applyTheme);
+                cp.querySelector(`#plt-theme-${sid}`).addEventListener('change', _applyTheme);
                 // Download buttons
-                cp.querySelector(`#plt-dl-svg-${id}`).addEventListener('click', () =>
+                cp.querySelector(`#plt-dl-svg-${sid}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, plotLabel, 'svg'));
-                cp.querySelector(`#plt-dl-eps-${id}`).addEventListener('click', () =>
+                cp.querySelector(`#plt-dl-eps-${sid}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, plotLabel, 'eps'));
-                cp.querySelector(`#plt-dl-png-${id}`).addEventListener('click', () =>
+                cp.querySelector(`#plt-dl-png-${sid}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, plotLabel, 'png'));
             }, 50);
 
@@ -853,6 +961,7 @@ const rappture = {
 
         histogram(id, data) {
             const label = (data.about && data.about.label) || data.label || id;
+            const sid = id.replace(/[^a-z0-9_-]/gi, '_');
             const item = rappture.createOutputItem(label, 'plot');
             item.classList.add('rp-output-plot-item');
             const body = item.querySelector('.rp-output-body');
@@ -860,7 +969,7 @@ const rappture = {
             const plotDiv = document.createElement('div');
             plotDiv.className = 'rp-output-plot';
             plotDiv.id = 'hist-' + id;
-            body.appendChild(plotDiv);
+            // plotDiv appended to outerWrap below
 
             const xLabel0 = data.xaxis ? data.xaxis.label || '' : '';
             const xUnits0 = data.xaxis ? data.xaxis.units || '' : '';
@@ -895,38 +1004,38 @@ const rappture = {
             cp.innerHTML = `
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Title</div>
-                <label>Plot title<input type="text" id="ht-title-${id}" value="" placeholder="(none)"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
+                <label>Plot title<input type="text" id="ht-title-${sid}" value="" placeholder="(none)"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">X Axis</div>
-                <label>Label<input type="text" id="ht-xl-${id}" value="${xLabel0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
-                <label>Units<input type="text" id="ht-xu-${id}" value="${xUnits0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
+                <label>Label<input type="text" id="ht-xl-${sid}" value="${xLabel0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
+                <label>Units<input type="text" id="ht-xu-${sid}" value="${xUnits0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
                 <label style="flex-direction:row;align-items:center;gap:6px">
-                  <input type="checkbox" id="ht-xgrid-${id}" checked> Grid
+                  <input type="checkbox" id="ht-xgrid-${sid}" checked> Grid
                 </label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Y Axis</div>
-                <label>Label<input type="text" id="ht-yl-${id}" value="${yLabel0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
-                <label>Units<input type="text" id="ht-yu-${id}" value="${yUnits0}"
-                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px"></label>
+                <label>Label<input type="text" id="ht-yl-${sid}" value="${yLabel0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
+                <label>Units<input type="text" id="ht-yu-${sid}" value="${yUnits0}"
+                  style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px"></label>
                 <label style="flex-direction:row;align-items:center;gap:6px">
-                  <input type="checkbox" id="ht-ygrid-${id}" checked> Grid
+                  <input type="checkbox" id="ht-ygrid-${sid}" checked> Grid
                 </label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Display</div>
                 <label style="flex-direction:row;align-items:center;gap:6px">
-                  <input type="checkbox" id="ht-leg-${id}" ${traces.length > 1 ? 'checked' : ''}> Legend
+                  <input type="checkbox" id="ht-leg-${sid}" ${traces.length > 1 ? 'checked' : ''}> Legend
                 </label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Theme</div>
-                <select id="ht-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                <select id="ht-theme-${sid}" style="width:100%;font-size:12px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
                   <option value="light" selected>Light</option>
                   <option value="dark">Dark</option>
                 </select>
@@ -934,12 +1043,29 @@ const rappture = {
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Download</div>
                 <div class="rp-panel-btns">
-                  <button class="rp-3d-btn" id="ht-dl-svg-${id}">SVG</button>
-                  <button class="rp-3d-btn" id="ht-dl-eps-${id}">EPS</button>
-                  <button class="rp-3d-btn" id="ht-dl-png-${id}">PNG</button>
+                  <button class="rp-3d-btn" id="ht-dl-svg-${sid}">SVG</button>
+                  <button class="rp-3d-btn" id="ht-dl-eps-${sid}">EPS</button>
+                  <button class="rp-3d-btn" id="ht-dl-png-${sid}">PNG</button>
                 </div>
               </div>`;
-            body.appendChild(cp);
+            // ── Collapsible sidecar ───────────────────────────────────
+            const htPanelWrap = document.createElement('div');
+            htPanelWrap.className = 'rp-3d-panel-wrap';
+            const htTab = document.createElement('div');
+            htTab.className = 'rp-3d-panel-tab';
+            htTab.title = 'Toggle control panel';
+            htTab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+            htPanelWrap.appendChild(htTab);
+            htPanelWrap.appendChild(cp);
+            const htOuterWrap = document.createElement('div');
+            htOuterWrap.style.cssText = 'display:flex;width:100%;height:100%;min-height:0;align-items:stretch';
+            htOuterWrap.appendChild(plotDiv);
+            htOuterWrap.appendChild(htPanelWrap);
+            body.appendChild(htOuterWrap);
+            htTab.addEventListener('click', () => {
+                htPanelWrap.classList.toggle('collapsed');
+                setTimeout(() => Plotly.relayout(plotDiv, { autosize: true }), 220);
+            });
 
             const htLabel = label.replace(/[^a-z0-9]/gi, '_');
             const axTitle = (lEl, uEl) => {
@@ -947,27 +1073,27 @@ const rappture = {
                 return l + (u ? ` [${u}]` : '');
             };
             const applyLayout = () => {
-                const xl = cp.querySelector(`#ht-xl-${id}`);
-                const xu = cp.querySelector(`#ht-xu-${id}`);
-                const yl = cp.querySelector(`#ht-yl-${id}`);
-                const yu = cp.querySelector(`#ht-yu-${id}`);
+                const xl = cp.querySelector(`#ht-xl-${sid}`);
+                const xu = cp.querySelector(`#ht-xu-${sid}`);
+                const yl = cp.querySelector(`#ht-yl-${sid}`);
+                const yu = cp.querySelector(`#ht-yu-${sid}`);
                 Plotly.relayout(plotDiv, {
-                    'title.text':     cp.querySelector(`#ht-title-${id}`).value,
+                    'title.text':     cp.querySelector(`#ht-title-${sid}`).value,
                     'xaxis.title':    axTitle(xl, xu),
-                    'xaxis.showgrid': cp.querySelector(`#ht-xgrid-${id}`).checked,
+                    'xaxis.showgrid': cp.querySelector(`#ht-xgrid-${sid}`).checked,
                     'yaxis.title':    axTitle(yl, yu),
-                    'yaxis.showgrid': cp.querySelector(`#ht-ygrid-${id}`).checked,
-                    'showlegend':     cp.querySelector(`#ht-leg-${id}`).checked,
+                    'yaxis.showgrid': cp.querySelector(`#ht-ygrid-${sid}`).checked,
+                    'showlegend':     cp.querySelector(`#ht-leg-${sid}`).checked,
                 });
             };
 
-            setTimeout(() => {
-                Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
+            _whenVisible(htOuterWrap, () => {
+                Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
                 cp.querySelectorAll('input[type=text], input[type=checkbox]').forEach(el => {
                     el.addEventListener('input', applyLayout);
                 });
                 const _applyHtTheme = () => {
-                    const dark = cp.querySelector(`#ht-theme-${id}`).value === 'dark';
+                    const dark = cp.querySelector(`#ht-theme-${sid}`).value === 'dark';
                     Plotly.relayout(plotDiv, {
                         paper_bgcolor: dark ? '#1a1a2e' : 'white',
                         plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
@@ -978,12 +1104,12 @@ const rappture = {
                         font: { color: dark ? '#ccd6f6' : '#444' },
                     });
                 };
-                cp.querySelector(`#ht-theme-${id}`).addEventListener('change', _applyHtTheme);
-                cp.querySelector(`#ht-dl-svg-${id}`).addEventListener('click', () =>
+                cp.querySelector(`#ht-theme-${sid}`).addEventListener('change', _applyHtTheme);
+                cp.querySelector(`#ht-dl-svg-${sid}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, htLabel, 'svg'));
-                cp.querySelector(`#ht-dl-eps-${id}`).addEventListener('click', () =>
+                cp.querySelector(`#ht-dl-eps-${sid}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, htLabel, 'eps'));
-                cp.querySelector(`#ht-dl-png-${id}`).addEventListener('click', () =>
+                cp.querySelector(`#ht-dl-png-${sid}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, htLabel, 'png'));
             }, 50);
             return item;
@@ -1082,7 +1208,7 @@ const rappture = {
                 const zoomRange = [zLo - zPad, zHi + zPad];
 
                 const plotDiv = document.createElement('div');
-                plotDiv.style.cssText = 'width:100%;height:420px';
+                // style via .rp-output-plot CSS class
                 body.style.cssText = 'padding:0;display:flex;flex-direction:column';
                 body.appendChild(plotDiv);
 
@@ -1275,7 +1401,9 @@ const rappture = {
 
         sequence(id, data) {
             const item = rappture.createOutputItem((data.about && data.about.label) || data.label || id, 'sequence');
+            item.classList.add('rp-output-plot-item');
             const body = item.querySelector('.rp-output-body');
+            body.style.cssText = 'display:flex;flex-direction:column;padding:8px;gap:0;';
             if (!data.elements || data.elements.length === 0) {
                 body.textContent = 'No sequence data';
                 return item;
@@ -1344,7 +1472,7 @@ const rappture = {
             controls.appendChild(sliderWrap);
 
             const plotDiv = document.createElement('div');
-            plotDiv.className = 'rp-output-plot';
+            plotDiv.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;';
 
             body.appendChild(controls);
             body.appendChild(plotDiv);
@@ -1371,13 +1499,11 @@ const rappture = {
                     if (renderer) {
                         const rendered = renderer.call(rappture.outputRenderers, oid, odata);
                         if (rendered) {
-                            // Strip the outer output-item wrapper — just use the body content
-                            const inner = rendered.querySelector('.rp-output-body');
-                            if (inner) {
-                                plotDiv.appendChild(inner);
-                            } else {
-                                plotDiv.appendChild(rendered);
-                            }
+                            // Hide the output header (label) inside the sequence frame
+                            const hdr = rendered.querySelector('.rp-output-header');
+                            if (hdr) hdr.style.display = 'none';
+                            rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
+                            plotDiv.appendChild(rendered);
                         }
                         break; // render first output per frame
                     }
@@ -1449,6 +1575,7 @@ const rappture = {
                 const plotDiv = document.createElement('div');
                 plotDiv.className = 'rp-output-plot';
                 plotDiv.id = 'fld2d-' + id;
+                const sid = id.replace(/[^a-z0-9_-]/gi, '_');
 
                 const units = firstMesh.units || '';
                 const xLabel = `X${units ? ' [' + units + ']' : ''}`;
@@ -1470,7 +1597,7 @@ const rappture = {
                     autosize: true,
                 };
 
-                const inputStyle = 'width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px';
+                const inputStyle = 'width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px';
                 const xMin0 = xs[0], xMax0 = xs[xs.length - 1];
                 const yMin0 = ys[0], yMax0 = ys[ys.length - 1];
                 const xLabel0 = firstMesh.units ? `X [${firstMesh.units}]` : 'X';
@@ -1482,24 +1609,24 @@ const rappture = {
                 cp.innerHTML = `
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Title</div>
-                    <label>Plot title<input type="text" id="fld2-ttl-${id}" value="" placeholder="(none)" style="${inputStyle}"></label>
-                    <label>Colorbar title<input type="text" id="fld2-cbtl-${id}" value="" placeholder="(none)" style="${inputStyle}"></label>
+                    <label>Plot title<input type="text" id="fld2-ttl-${sid}" value="" placeholder="(none)" style="${inputStyle}"></label>
+                    <label>Colorbar title<input type="text" id="fld2-cbtl-${sid}" value="" placeholder="(none)" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">X Axis</div>
-                    <label>Label<input type="text" id="fld2-xl-${id}" value="${xLabel0}" style="${inputStyle}"></label>
-                    <label>Min<input type="number" id="fld2-xlo-${id}" value="${xMin0}" step="any" style="${inputStyle}"></label>
-                    <label>Max<input type="number" id="fld2-xhi-${id}" value="${xMax0}" step="any" style="${inputStyle}"></label>
+                    <label>Label<input type="text" id="fld2-xl-${sid}" value="${xLabel0}" style="${inputStyle}"></label>
+                    <label>Min<input type="number" id="fld2-xlo-${sid}" value="${xMin0}" step="any" style="${inputStyle}"></label>
+                    <label>Max<input type="number" id="fld2-xhi-${sid}" value="${xMax0}" step="any" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Y Axis</div>
-                    <label>Label<input type="text" id="fld2-yl-${id}" value="${yLabel0}" style="${inputStyle}"></label>
-                    <label>Min<input type="number" id="fld2-ylo-${id}" value="${yMin0}" step="any" style="${inputStyle}"></label>
-                    <label>Max<input type="number" id="fld2-yhi-${id}" value="${yMax0}" step="any" style="${inputStyle}"></label>
+                    <label>Label<input type="text" id="fld2-yl-${sid}" value="${yLabel0}" style="${inputStyle}"></label>
+                    <label>Min<input type="number" id="fld2-ylo-${sid}" value="${yMin0}" step="any" style="${inputStyle}"></label>
+                    <label>Max<input type="number" id="fld2-yhi-${sid}" value="${yMax0}" step="any" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Color scale</div>
-                    <select id="fld2-cs-${id}" style="${inputStyle}">
+                    <select id="fld2-cs-${sid}" style="${inputStyle}">
                       <option value="Viridis" selected>Viridis</option>
                       <option value="Plasma">Plasma</option>
                       <option value="RdBu">RdBu</option>
@@ -1510,22 +1637,22 @@ const rappture = {
                       <option value="Bluered">Bluered</option>
                     </select>
                     <label style="flex-direction:row;align-items:center;gap:6px;margin-top:4px">
-                      <input type="checkbox" id="fld2-rev-${id}"> Reverse
+                      <input type="checkbox" id="fld2-rev-${sid}"> Reverse
                     </label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Display</div>
                     <label style="flex-direction:row;align-items:center;gap:6px">
-                      <input type="checkbox" id="fld2-sm-${id}" checked> Interpolate
+                      <input type="checkbox" id="fld2-sm-${sid}" checked> Interpolate
                     </label>
                     <label style="flex-direction:row;align-items:center;gap:6px">
-                      <input type="checkbox" id="fld2-ct-${id}" checked> Contours
+                      <input type="checkbox" id="fld2-ct-${sid}" checked> Contours
                     </label>
-                    <label>Contour #<input type="range" id="fld2-nc-${id}" min="3" max="30" value="10" step="1"></label>
+                    <label>Contour #<input type="range" id="fld2-nc-${sid}" min="3" max="30" value="10" step="1"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Theme</div>
-                    <select id="fld2-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                    <select id="fld2-theme-${sid}" style="width:100%;font-size:12px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
                       <option value="light" selected>Light</option>
                       <option value="dark">Dark</option>
                     </select>
@@ -1533,26 +1660,38 @@ const rappture = {
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Download</div>
                     <div class="rp-panel-btns">
-                      <button class="rp-3d-btn" id="fld2-svg-${id}">SVG</button>
-                      <button class="rp-3d-btn" id="fld2-png-${id}">PNG</button>
+                      <button class="rp-3d-btn" id="fld2-svg-${sid}">SVG</button>
+                      <button class="rp-3d-btn" id="fld2-png-${sid}">PNG</button>
                     </div>
                   </div>`;
 
+                const fld2PanelWrap = document.createElement('div');
+                fld2PanelWrap.className = 'rp-3d-panel-wrap';
+                const fld2Tab = document.createElement('div');
+                fld2Tab.className = 'rp-3d-panel-tab';
+                fld2Tab.title = 'Toggle control panel';
+                fld2Tab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+                fld2PanelWrap.appendChild(fld2Tab);
+                fld2PanelWrap.appendChild(cp);
                 const outerWrap = document.createElement('div');
-                outerWrap.style.cssText = 'display:flex;width:100%;height:100%;min-height:0';
+                outerWrap.style.cssText = 'display:flex;flex:1;min-width:0;min-height:0;align-items:stretch;';
                 outerWrap.appendChild(plotDiv);
-                outerWrap.appendChild(cp);
+                outerWrap.appendChild(fld2PanelWrap);
                 body.appendChild(outerWrap);
+                fld2Tab.addEventListener('click', () => {
+                    fld2PanelWrap.classList.toggle('collapsed');
+                    setTimeout(() => Plotly.relayout(plotDiv, { autosize: true }), 220);
+                });
 
                 const _fld2Key = 'rp2w:fld2:' + window.location.pathname + ':' + id;
                 const _fld2Save = () => {
                     const s = {};
                     ['fld2-ttl','fld2-cbtl','fld2-xl','fld2-yl','fld2-xlo','fld2-xhi','fld2-ylo','fld2-yhi','fld2-cs','fld2-nc'].forEach(k => {
-                        const el = cp.querySelector(`#${k}-${id}`);
+                        const el = cp.querySelector(`#${k}-${sid}`);
                         if (el) s[k] = el.type === 'checkbox' ? el.checked : el.value;
                     });
                     ['fld2-rev','fld2-sm','fld2-ct'].forEach(k => {
-                        const el = cp.querySelector(`#${k}-${id}`);
+                        const el = cp.querySelector(`#${k}-${sid}`);
                         if (el) s[k] = el.checked;
                     });
                     try { localStorage.setItem(_fld2Key, JSON.stringify(s)); } catch(e) {}
@@ -1562,40 +1701,40 @@ const rappture = {
                         const s = JSON.parse(localStorage.getItem(_fld2Key) || 'null');
                         if (!s) return;
                         ['fld2-ttl','fld2-cbtl','fld2-xl','fld2-yl','fld2-xlo','fld2-xhi','fld2-ylo','fld2-yhi','fld2-cs','fld2-nc'].forEach(k => {
-                            const el = cp.querySelector(`#${k}-${id}`);
+                            const el = cp.querySelector(`#${k}-${sid}`);
                             if (el && s[k] !== undefined) el.value = s[k];
                         });
                         ['fld2-rev','fld2-sm','fld2-ct'].forEach(k => {
-                            const el = cp.querySelector(`#${k}-${id}`);
+                            const el = cp.querySelector(`#${k}-${sid}`);
                             if (el && s[k] !== undefined) el.checked = s[k];
                         });
                     } catch(e) {}
                 };
                 _fld2Load();
 
-                setTimeout(() => {
-                    Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
+                _whenVisible(outerWrap, () => {
+                    Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
 
                     const applyLayout = () => {
-                        const cs = cp.querySelector(`#fld2-cs-${id}`).value;
-                        const rev = cp.querySelector(`#fld2-rev-${id}`).checked;
+                        const cs = cp.querySelector(`#fld2-cs-${sid}`).value;
+                        const rev = cp.querySelector(`#fld2-rev-${sid}`).checked;
                         Plotly.relayout(plotDiv, {
-                            'title.text': cp.querySelector(`#fld2-ttl-${id}`).value,
-                            'xaxis.title': cp.querySelector(`#fld2-xl-${id}`).value,
+                            'title.text': cp.querySelector(`#fld2-ttl-${sid}`).value,
+                            'xaxis.title': cp.querySelector(`#fld2-xl-${sid}`).value,
                             'xaxis.range': [
-                                parseFloat(cp.querySelector(`#fld2-xlo-${id}`).value),
-                                parseFloat(cp.querySelector(`#fld2-xhi-${id}`).value),
+                                parseFloat(cp.querySelector(`#fld2-xlo-${sid}`).value),
+                                parseFloat(cp.querySelector(`#fld2-xhi-${sid}`).value),
                             ],
-                            'yaxis.title': cp.querySelector(`#fld2-yl-${id}`).value,
+                            'yaxis.title': cp.querySelector(`#fld2-yl-${sid}`).value,
                             'yaxis.range': [
-                                parseFloat(cp.querySelector(`#fld2-ylo-${id}`).value),
-                                parseFloat(cp.querySelector(`#fld2-yhi-${id}`).value),
+                                parseFloat(cp.querySelector(`#fld2-ylo-${sid}`).value),
+                                parseFloat(cp.querySelector(`#fld2-yhi-${sid}`).value),
                             ],
                         });
-                        const showCt = cp.querySelector(`#fld2-ct-${id}`).checked;
-                        const nc = parseInt(cp.querySelector(`#fld2-nc-${id}`).value);
-                        const smooth = cp.querySelector(`#fld2-sm-${id}`).checked;
-                        const cbTitle = cp.querySelector(`#fld2-cbtl-${id}`).value;
+                        const showCt = cp.querySelector(`#fld2-ct-${sid}`).checked;
+                        const nc = parseInt(cp.querySelector(`#fld2-nc-${sid}`).value);
+                        const smooth = cp.querySelector(`#fld2-sm-${sid}`).checked;
+                        const cbTitle = cp.querySelector(`#fld2-cbtl-${sid}`).value;
                         Plotly.restyle(plotDiv, {
                             colorscale: cs, reversescale: rev,
                             zsmooth: smooth ? 'best' : false,
@@ -1616,7 +1755,7 @@ const rappture = {
                     applyLayout();
 
                     const _applyFld2Theme = () => {
-                        const dark = cp.querySelector(`#fld2-theme-${id}`).value === 'dark';
+                        const dark = cp.querySelector(`#fld2-theme-${sid}`).value === 'dark';
                         Plotly.relayout(plotDiv, {
                             paper_bgcolor: dark ? '#1a1a2e' : 'white',
                             plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
@@ -1627,14 +1766,14 @@ const rappture = {
                             font: { color: dark ? '#ccd6f6' : '#444' },
                         });
                     };
-                    cp.querySelector(`#fld2-theme-${id}`).addEventListener('change', _applyFld2Theme);
+                    cp.querySelector(`#fld2-theme-${sid}`).addEventListener('change', _applyFld2Theme);
 
                     const fldLabel = ((data.about && data.about.label) || data.label || id).replace(/[^a-z0-9]/gi, '_');
-                    cp.querySelector(`#fld2-svg-${id}`).addEventListener('click', () =>
+                    cp.querySelector(`#fld2-svg-${sid}`).addEventListener('click', () =>
                         rappture._downloadPlot(plotDiv, fldLabel, 'svg'));
-                    cp.querySelector(`#fld2-png-${id}`).addEventListener('click', () =>
+                    cp.querySelector(`#fld2-png-${sid}`).addEventListener('click', () =>
                         rappture._downloadPlot(plotDiv, fldLabel, 'png'));
-                }, 50);
+                });
 
                 return item;
             }
@@ -1663,7 +1802,8 @@ const rappture = {
                 const plotDiv = document.createElement('div');
                 plotDiv.className = 'rp-output-plot';
                 plotDiv.id = 'fld3d-' + id;
-                plotDiv.style.cssText = 'flex:1;min-height:400px;min-width:0';
+                const sid = id.replace(/[^a-z0-9_-]/gi, '_');
+                // style via .rp-output-plot CSS class
 
                 const units = firstMesh.units || '';
                 const mkLbl = (ax) => ax + (units ? ` [${units}]` : '');
@@ -1694,31 +1834,31 @@ const rappture = {
                     autosize: true,
                 };
 
-                const inputStyle = 'width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px';
+                const inputStyle = 'width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px';
                 const cp = document.createElement('div');
                 cp.className = 'rp-3d-panel';
                 cp.style.maxHeight = 'none';
                 cp.innerHTML = `
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Title</div>
-                    <label>Plot title<input type="text" id="fld3-ttl-${id}" value="" placeholder="(none)" style="${inputStyle}"></label>
+                    <label>Plot title<input type="text" id="fld3-ttl-${sid}" value="" placeholder="(none)" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Axes</div>
-                    <label>X label<input type="text" id="fld3-xl-${id}" value="${mkLbl('X')}" style="${inputStyle}"></label>
-                    <label>Y label<input type="text" id="fld3-yl-${id}" value="${mkLbl('Y')}" style="${inputStyle}"></label>
-                    <label>Z label<input type="text" id="fld3-zl-${id}" value="${mkLbl('Z')}" style="${inputStyle}"></label>
+                    <label>X label<input type="text" id="fld3-xl-${sid}" value="${mkLbl('X')}" style="${inputStyle}"></label>
+                    <label>Y label<input type="text" id="fld3-yl-${sid}" value="${mkLbl('Y')}" style="${inputStyle}"></label>
+                    <label>Z label<input type="text" id="fld3-zl-${sid}" value="${mkLbl('Z')}" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Volume</div>
-                    <label>Opacity<input type="range" id="fld3-op-${id}" min="0.01" max="1" step="0.01" value="0.2"></label>
-                    <label>Surfaces<input type="range" id="fld3-ns-${id}" min="2" max="20" step="1" value="8"></label>
-                    <label>Min value<input type="number" id="fld3-lo-${id}" value="${_vmin3d.toFixed(4)}" step="any" style="${inputStyle}"></label>
-                    <label>Max value<input type="number" id="fld3-hi-${id}" value="${_vmax3d.toFixed(4)}" step="any" style="${inputStyle}"></label>
+                    <label>Opacity<input type="range" id="fld3-op-${sid}" min="0.01" max="1" step="0.01" value="0.2"></label>
+                    <label>Surfaces<input type="range" id="fld3-ns-${sid}" min="2" max="20" step="1" value="8"></label>
+                    <label>Min value<input type="number" id="fld3-lo-${sid}" value="${_vmin3d.toFixed(4)}" step="any" style="${inputStyle}"></label>
+                    <label>Max value<input type="number" id="fld3-hi-${sid}" value="${_vmax3d.toFixed(4)}" step="any" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Color scale</div>
-                    <select id="fld3-cs-${id}" style="${inputStyle}">
+                    <select id="fld3-cs-${sid}" style="${inputStyle}">
                       <option value="Viridis" selected>Viridis</option>
                       <option value="Plasma">Plasma</option>
                       <option value="RdBu">RdBu</option>
@@ -1729,32 +1869,44 @@ const rappture = {
                       <option value="Bluered">Bluered</option>
                     </select>
                     <label style="flex-direction:row;align-items:center;gap:6px;margin-top:4px">
-                      <input type="checkbox" id="fld3-rev-${id}"> Reverse
+                      <input type="checkbox" id="fld3-rev-${sid}"> Reverse
                     </label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Download</div>
                     <div class="rp-panel-btns">
-                      <button class="rp-3d-btn" id="fld3-png-${id}">PNG</button>
+                      <button class="rp-3d-btn" id="fld3-png-${sid}">PNG</button>
                     </div>
                   </div>`;
 
+                const fld3PanelWrap = document.createElement('div');
+                fld3PanelWrap.className = 'rp-3d-panel-wrap';
+                const fld3Tab = document.createElement('div');
+                fld3Tab.className = 'rp-3d-panel-tab';
+                fld3Tab.title = 'Toggle control panel';
+                fld3Tab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+                fld3PanelWrap.appendChild(fld3Tab);
+                fld3PanelWrap.appendChild(cp);
                 const outerWrap = document.createElement('div');
-                outerWrap.style.cssText = 'display:flex;width:100%;height:100%;min-height:0';
+                outerWrap.style.cssText = 'display:flex;flex:1;min-width:0;min-height:0;align-items:stretch;';
                 outerWrap.appendChild(plotDiv);
-                outerWrap.appendChild(cp);
+                outerWrap.appendChild(fld3PanelWrap);
                 body.appendChild(outerWrap);
+                fld3Tab.addEventListener('click', () => {
+                    fld3PanelWrap.classList.toggle('collapsed');
+                    setTimeout(() => Plotly.relayout(plotDiv, { autosize: true }), 220);
+                });
 
                 const _fld3Key = 'rp2w:fld3:' + window.location.pathname + ':' + id;
                 const _fld3Save = () => {
                     const s = {};
                     ['fld3-ttl','fld3-xl','fld3-yl','fld3-zl','fld3-cs'].forEach(k => {
-                        const el = cp.querySelector(`#${k}-${id}`); if (el) s[k] = el.value;
+                        const el = cp.querySelector(`#${k}-${sid}`); if (el) s[k] = el.value;
                     });
                     ['fld3-op','fld3-ns','fld3-lo','fld3-hi'].forEach(k => {
-                        const el = cp.querySelector(`#${k}-${id}`); if (el) s[k] = el.value;
+                        const el = cp.querySelector(`#${k}-${sid}`); if (el) s[k] = el.value;
                     });
-                    const rev = cp.querySelector(`#fld3-rev-${id}`); if (rev) s['fld3-rev'] = rev.checked;
+                    const rev = cp.querySelector(`#fld3-rev-${sid}`); if (rev) s['fld3-rev'] = rev.checked;
                     try { localStorage.setItem(_fld3Key, JSON.stringify(s)); } catch(e) {}
                 };
                 const _fld3Load = () => {
@@ -1762,24 +1914,24 @@ const rappture = {
                         const s = JSON.parse(localStorage.getItem(_fld3Key) || 'null');
                         if (!s) return;
                         ['fld3-ttl','fld3-xl','fld3-yl','fld3-zl','fld3-cs','fld3-op','fld3-ns','fld3-lo','fld3-hi'].forEach(k => {
-                            const el = cp.querySelector(`#${k}-${id}`); if (el && s[k] !== undefined) el.value = s[k];
+                            const el = cp.querySelector(`#${k}-${sid}`); if (el && s[k] !== undefined) el.value = s[k];
                         });
-                        const rev = cp.querySelector(`#fld3-rev-${id}`);
+                        const rev = cp.querySelector(`#fld3-rev-${sid}`);
                         if (rev && s['fld3-rev'] !== undefined) rev.checked = s['fld3-rev'];
                     } catch(e) {}
                 };
                 _fld3Load();
 
-                setTimeout(() => {
-                    Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
+                _whenVisible(outerWrap, () => {
+                    Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
 
                     const applyOpts = () => {
-                        const cs = cp.querySelector(`#fld3-cs-${id}`).value;
-                        const rev = cp.querySelector(`#fld3-rev-${id}`).checked;
-                        const op = parseFloat(cp.querySelector(`#fld3-op-${id}`).value);
-                        const ns = parseInt(cp.querySelector(`#fld3-ns-${id}`).value);
-                        const lo = parseFloat(cp.querySelector(`#fld3-lo-${id}`).value);
-                        const hi = parseFloat(cp.querySelector(`#fld3-hi-${id}`).value);
+                        const cs = cp.querySelector(`#fld3-cs-${sid}`).value;
+                        const rev = cp.querySelector(`#fld3-rev-${sid}`).checked;
+                        const op = parseFloat(cp.querySelector(`#fld3-op-${sid}`).value);
+                        const ns = parseInt(cp.querySelector(`#fld3-ns-${sid}`).value);
+                        const lo = parseFloat(cp.querySelector(`#fld3-lo-${sid}`).value);
+                        const hi = parseFloat(cp.querySelector(`#fld3-hi-${sid}`).value);
                         _fld3Save();
                         // surface.count is a nested object — use react to rebuild the trace
                         Plotly.react(plotDiv, [{
@@ -1794,12 +1946,12 @@ const rappture = {
                         }], {
                             ...plotDiv._fullLayout ? {
                                 scene: {
-                                    xaxis: { title: cp.querySelector(`#fld3-xl-${id}`).value },
-                                    yaxis: { title: cp.querySelector(`#fld3-yl-${id}`).value },
-                                    zaxis: { title: cp.querySelector(`#fld3-zl-${id}`).value },
+                                    xaxis: { title: cp.querySelector(`#fld3-xl-${sid}`).value },
+                                    yaxis: { title: cp.querySelector(`#fld3-yl-${sid}`).value },
+                                    zaxis: { title: cp.querySelector(`#fld3-zl-${sid}`).value },
                                     camera: plotDiv._fullLayout.scene.camera,
                                 },
-                                'title.text': cp.querySelector(`#fld3-ttl-${id}`).value,
+                                'title.text': cp.querySelector(`#fld3-ttl-${sid}`).value,
                             } : {},
                             margin: { t: 50, r: 20, b: 20, l: 20 },
                             paper_bgcolor: 'white', autosize: true,
@@ -1816,9 +1968,9 @@ const rappture = {
                     applyOpts();
 
                     const fldLabel = ((data.about && data.about.label) || data.label || id).replace(/[^a-z0-9]/gi, '_');
-                    cp.querySelector(`#fld3-png-${id}`).addEventListener('click', () =>
+                    cp.querySelector(`#fld3-png-${sid}`).addEventListener('click', () =>
                         Plotly.downloadImage(plotDiv, { format: 'png', filename: fldLabel }));
-                }, 50);
+                });
 
                 return item;
             }
@@ -1864,36 +2016,37 @@ const rappture = {
                 };
 
                 // Title: prefer label from about, fall back to scalar name, never use raw id
+                const sid = id.replace(/[^a-z0-9_-]/gi, '_');
                 const fldLabelVtk = (data.label && data.label !== id ? data.label : '')
                     || main.scalar || id;
                 const colorscales = ['Viridis','Plasma','Inferno','Magma','Cividis','RdBu','Spectral','Jet','Hot','Blues'];
-                const inputStyle = 'width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0';
+                const inputStyle = 'width:100%;font-size:12px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0';
 
                 // (toggle handled by sidecar tab below)
 
                 const cp = document.createElement('div');
                 cp.className = 'rp-3d-panel';
-                cp.style.maxHeight = '520px';
+                cp.style.maxHeight = 'none';
                 cp.innerHTML = `
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Title</div>
-                    <label>Plot<input type="text" id="fld3v-ttl-${id}" value="${fldLabelVtk}" placeholder="(none)" style="${inputStyle}"></label>
-                    <label>Colorbar<input type="text" id="fld3v-cbtl-${id}" value="${main.scalar || ''}" placeholder="(none)" style="${inputStyle}"></label>
+                    <label>Plot<input type="text" id="fld3v-ttl-${sid}" value="${fldLabelVtk}" placeholder="(none)" style="${inputStyle}"></label>
+                    <label>Colorbar<input type="text" id="fld3v-cbtl-${sid}" value="${main.scalar || ''}" placeholder="(none)" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Render Mode</div>
                     <div class="rp-panel-btns">
-                      <button class="rp-3d-btn active" id="fld3v-iso-${id}">Isosurfaces</button>
-                      <button class="rp-3d-btn" id="fld3v-vol-${id}">Volume</button>
+                      <button class="rp-3d-btn active" id="fld3v-iso-${sid}">Isosurfaces</button>
+                      <button class="rp-3d-btn" id="fld3v-vol-${sid}">Volume</button>
                     </div>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Axes</div>
-                    <label>X Label<input type="text" id="fld3v-xl-${id}" value="X" style="${inputStyle}"></label>
-                    <label>Y Label<input type="text" id="fld3v-yl-${id}" value="Y" style="${inputStyle}"></label>
-                    <label>Z Label<input type="text" id="fld3v-zl-${id}" value="Z" style="${inputStyle}"></label>
+                    <label>X Label<input type="text" id="fld3v-xl-${sid}" value="X" style="${inputStyle}"></label>
+                    <label>Y Label<input type="text" id="fld3v-yl-${sid}" value="Y" style="${inputStyle}"></label>
+                    <label>Z Label<input type="text" id="fld3v-zl-${sid}" value="Z" style="${inputStyle}"></label>
                     <label style="margin-top:4px">Aspect
-                      <select id="fld3v-asp-${id}" style="${inputStyle}">
+                      <select id="fld3v-asp-${sid}" style="${inputStyle}">
                         <option value="data" selected>Data (proportional)</option>
                         <option value="cube">Cube</option>
                         <option value="auto">Auto</option>
@@ -1902,26 +2055,26 @@ const rappture = {
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Field: ${main.scalar || 'wf'}</div>
-                    <label>Surfaces<input type="range" id="fld3v-ns-${id}" min="1" max="20" step="1" value="10"><span id="fld3v-ns-v-${id}">10</span></label>
-                    <label>Opacity<input type="range" id="fld3v-op-${id}" min="0.05" max="1" step="0.05" value="0.6"><span id="fld3v-op-v-${id}">0.6</span></label>
-                    <label>Value Min<input type="number" id="fld3v-lo-${id}" value="${vmin.toFixed(4)}" step="any" style="${inputStyle}"></label>
-                    <label>Value Max<input type="number" id="fld3v-hi-${id}" value="${vmax.toFixed(4)}" step="any" style="${inputStyle}"></label>
+                    <label>Surfaces<input type="range" id="fld3v-ns-${sid}" min="1" max="20" step="1" value="10"><span id="fld3v-ns-v-${sid}">10</span></label>
+                    <label>Opacity<input type="range" id="fld3v-op-${sid}" min="0.05" max="1" step="0.05" value="0.6"><span id="fld3v-op-v-${sid}">0.6</span></label>
+                    <label>Value Min<input type="number" id="fld3v-lo-${sid}" value="${vmin.toFixed(4)}" step="any" style="${inputStyle}"></label>
+                    <label>Value Max<input type="number" id="fld3v-hi-${sid}" value="${vmax.toFixed(4)}" step="any" style="${inputStyle}"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Color Scale</div>
-                    <select id="fld3v-cs-${id}" style="${inputStyle}">${colorscales.map(c=>`<option${c==='Viridis'?' selected':''}>${c}</option>`).join('')}</select>
-                    <label style="margin-top:4px;flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-rev-${id}"> Reverse</label>
+                    <select id="fld3v-cs-${sid}" style="${inputStyle}">${colorscales.map(c=>`<option${c==='Viridis'?' selected':''}>${c}</option>`).join('')}</select>
+                    <label style="margin-top:4px;flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-rev-${sid}"> Reverse</label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Display</div>
-                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-leg-${id}" checked> Legend</label>
-                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-xgrid-${id}" checked> X Grid</label>
-                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-ygrid-${id}" checked> Y Grid</label>
-                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-zgrid-${id}" checked> Z Grid</label>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-leg-${sid}" checked> Legend</label>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-xgrid-${sid}" checked> X Grid</label>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-ygrid-${sid}" checked> Y Grid</label>
+                    <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fld3v-zgrid-${sid}" checked> Z Grid</label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Theme</div>
-                    <select id="fld3v-theme-${id}" style="${inputStyle}">
+                    <select id="fld3v-theme-${sid}" style="${inputStyle}">
                       <option value="light" selected>Light</option>
                       <option value="dark">Dark</option>
                     </select>
@@ -1929,14 +2082,14 @@ const rappture = {
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Download</div>
                     <div class="rp-panel-btns">
-                      <button class="rp-3d-btn" id="fld3v-svg-${id}">SVG</button>
-                      <button class="rp-3d-btn" id="fld3v-png-${id}">PNG</button>
+                      <button class="rp-3d-btn" id="fld3v-svg-${sid}">SVG</button>
+                      <button class="rp-3d-btn" id="fld3v-png-${sid}">PNG</button>
                     </div>
                   </div>`;
 
                 const plotDiv = document.createElement('div');
                 plotDiv.className = 'rp-output-plot';
-                plotDiv.style.cssText = 'flex:1;min-height:400px;min-width:0';
+                // style via .rp-output-plot CSS class
 
                 // ── Collapsible sidecar ───────────────────────────────────
                 const panelWrap = document.createElement('div');
@@ -1951,7 +2104,7 @@ const rappture = {
                 panelWrap.appendChild(cp);
 
                 const outerWrap = document.createElement('div');
-                outerWrap.style.cssText = 'display:flex;width:100%;min-height:400px;align-items:stretch';
+                outerWrap.style.cssText = 'display:flex;flex:1;min-width:0;min-height:0;align-items:stretch;';
                 outerWrap.appendChild(plotDiv);
                 outerWrap.appendChild(panelWrap);
                 body.appendChild(outerWrap);
@@ -1963,18 +2116,18 @@ const rappture = {
 
                 let _vtkMode = 'iso'; // 'iso' | 'vol'
 
-                setTimeout(() => {
+                _whenVisible(outerWrap, () => {
                     const _getLayout = () => {
-                        const dark = cp.querySelector(`#fld3v-theme-${id}`).value === 'dark';
-                        const asp  = cp.querySelector(`#fld3v-asp-${id}`).value;
-                        const showleg = cp.querySelector(`#fld3v-leg-${id}`).checked;
-                        const xgrid = cp.querySelector(`#fld3v-xgrid-${id}`).checked;
-                        const ygrid = cp.querySelector(`#fld3v-ygrid-${id}`).checked;
-                        const zgrid = cp.querySelector(`#fld3v-zgrid-${id}`).checked;
-                        const ttl   = cp.querySelector(`#fld3v-ttl-${id}`).value;
-                        const xl    = cp.querySelector(`#fld3v-xl-${id}`).value;
-                        const yl    = cp.querySelector(`#fld3v-yl-${id}`).value;
-                        const zl    = cp.querySelector(`#fld3v-zl-${id}`).value;
+                        const dark = cp.querySelector(`#fld3v-theme-${sid}`).value === 'dark';
+                        const asp  = cp.querySelector(`#fld3v-asp-${sid}`).value;
+                        const showleg = cp.querySelector(`#fld3v-leg-${sid}`).checked;
+                        const xgrid = cp.querySelector(`#fld3v-xgrid-${sid}`).checked;
+                        const ygrid = cp.querySelector(`#fld3v-ygrid-${sid}`).checked;
+                        const zgrid = cp.querySelector(`#fld3v-zgrid-${sid}`).checked;
+                        const ttl   = cp.querySelector(`#fld3v-ttl-${sid}`).value;
+                        const xl    = cp.querySelector(`#fld3v-xl-${sid}`).value;
+                        const yl    = cp.querySelector(`#fld3v-yl-${sid}`).value;
+                        const zl    = cp.querySelector(`#fld3v-zl-${sid}`).value;
                         const axColor = dark ? '#ccd6f6' : '#444';
                         const gridColor = dark ? '#2a2a4e' : '#e0e0e0';
                         const cam = plotDiv._fullLayout && plotDiv._fullLayout.scene
@@ -2002,7 +2155,7 @@ const rappture = {
                         const caps = _vtkMode === 'vol'
                             ? { x: { show: true }, y: { show: true }, z: { show: true } }
                             : { x: { show: false }, y: { show: false }, z: { show: false } };
-                        const cbtl = cp.querySelector(`#fld3v-cbtl-${id}`).value;
+                        const cbtl = cp.querySelector(`#fld3v-cbtl-${sid}`).value;
                         const traces = [{
                             type: 'volume',
                             name: main.scalar || 'wf',
@@ -2032,24 +2185,24 @@ const rappture = {
                     };
 
                     const applyVtk = () => {
-                        const cs  = cp.querySelector(`#fld3v-cs-${id}`).value;
-                        const rev = cp.querySelector(`#fld3v-rev-${id}`).checked;
-                        const op  = parseFloat(cp.querySelector(`#fld3v-op-${id}`).value);
-                        const ns  = parseInt(cp.querySelector(`#fld3v-ns-${id}`).value);
-                        const lo  = parseFloat(cp.querySelector(`#fld3v-lo-${id}`).value);
-                        const hi  = parseFloat(cp.querySelector(`#fld3v-hi-${id}`).value);
-                        cp.querySelector(`#fld3v-ns-v-${id}`).textContent = ns;
-                        cp.querySelector(`#fld3v-op-v-${id}`).textContent = op.toFixed(2);
+                        const cs  = cp.querySelector(`#fld3v-cs-${sid}`).value;
+                        const rev = cp.querySelector(`#fld3v-rev-${sid}`).checked;
+                        const op  = parseFloat(cp.querySelector(`#fld3v-op-${sid}`).value);
+                        const ns  = parseInt(cp.querySelector(`#fld3v-ns-${sid}`).value);
+                        const lo  = parseFloat(cp.querySelector(`#fld3v-lo-${sid}`).value);
+                        const hi  = parseFloat(cp.querySelector(`#fld3v-hi-${sid}`).value);
+                        cp.querySelector(`#fld3v-ns-v-${sid}`).textContent = ns;
+                        cp.querySelector(`#fld3v-op-v-${sid}`).textContent = op.toFixed(2);
                         Plotly.react(plotDiv, _mkTracesVtk(cs, rev, op, ns, lo, hi), _getLayout());
                     };
 
                     Plotly.newPlot(plotDiv,
                         _mkTracesVtk('Viridis', false, 0.6, 10, vmin, vmax),
-                        _getLayout(), { responsive: true });
+                        _getLayout(), { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
 
                     // Render mode toggle
-                    const isoBtn = cp.querySelector(`#fld3v-iso-${id}`);
-                    const volBtn = cp.querySelector(`#fld3v-vol-${id}`);
+                    const isoBtn = cp.querySelector(`#fld3v-iso-${sid}`);
+                    const volBtn = cp.querySelector(`#fld3v-vol-${sid}`);
                     isoBtn.addEventListener('click', () => {
                         _vtkMode = 'iso';
                         isoBtn.classList.add('active'); volBtn.classList.remove('active');
@@ -2069,11 +2222,11 @@ const rappture = {
                         el.addEventListener('change', applyVtk));
 
                     const fname = fldLabelVtk.replace(/[^a-z0-9]/gi, '_');
-                    cp.querySelector(`#fld3v-svg-${id}`).addEventListener('click', () =>
+                    cp.querySelector(`#fld3v-svg-${sid}`).addEventListener('click', () =>
                         Plotly.downloadImage(plotDiv, { format: 'svg', filename: fname }));
-                    cp.querySelector(`#fld3v-png-${id}`).addEventListener('click', () =>
+                    cp.querySelector(`#fld3v-png-${sid}`).addEventListener('click', () =>
                         Plotly.downloadImage(plotDiv, { format: 'png', filename: fname }));
-                }, 50);
+                });
 
                 return item;
             }
@@ -2111,53 +2264,66 @@ const rappture = {
                 cp.innerHTML = `
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Title</div>
-                    <label>Plot<input type="text" id="fld3u-ttl-${id}" value="${fldLabel3u}" style="width:100%;margin-top:2px"></label>
-                    <label>X Axis<input type="text" id="fld3u-xl-${id}" value="${mkLbl3u('X')}" style="width:100%;margin-top:2px"></label>
-                    <label>Y Axis<input type="text" id="fld3u-yl-${id}" value="${mkLbl3u('Y')}" style="width:100%;margin-top:2px"></label>
-                    <label>Z Axis<input type="text" id="fld3u-zl-${id}" value="${mkLbl3u('Z')}" style="width:100%;margin-top:2px"></label>
+                    <label>Plot<input type="text" id="fld3u-ttl-${sid}" value="${fldLabel3u}" style="width:100%;margin-top:2px"></label>
+                    <label>X Axis<input type="text" id="fld3u-xl-${sid}" value="${mkLbl3u('X')}" style="width:100%;margin-top:2px"></label>
+                    <label>Y Axis<input type="text" id="fld3u-yl-${sid}" value="${mkLbl3u('Y')}" style="width:100%;margin-top:2px"></label>
+                    <label>Z Axis<input type="text" id="fld3u-zl-${sid}" value="${mkLbl3u('Z')}" style="width:100%;margin-top:2px"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Isosurfaces</div>
-                    <label>Surfaces<input type="range" id="fld3u-ns-${id}" min="1" max="20" step="1" value="10"><span id="fld3u-ns-v-${id}">10</span></label>
-                    <label>Opacity<input type="range" id="fld3u-op-${id}" min="0.05" max="1" step="0.05" value="0.6"><span id="fld3u-op-v-${id}">0.6</span></label>
-                    <label>Value Min<input type="number" id="fld3u-lo-${id}" value="${vmin.toFixed(4)}" step="any"></label>
-                    <label>Value Max<input type="number" id="fld3u-hi-${id}" value="${vmax.toFixed(4)}" step="any"></label>
+                    <label>Surfaces<input type="range" id="fld3u-ns-${sid}" min="1" max="20" step="1" value="10"><span id="fld3u-ns-v-${sid}">10</span></label>
+                    <label>Opacity<input type="range" id="fld3u-op-${sid}" min="0.05" max="1" step="0.05" value="0.6"><span id="fld3u-op-v-${sid}">0.6</span></label>
+                    <label>Value Min<input type="number" id="fld3u-lo-${sid}" value="${vmin.toFixed(4)}" step="any"></label>
+                    <label>Value Max<input type="number" id="fld3u-hi-${sid}" value="${vmax.toFixed(4)}" step="any"></label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Color Scale</div>
-                    <select id="fld3u-cs-${id}">${colorscales.map(c=>`<option${c==='Viridis'?' selected':''}>${c}</option>`).join('')}</select>
-                    <label style="margin-top:4px"><input type="checkbox" id="fld3u-rev-${id}"> Reverse</label>
+                    <select id="fld3u-cs-${sid}">${colorscales.map(c=>`<option${c==='Viridis'?' selected':''}>${c}</option>`).join('')}</select>
+                    <label style="margin-top:4px"><input type="checkbox" id="fld3u-rev-${sid}"> Reverse</label>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Theme</div>
-                    <select id="fld3u-theme-${id}" style="width:100%;font-size:11px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
+                    <select id="fld3u-theme-${sid}" style="width:100%;font-size:12px;padding:2px 4px;border-radius:3px;border:1px solid #334155;background:#1e293b;color:#e2e8f0">
                       <option value="light" selected>Light</option>
                       <option value="dark">Dark</option>
                     </select>
                   </div>
                   <div class="rp-panel-section">
                     <div class="rp-panel-title">Download</div>
-                    <button class="rp-3d-btn" id="fld3u-png-${id}">PNG</button>
+                    <button class="rp-3d-btn" id="fld3u-png-${sid}">PNG</button>
                   </div>`;
 
                 const plotDiv = document.createElement('div');
                 plotDiv.className = 'rp-output-plot';
                 plotDiv.id = 'fld3u-' + id;
-                plotDiv.style.cssText = 'flex:1;min-height:400px;min-width:0';
+                const sid = id.replace(/[^a-z0-9_-]/gi, '_');
+                // style via .rp-output-plot CSS class
 
+                const fld3uPanelWrap = document.createElement('div');
+                fld3uPanelWrap.className = 'rp-3d-panel-wrap';
+                const fld3uTab = document.createElement('div');
+                fld3uTab.className = 'rp-3d-panel-tab';
+                fld3uTab.title = 'Toggle control panel';
+                fld3uTab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+                fld3uPanelWrap.appendChild(fld3uTab);
+                fld3uPanelWrap.appendChild(cp);
                 const outerWrap = document.createElement('div');
-                outerWrap.style.cssText = 'display:flex;width:100%;height:100%;min-height:0';
+                outerWrap.style.cssText = 'display:flex;flex:1;min-width:0;min-height:0;align-items:stretch;';
                 outerWrap.appendChild(plotDiv);
-                outerWrap.appendChild(cp);
+                outerWrap.appendChild(fld3uPanelWrap);
                 body.appendChild(outerWrap);
+                fld3uTab.addEventListener('click', () => {
+                    fld3uPanelWrap.classList.toggle('collapsed');
+                    setTimeout(() => Plotly.relayout(plotDiv, { autosize: true }), 220);
+                });
 
                 const _fld3uKey = 'rp2w:fld3u:' + window.location.pathname + ':' + id;
                 const _fld3uSave = () => {
                     const s = {};
                     ['fld3u-ttl','fld3u-xl','fld3u-yl','fld3u-zl','fld3u-cs','fld3u-op','fld3u-ns','fld3u-lo','fld3u-hi'].forEach(k => {
-                        const el = cp.querySelector(`#${k}-${id}`); if (el) s[k] = el.value;
+                        const el = cp.querySelector(`#${k}-${sid}`); if (el) s[k] = el.value;
                     });
-                    const rev = cp.querySelector(`#fld3u-rev-${id}`); if (rev) s['fld3u-rev'] = rev.checked;
+                    const rev = cp.querySelector(`#fld3u-rev-${sid}`); if (rev) s['fld3u-rev'] = rev.checked;
                     try { localStorage.setItem(_fld3uKey, JSON.stringify(s)); } catch(e) {}
                 };
                 const _fld3uLoad = () => {
@@ -2165,9 +2331,9 @@ const rappture = {
                         const s = JSON.parse(localStorage.getItem(_fld3uKey) || 'null');
                         if (!s) return;
                         ['fld3u-ttl','fld3u-xl','fld3u-yl','fld3u-zl','fld3u-cs','fld3u-op','fld3u-ns','fld3u-lo','fld3u-hi'].forEach(k => {
-                            const el = cp.querySelector(`#${k}-${id}`); if (el && s[k] !== undefined) el.value = s[k];
+                            const el = cp.querySelector(`#${k}-${sid}`); if (el && s[k] !== undefined) el.value = s[k];
                         });
-                        const rev = cp.querySelector(`#fld3u-rev-${id}`);
+                        const rev = cp.querySelector(`#fld3u-rev-${sid}`);
                         if (rev && s['fld3u-rev'] !== undefined) rev.checked = s['fld3u-rev'];
                     } catch(e) {}
                 };
@@ -2213,39 +2379,39 @@ const rappture = {
 
                 // Read saved panel state and derive initial render params
                 _fld3uLoad();
-                const _initCs  = cp.querySelector(`#fld3u-cs-${id}`).value || 'Viridis';
-                const _initRev = cp.querySelector(`#fld3u-rev-${id}`).checked;
-                const _initOp  = parseFloat(cp.querySelector(`#fld3u-op-${id}`).value) || 0.6;
-                const _initNs  = parseInt(cp.querySelector(`#fld3u-ns-${id}`).value) || 10;
-                const _initLo  = parseFloat(cp.querySelector(`#fld3u-lo-${id}`).value);
-                const _initHi  = parseFloat(cp.querySelector(`#fld3u-hi-${id}`).value);
+                const _initCs  = cp.querySelector(`#fld3u-cs-${sid}`).value || 'Viridis';
+                const _initRev = cp.querySelector(`#fld3u-rev-${sid}`).checked;
+                const _initOp  = parseFloat(cp.querySelector(`#fld3u-op-${sid}`).value) || 0.6;
+                const _initNs  = parseInt(cp.querySelector(`#fld3u-ns-${sid}`).value) || 10;
+                const _initLo  = parseFloat(cp.querySelector(`#fld3u-lo-${sid}`).value);
+                const _initHi  = parseFloat(cp.querySelector(`#fld3u-hi-${sid}`).value);
 
-                setTimeout(() => {
+                _whenVisible(outerWrap, () => {
                     Plotly.newPlot(plotDiv,
                         _mkTraces3u(_initCs, _initRev, _initOp, _initNs,
                             isFinite(_initLo) ? _initLo : vmin,
                             isFinite(_initHi) ? _initHi : vmax),
                         _mkLayout3u(mkLbl3u('X'), mkLbl3u('Y'), mkLbl3u('Z'), fldLabel3u, null),
-                        { responsive: true });
+                        { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
 
                     const applyOpts3u = () => {
-                        const cs  = cp.querySelector(`#fld3u-cs-${id}`).value;
-                        const rev = cp.querySelector(`#fld3u-rev-${id}`).checked;
-                        const op  = parseFloat(cp.querySelector(`#fld3u-op-${id}`).value);
-                        const ns  = parseInt(cp.querySelector(`#fld3u-ns-${id}`).value);
-                        const lo  = parseFloat(cp.querySelector(`#fld3u-lo-${id}`).value);
-                        const hi  = parseFloat(cp.querySelector(`#fld3u-hi-${id}`).value);
-                        cp.querySelector(`#fld3u-ns-v-${id}`).textContent = ns;
-                        cp.querySelector(`#fld3u-op-v-${id}`).textContent = op;
+                        const cs  = cp.querySelector(`#fld3u-cs-${sid}`).value;
+                        const rev = cp.querySelector(`#fld3u-rev-${sid}`).checked;
+                        const op  = parseFloat(cp.querySelector(`#fld3u-op-${sid}`).value);
+                        const ns  = parseInt(cp.querySelector(`#fld3u-ns-${sid}`).value);
+                        const lo  = parseFloat(cp.querySelector(`#fld3u-lo-${sid}`).value);
+                        const hi  = parseFloat(cp.querySelector(`#fld3u-hi-${sid}`).value);
+                        cp.querySelector(`#fld3u-ns-v-${sid}`).textContent = ns;
+                        cp.querySelector(`#fld3u-op-v-${sid}`).textContent = op;
                         _fld3uSave();
                         const cam = plotDiv._fullLayout && plotDiv._fullLayout.scene
                             ? plotDiv._fullLayout.scene.camera : null;
                         Plotly.react(plotDiv, _mkTraces3u(cs, rev, op, ns, lo, hi),
                             _mkLayout3u(
-                                cp.querySelector(`#fld3u-xl-${id}`).value,
-                                cp.querySelector(`#fld3u-yl-${id}`).value,
-                                cp.querySelector(`#fld3u-zl-${id}`).value,
-                                cp.querySelector(`#fld3u-ttl-${id}`).value,
+                                cp.querySelector(`#fld3u-xl-${sid}`).value,
+                                cp.querySelector(`#fld3u-yl-${sid}`).value,
+                                cp.querySelector(`#fld3u-zl-${sid}`).value,
+                                cp.querySelector(`#fld3u-ttl-${sid}`).value,
                                 cam));
                     };
 
@@ -2257,7 +2423,7 @@ const rappture = {
                     );
 
                     const _applyFld3uTheme = () => {
-                        const dark = cp.querySelector(`#fld3u-theme-${id}`).value === 'dark';
+                        const dark = cp.querySelector(`#fld3u-theme-${sid}`).value === 'dark';
                         Plotly.relayout(plotDiv, {
                             paper_bgcolor: dark ? '#1a1a2e' : 'white',
                             plot_bgcolor:  dark ? '#16213e' : '#f8fafc',
@@ -2271,11 +2437,11 @@ const rappture = {
                             font: { color: dark ? '#ccd6f6' : '#444' },
                         });
                     };
-                    cp.querySelector(`#fld3u-theme-${id}`).addEventListener('change', _applyFld3uTheme);
+                    cp.querySelector(`#fld3u-theme-${sid}`).addEventListener('change', _applyFld3uTheme);
 
-                    cp.querySelector(`#fld3u-png-${id}`).addEventListener('click', () =>
+                    cp.querySelector(`#fld3u-png-${sid}`).addEventListener('click', () =>
                         Plotly.downloadImage(plotDiv, { format: 'png', filename: fldLabel3u.replace(/[^a-z0-9]/gi, '_') }));
-                }, 50);
+                });
 
                 return item;
             }
@@ -2331,6 +2497,7 @@ const rappture = {
             }
             // isFlow: true when vector field with flow metadata
             const isFlow = isVector && flowMeta !== null; // used for conditional visibility below
+            const sid = id.replace(/[^a-z0-9_-]/gi, '_');
 
             console.log('[field] allPts:', allPts.length, 'isVector:', isVector, 'flowMeta:', JSON.stringify(flowMeta));
 
@@ -2391,6 +2558,8 @@ const rappture = {
             const canvasWrap = document.createElement('div');
             canvasWrap.className = 'rp-3d-canvas-wrap';
             const canvas = document.createElement('canvas');
+            canvas.setAttribute('aria-label', '3D field visualization');
+            canvas.setAttribute('role', 'img');
             canvasWrap.appendChild(canvas);
             innerRow.appendChild(canvasWrap);
             wrap.appendChild(innerRow);
@@ -2398,9 +2567,9 @@ const rappture = {
             // Colorbar below canvas+panel
             const colorbarDiv = document.createElement('div');
             colorbarDiv.className = 'rp-3d-colorbar';
-            colorbarDiv.innerHTML = `<span id="cb-lo-${id}">${vMin.toFixed(4)}</span>
+            colorbarDiv.innerHTML = `<span id="cb-lo-${sid}">${vMin.toFixed(4)}</span>
                 <div class="rp-3d-colorbar-gradient"></div>
-                <span id="cb-hi-${id}">${vMax.toFixed(4)}</span>`;
+                <span id="cb-hi-${sid}">${vMax.toFixed(4)}</span>`;
             wrap.appendChild(colorbarDiv);
 
             // Right-side control panel
@@ -2410,7 +2579,7 @@ const rappture = {
             const hasParticles = isFlow && flowMeta.particles && flowMeta.particles.length > 0;
             const particlePlaneBtns = hasParticles
                 ? flowMeta.particles.filter(p => !p.hide).map(p =>
-                    `<button class="rp-3d-btn active" id="par-${id}-${p.id}">${p.label || p.id}</button>`
+                    `<button class="rp-3d-btn active" id="par-${sid}-${p.id}">${p.label || p.id}</button>`
                   ).join('')
                 : '';
             const panel = document.createElement('div');
@@ -2419,54 +2588,68 @@ const rappture = {
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Display</div>
                 <div class="rp-panel-btns">
-                  <button class="rp-3d-btn${flowVolumeActive ? ' active' : ''}" id="pts-${id}">Volume</button>
-                  <button class="rp-3d-btn${flowArrowsActive ? ' active' : ''}" id="arr-${id}">Arrows</button>
-                  <button class="rp-3d-btn${flowStreamsActive ? ' active' : ''}" id="stm-${id}">Streams</button>
-                  <button class="rp-3d-btn" id="cton-${id}">Contours</button>
+                  <button class="rp-3d-btn${flowVolumeActive ? ' active' : ''}" id="pts-${sid}">Volume</button>
+                  <button class="rp-3d-btn${flowArrowsActive ? ' active' : ''}" id="arr-${sid}">Arrows</button>
+                  <button class="rp-3d-btn${flowStreamsActive ? ' active' : ''}" id="stm-${sid}">Streams</button>
+                  <button class="rp-3d-btn" id="cton-${sid}">Contours</button>
                 </div>
-                <label>Opacity<input type="range" min="0" max="100" value="80" id="op-${id}"></label>
-                <label>Glow<input type="range" min="0" max="100" value="30" id="glow-${id}"></label>
-                <label>Size<input type="range" min="5" max="300" value="100" id="thin-${id}"></label>
-                <label>Contour #<input type="range" min="1" max="20" value="5" step="1" id="ct-${id}"></label>
+                <label>Opacity<input type="range" min="0" max="100" value="80" id="op-${sid}"></label>
+                <label>Glow<input type="range" min="0" max="100" value="30" id="glow-${sid}"></label>
+                <label>Size<input type="range" min="5" max="300" value="100" id="thin-${sid}"></label>
+                <label>Contour #<input type="range" min="1" max="20" value="5" step="1" id="ct-${sid}"></label>
               </div>
-              <div class="rp-panel-section" id="flow-sec-${id}" style="display:${hasParticles ? 'flex' : 'none'}">
+              <div class="rp-panel-section" id="flow-sec-${sid}" style="display:${hasParticles ? 'flex' : 'none'}">
                 <div class="rp-panel-title">Flow</div>
                 <div class="rp-panel-btns">
                   ${particlePlaneBtns}
-                  <button class="rp-3d-btn" id="par-rst-${id}" title="Re-seed all particles"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5V1l3 2.5L8 6V4.5A3.5 3.5 0 1 0 11.5 8h2z"/></svg>Reset</button>
-                  <button class="rp-3d-btn active" id="par-pause-${id}" title="Pause/resume particle animation"><svg class="rp-flow-pause-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg><svg class="rp-flow-play-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px;display:none"><polygon points="3,2 13,8 3,14"/></svg><span class="rp-flow-pause-label">Pause</span></button>
+                  <button class="rp-3d-btn" id="par-rst-${sid}" title="Re-seed all particles"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5V1l3 2.5L8 6V4.5A3.5 3.5 0 1 0 11.5 8h2z"/></svg>Reset</button>
+                  <button class="rp-3d-btn active" id="par-pause-${sid}" title="Pause/resume particle animation"><svg class="rp-flow-pause-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg><svg class="rp-flow-play-icon" viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="vertical-align:middle;margin-right:3px;display:none"><polygon points="3,2 13,8 3,14"/></svg><span class="rp-flow-pause-label">Pause</span></button>
                 </div>
-                <label>Count<input type="range" min="2" max="80" value="40" step="1" id="pc-${id}"></label>
-                <label>Speed<input type="range" min="0" max="500" value="100" step="10" id="spd-${id}"></label>
-                <label>Part. size<input type="range" min="1" max="30" value="6" step="1" id="ps-${id}"></label>
+                <label>Count<input type="range" min="2" max="80" value="40" step="1" id="pc-${sid}"></label>
+                <label>Speed<input type="range" min="0" max="500" value="100" step="10" id="spd-${sid}"></label>
+                <label>Part. size<input type="range" min="1" max="30" value="6" step="1" id="ps-${sid}"></label>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Scale</div>
-                <label>Min<input type="number" id="sc-lo-${id}" value="${vMin.toFixed(4)}" step="any"></label>
-                <label>Max<input type="number" id="sc-hi-${id}" value="${vMax.toFixed(4)}" step="any"></label>
+                <label>Min<input type="number" id="sc-lo-${sid}" value="${vMin.toFixed(4)}" step="any"></label>
+                <label>Max<input type="number" id="sc-hi-${sid}" value="${vMax.toFixed(4)}" step="any"></label>
                 <div class="rp-panel-btns" style="margin-top:4px">
-                  <button class="rp-3d-btn" id="sc-rst-${id}">Reset</button>
+                  <button class="rp-3d-btn" id="sc-rst-${sid}">Reset</button>
                 </div>
               </div>
               <div class="rp-panel-section">
                 <div class="rp-panel-title">Camera</div>
                 <div class="rp-panel-btns">
-                  <button class="rp-3d-btn" id="fit-${id}">⤢ Fit</button>
-                  <button class="rp-3d-btn" id="vxy-${id}">XY</button>
-                  <button class="rp-3d-btn" id="vxz-${id}">XZ</button>
-                  <button class="rp-3d-btn" id="vyz-${id}">YZ</button>
-                  <button class="rp-3d-btn" id="v3d-${id}">3D</button>
-                  <button class="rp-3d-btn" id="ar-${id}">⟳ Auto</button>
+                  <button class="rp-3d-btn" id="fit-${sid}">⤢ Fit</button>
+                  <button class="rp-3d-btn" id="vxy-${sid}">XY</button>
+                  <button class="rp-3d-btn" id="vxz-${sid}">XZ</button>
+                  <button class="rp-3d-btn" id="vyz-${sid}">YZ</button>
+                  <button class="rp-3d-btn" id="v3d-${sid}">3D</button>
+                  <button class="rp-3d-btn" id="ar-${sid}">⟳ Auto</button>
                 </div>
               </div>`;
-            innerRow.appendChild(panel);
+            const flowPanelWrap = document.createElement('div');
+            flowPanelWrap.className = 'rp-3d-panel-wrap';
+            const flowPanelTab = document.createElement('div');
+            flowPanelTab.className = 'rp-3d-panel-tab';
+            flowPanelTab.title = 'Toggle control panel';
+            flowPanelTab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+            flowPanelWrap.appendChild(flowPanelTab);
+            flowPanelWrap.appendChild(panel);
+            innerRow.appendChild(flowPanelWrap);
+            flowPanelTab.addEventListener('click', () => {
+                flowPanelWrap.classList.toggle('collapsed');
+            });
 
             body.appendChild(wrap);
 
             // ── Three.js scene ─────────────────────────────────────────────
-            requestAnimationFrame(() => {
-                const H = 420;
-                const w = canvas.clientWidth || 600;
+            // Use ResizeObserver so we init only after layout is fully resolved
+            // and the canvasWrap has a real height from flex layout.
+            let _threeInit = false;
+            const _initThree = (w, H) => {
+                if (_threeInit) return;
+                _threeInit = true;
                 canvas.width = w; canvas.height = H;
 
                 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -2597,8 +2780,8 @@ const rappture = {
                     colorAttr.needsUpdate = true;
                     alphaAttr.needsUpdate = true;
                     ptUniforms.uOpacity.value = curOpacity;
-                    const loEl = wrap.querySelector(`#cb-lo-${id}`);
-                    const hiEl = wrap.querySelector(`#cb-hi-${id}`);
+                    const loEl = wrap.querySelector(`#cb-lo-${sid}`);
+                    const hiEl = wrap.querySelector(`#cb-hi-${sid}`);
                     if (loEl) loEl.textContent = scLo.toFixed(4);
                     if (hiEl) hiEl.textContent = scHi.toFixed(4);
                 };
@@ -2935,14 +3118,14 @@ const rappture = {
 
                 // ── Toolbar wiring ────────────────────────────────────────
                 // Volume (point cloud) on/off
-                const ptsBtn = panel.querySelector(`#pts-${id}`);
+                const ptsBtn = panel.querySelector(`#pts-${sid}`);
                 ptsBtn.addEventListener('click', () => {
                     ptCloud.visible = !ptCloud.visible;
                     ptsBtn.classList.toggle('active', ptCloud.visible);
                 });
 
                 // Contours on/off
-                const ctonBtn = panel.querySelector(`#cton-${id}`);
+                const ctonBtn = panel.querySelector(`#cton-${sid}`);
                 ctonBtn.addEventListener('click', () => {
                     contourGroup.visible = !contourGroup.visible;
                     ctonBtn.classList.toggle('active', contourGroup.visible);
@@ -2950,31 +3133,31 @@ const rappture = {
                 });
 
                 // Opacity slider — updates uniform directly for live feedback
-                panel.querySelector(`#op-${id}`).addEventListener('input', (e) => {
+                panel.querySelector(`#op-${sid}`).addEventListener('input', (e) => {
                     curOpacity = e.target.value / 100;
                     ptUniforms.uOpacity.value = curOpacity;
                 });
 
                 // Glow slider
-                panel.querySelector(`#glow-${id}`).addEventListener('input', (e) => {
+                panel.querySelector(`#glow-${sid}`).addEventListener('input', (e) => {
                     ptUniforms.uGlow.value = e.target.value / 100;
                 });
 
                 // Thin slider (point size multiplier)
                 // Contours share ptUniforms so they update automatically.
-                panel.querySelector(`#thin-${id}`).addEventListener('input', (e) => {
+                panel.querySelector(`#thin-${sid}`).addEventListener('input', (e) => {
                     ptUniforms.uThin.value = e.target.value / 100;
                 });
 
                 // Contour count slider
-                panel.querySelector(`#ct-${id}`).addEventListener('input', (e) => {
+                panel.querySelector(`#ct-${sid}`).addEventListener('input', (e) => {
                     curNContours = parseInt(e.target.value);
                     rebuildContours();
                 });
 
                 // Auto-rotate
                 let autoRotate = false;
-                const arBtn = panel.querySelector(`#ar-${id}`);
+                const arBtn = panel.querySelector(`#ar-${sid}`);
                 arBtn.addEventListener('click', () => {
                     autoRotate = !autoRotate;
                     controls.autoRotate = autoRotate;
@@ -2982,7 +3165,7 @@ const rappture = {
                 });
 
                 // Particle size slider
-                panel.querySelector(`#ps-${id}`).addEventListener('input', (e) => {
+                panel.querySelector(`#ps-${sid}`).addEventListener('input', (e) => {
                     const s = parseInt(e.target.value);
                     for (const pg of particleGroups) {
                         pg.pMat.size = s;  // screen pixels
@@ -2991,17 +3174,17 @@ const rappture = {
                 });
 
                 // Particle count slider — rebuilds injection planes
-                panel.querySelector(`#pc-${id}`).addEventListener('change', (e) => {
+                panel.querySelector(`#pc-${sid}`).addEventListener('change', (e) => {
                     rebuildParticles(parseInt(e.target.value));
                 });
 
                 // Speed slider
-                panel.querySelector(`#spd-${id}`).addEventListener('input', (e) => {
+                panel.querySelector(`#spd-${sid}`).addEventListener('input', (e) => {
                     curSpeed = e.target.value / 100;
                 });
 
                 // Arrows on/off
-                const arrBtn = panel.querySelector(`#arr-${id}`);
+                const arrBtn = panel.querySelector(`#arr-${sid}`);
                 arrBtn.addEventListener('click', () => {
                     arrowGroup.visible = !arrowGroup.visible;
                     arrBtn.classList.toggle('active', arrowGroup.visible);
@@ -3010,7 +3193,7 @@ const rappture = {
                 if (!isVector) arrBtn.style.display = 'none';
 
                 // Streams on/off
-                const stmBtn = panel.querySelector(`#stm-${id}`);
+                const stmBtn = panel.querySelector(`#stm-${sid}`);
                 stmBtn.addEventListener('click', () => {
                     streamGroup.visible = !streamGroup.visible;
                     stmBtn.classList.toggle('active', streamGroup.visible);
@@ -3020,7 +3203,7 @@ const rappture = {
 
                 // Per-particle-plane toggle buttons + Reset
                 for (const pg of particleGroups) {
-                    const btn = panel.querySelector(`#par-${id}-${pg.pid}`);
+                    const btn = panel.querySelector(`#par-${sid}-${pg.pid}`);
                     if (!btn) continue;
                     btn.addEventListener('click', () => {
                         pg.pts3.visible = !pg.pts3.visible;
@@ -3028,7 +3211,7 @@ const rappture = {
                     });
                 }
                 // Reset: re-seed all planes back to their injection positions
-                const parRstBtn = panel.querySelector(`#par-rst-${id}`);
+                const parRstBtn = panel.querySelector(`#par-rst-${sid}`);
                 if (parRstBtn) {
                     parRstBtn.addEventListener('click', () => {
                         for (const pg of particleGroups) {
@@ -3047,8 +3230,8 @@ const rappture = {
                 }
 
                 // Scale min/max inputs
-                const scLoIn = panel.querySelector(`#sc-lo-${id}`);
-                const scHiIn = panel.querySelector(`#sc-hi-${id}`);
+                const scLoIn = panel.querySelector(`#sc-lo-${sid}`);
+                const scHiIn = panel.querySelector(`#sc-hi-${sid}`);
                 const applyScale = () => {
                     const lo = parseFloat(scLoIn.value), hi = parseFloat(scHiIn.value);
                     if (isNaN(lo) || isNaN(hi) || lo >= hi) return;
@@ -3061,7 +3244,7 @@ const rappture = {
                 scHiIn.addEventListener('change', applyScale);
 
                 // Reset scale
-                panel.querySelector(`#sc-rst-${id}`).addEventListener('click', () => {
+                panel.querySelector(`#sc-rst-${sid}`).addEventListener('click', () => {
                     scLo = vMin; scHi = vMax;
                     scLoIn.value = vMin.toFixed(4);
                     scHiIn.value = vMax.toFixed(4);
@@ -3071,24 +3254,26 @@ const rappture = {
                 });
 
                 // Camera presets
-                panel.querySelector(`#fit-${id}`).addEventListener('click', () => setCameraView('3d'));
-                panel.querySelector(`#vxy-${id}`).addEventListener('click', () => setCameraView('xy'));
-                panel.querySelector(`#vxz-${id}`).addEventListener('click', () => setCameraView('xz'));
-                panel.querySelector(`#vyz-${id}`).addEventListener('click', () => setCameraView('yz'));
-                panel.querySelector(`#v3d-${id}`).addEventListener('click', () => setCameraView('3d'));
+                panel.querySelector(`#fit-${sid}`).addEventListener('click', () => setCameraView('3d'));
+                panel.querySelector(`#vxy-${sid}`).addEventListener('click', () => setCameraView('xy'));
+                panel.querySelector(`#vxz-${sid}`).addEventListener('click', () => setCameraView('xz'));
+                panel.querySelector(`#vyz-${sid}`).addEventListener('click', () => setCameraView('yz'));
+                panel.querySelector(`#v3d-${sid}`).addEventListener('click', () => setCameraView('3d'));
 
                 // ── Resize ────────────────────────────────────────────────
                 const ro = new ResizeObserver(() => {
-                    const nw = canvas.clientWidth;
-                    renderer.setSize(nw, H);
-                    camera.aspect = nw / H;
+                    const nw = canvasWrap.clientWidth || canvas.clientWidth;
+                    const nh = canvasWrap.clientHeight || canvas.clientHeight;
+                    if (!nw || !nh) return;
+                    renderer.setSize(nw, nh);
+                    camera.aspect = nw / nh;
                     camera.updateProjectionMatrix();
                 });
-                ro.observe(canvas);
+                ro.observe(canvasWrap);
 
                 // Pause/resume particle animation
                 let particlesPaused = false;
-                const pauseBtn = panel.querySelector(`#par-pause-${id}`);
+                const pauseBtn = panel.querySelector(`#par-pause-${sid}`);
                 if (pauseBtn) {
                     pauseBtn.addEventListener('click', () => {
                         particlesPaused = !particlesPaused;
@@ -3111,7 +3296,31 @@ const rappture = {
                     renderer.render(scene, camera);
                 };
                 animate();
-            });
+            }; // end _initThree
+
+            // Init Three.js only once the canvasWrap is visible with real dimensions.
+            // IntersectionObserver fires when element becomes visible (panel shown),
+            // then we read actual clientWidth/clientHeight at that point.
+            const _tryInit = () => {
+                const nw = canvasWrap.clientWidth;
+                const nh = canvasWrap.clientHeight;
+                if (nw > 0 && nh > 0) {
+                    _initThree(nw, nh);
+                    return true;
+                }
+                return false;
+            };
+            if (!_tryInit()) {
+                // Not visible yet — watch for when it becomes visible
+                const _visObs = new IntersectionObserver((entries) => {
+                    if (entries[0].isIntersecting) {
+                        _visObs.disconnect();
+                        // Give one rAF for layout to settle after display change
+                        requestAnimationFrame(() => _tryInit());
+                    }
+                }, { threshold: 0 });
+                _visObs.observe(canvasWrap);
+            }
 
             return item;
         },
@@ -3720,7 +3929,7 @@ const rappture = {
                     plot_bgcolor: '#f8fafc',
                     autosize: true,
                 };
-                setTimeout(() => Plotly.newPlot(plotDiv, traces, layout, { responsive: true }), 50);
+                _whenVisible(plotDiv, () => Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv))));
                 panels[id] = { elem: item, label: (firstData.about && firstData.about.label) || firstData.label || id };
 
             } else if (type === 'number' || type === 'integer') {
@@ -3784,7 +3993,7 @@ const rappture = {
                 const body = item.querySelector('.rp-output-body');
                 sources.forEach(({ run, data }, si) => {
                     const hdr = document.createElement('div');
-                    hdr.style.cssText = `font-size:11px;font-weight:${si === 0 ? '700' : '400'};color:var(--rp-text-muted);margin:${si > 0 ? '8px' : '0'} 0 2px`;
+                    hdr.style.cssText = `font-size:12px;font-weight:${si === 0 ? '700' : '400'};color:var(--rp-text-muted);margin:${si > 0 ? '8px' : '0'} 0 2px`;
                     hdr.textContent = run.label;
                     const pre = document.createElement('pre');
                     pre.style.cssText = 'font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:6px 8px;margin:0';
@@ -3803,7 +4012,7 @@ const rappture = {
                     const runName = run.label || run.run_num || `Run ${si + 1}`;
                     const runColor = run._color || 'var(--rp-text-muted)';
                     const hdr = document.createElement('div');
-                    hdr.style.cssText = `font-size:11px;font-weight:${si === 0 ? '700' : '400'};color:${runColor};margin:0 0 2px;font-family:var(--rp-font);white-space:normal`;
+                    hdr.style.cssText = `font-size:12px;font-weight:${si === 0 ? '700' : '400'};color:${runColor};margin:0 0 2px;font-family:var(--rp-font);white-space:normal`;
                     hdr.textContent = runName;
                     const pre = document.createElement('pre');
                     pre.style.cssText = 'font-size:12px;white-space:pre-wrap;background:#0d1117;color:#cdd6f4;border:1px solid #334155;border-radius:3px;padding:6px 8px;margin:0;max-height:300px;overflow-y:auto;font-family:monospace';
@@ -3839,21 +4048,34 @@ const rappture = {
                 const _is3DUnstr = _fm && _fm.mesh_type === 'unstructured' && _fm.points && _fm.points.length > 0 && (_fc && (_fc.extents || 1) === 1) && _fm.points[0] && _fm.points[0].length === 3;
 
                 const colorscales = ['Viridis','Plasma','Inferno','Magma','Cividis','RdBu','Spectral','Jet','Hot','Blues'];
-                const inputStyle = 'width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:11px';
+                const inputStyle = 'width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px';
                 const plotDiv = document.createElement('div');
                 plotDiv.className = 'rp-output-plot';
                 plotDiv.id = 'fldcmp-' + id;
-                plotDiv.style.cssText = 'flex:1;min-height:400px;min-width:0';
+                // style via .rp-output-plot CSS class
+                const sid = id.replace(/[^a-z0-9_-]/gi, '_');
 
                 const cp = document.createElement('div');
                 cp.className = 'rp-3d-panel';
                 cp.style.maxHeight = 'none';
 
+                const fldcmpPanelWrap = document.createElement('div');
+                fldcmpPanelWrap.className = 'rp-3d-panel-wrap';
+                const fldcmpTab = document.createElement('div');
+                fldcmpTab.className = 'rp-3d-panel-tab';
+                fldcmpTab.title = 'Toggle control panel';
+                fldcmpTab.innerHTML = '<span class="rp-tab-chevron">&#8250;</span>';
+                fldcmpPanelWrap.appendChild(fldcmpTab);
+                fldcmpPanelWrap.appendChild(cp);
                 const outerWrap = document.createElement('div');
-                outerWrap.style.cssText = 'display:flex;width:100%;height:100%;min-height:0';
+                outerWrap.style.cssText = 'display:flex;flex:1;min-width:0;min-height:0;align-items:stretch;';
                 outerWrap.appendChild(plotDiv);
-                outerWrap.appendChild(cp);
+                outerWrap.appendChild(fldcmpPanelWrap);
                 body.appendChild(outerWrap);
+                fldcmpTab.addEventListener('click', () => {
+                    fldcmpPanelWrap.classList.toggle('collapsed');
+                    setTimeout(() => { if (window.Plotly) Plotly.relayout(plotDiv, { autosize: true }); }, 220);
+                });
 
                 // Helper: build a solid single-color Plotly colorscale from a hex color
                 const _solidCs = (hex) => [[0, hex], [1, hex]];
@@ -3866,31 +4088,31 @@ const rappture = {
                     cp.innerHTML = `
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Title</div>
-                        <label>Plot<input type="text" id="fldcmp-ttl-${id}" value="" placeholder="(none)" style="${inputStyle}"></label>
-                        <label>Colorbar<input type="text" id="fldcmp-cbtl-${id}" value="" placeholder="(none)" style="${inputStyle}"></label>
+                        <label>Plot<input type="text" id="fldcmp-ttl-${sid}" value="" placeholder="(none)" style="${inputStyle}"></label>
+                        <label>Colorbar<input type="text" id="fldcmp-cbtl-${sid}" value="" placeholder="(none)" style="${inputStyle}"></label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">X Axis</div>
-                        <label>Label<input type="text" id="fldcmp-xl-${id}" value="${xLbl0}" style="${inputStyle}"></label>
+                        <label>Label<input type="text" id="fldcmp-xl-${sid}" value="${xLbl0}" style="${inputStyle}"></label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Y Axis</div>
-                        <label>Label<input type="text" id="fldcmp-yl-${id}" value="${yLbl0}" style="${inputStyle}"></label>
+                        <label>Label<input type="text" id="fldcmp-yl-${sid}" value="${yLbl0}" style="${inputStyle}"></label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Color scale</div>
-                        <select id="fldcmp-cs-${id}" style="${inputStyle}">${colorscales.map(c=>`<option${c==='Viridis'?' selected':''}>${c}</option>`).join('')}</select>
-                        <label style="flex-direction:row;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="fldcmp-rev-${id}"> Reverse</label>
+                        <select id="fldcmp-cs-${sid}" style="${inputStyle}">${colorscales.map(c=>`<option${c==='Viridis'?' selected':''}>${c}</option>`).join('')}</select>
+                        <label style="flex-direction:row;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" id="fldcmp-rev-${sid}"> Reverse</label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Display</div>
-                        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fldcmp-sm-${id}" checked> Interpolate</label>
-                        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fldcmp-ct-${id}" checked> Contours</label>
-                        <label>Contour #<input type="range" id="fldcmp-nc-${id}" min="3" max="30" value="10" step="1"></label>
+                        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fldcmp-sm-${sid}" checked> Interpolate</label>
+                        <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="fldcmp-ct-${sid}" checked> Contours</label>
+                        <label>Contour #<input type="range" id="fldcmp-nc-${sid}" min="3" max="30" value="10" step="1"></label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Download</div>
-                        <button class="rp-3d-btn" id="fldcmp-png-${id}">PNG</button>
+                        <button class="rp-3d-btn" id="fldcmp-png-${sid}">PNG</button>
                       </div>`;
 
                     // Build subplot grid
@@ -3952,18 +4174,18 @@ const rappture = {
                         layout['yaxis' + axSuffix] = { title: yLbl0, showgrid: true, scaleanchor: 'x' + axSuffix, anchor: 'x' + axSuffix };
                     });
 
-                    setTimeout(() => {
-                        Plotly.newPlot(plotDiv, traces, layout, { responsive: true });
+                    _whenVisible(outerWrap, () => {
+                        Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
                         const applyCmp2 = () => {
-                            const cs = cp.querySelector(`#fldcmp-cs-${id}`).value;
-                            const rev = cp.querySelector(`#fldcmp-rev-${id}`).checked;
-                            const smooth = cp.querySelector(`#fldcmp-sm-${id}`).checked;
-                            const showCt = cp.querySelector(`#fldcmp-ct-${id}`).checked;
-                            const nc = parseInt(cp.querySelector(`#fldcmp-nc-${id}`).value);
-                            const xl = cp.querySelector(`#fldcmp-xl-${id}`).value;
-                            const yl = cp.querySelector(`#fldcmp-yl-${id}`).value;
-                            const ttl = cp.querySelector(`#fldcmp-ttl-${id}`).value;
-                            const cbtl = cp.querySelector(`#fldcmp-cbtl-${id}`).value;
+                            const cs = cp.querySelector(`#fldcmp-cs-${sid}`).value;
+                            const rev = cp.querySelector(`#fldcmp-rev-${sid}`).checked;
+                            const smooth = cp.querySelector(`#fldcmp-sm-${sid}`).checked;
+                            const showCt = cp.querySelector(`#fldcmp-ct-${sid}`).checked;
+                            const nc = parseInt(cp.querySelector(`#fldcmp-nc-${sid}`).value);
+                            const xl = cp.querySelector(`#fldcmp-xl-${sid}`).value;
+                            const yl = cp.querySelector(`#fldcmp-yl-${sid}`).value;
+                            const ttl = cp.querySelector(`#fldcmp-ttl-${sid}`).value;
+                            const cbtl = cp.querySelector(`#fldcmp-cbtl-${sid}`).value;
                             const heatIdxs = [], ctIdxs = [];
                             traces.forEach((t, i) => { if (t.type === 'heatmap') heatIdxs.push(i); else ctIdxs.push(i); });
                             Plotly.restyle(plotDiv, { colorscale: cs, reversescale: rev,
@@ -3980,9 +4202,9 @@ const rappture = {
                         cp.querySelectorAll('input, select').forEach(el =>
                             el.addEventListener(el.type === 'range' ? 'input' : 'change', applyCmp2));
                         cp.querySelectorAll('input[type=text]').forEach(el => el.addEventListener('input', applyCmp2));
-                        cp.querySelector(`#fldcmp-png-${id}`).addEventListener('click', () =>
+                        cp.querySelector(`#fldcmp-png-${sid}`).addEventListener('click', () =>
                             Plotly.downloadImage(plotDiv, { format: 'png', filename: outerLabel.replace(/[^a-z0-9]/gi,'_') }));
-                    }, 50);
+                    });
 
                 } else if (_is3DGrid || _is3DUnstr) {
                     // Overlay all runs as separate traces using run colors, shared control panel
@@ -3992,22 +4214,22 @@ const rappture = {
                     cp.innerHTML = `
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Title</div>
-                        <label>Plot<input type="text" id="fldcmp-ttl-${id}" value="" placeholder="(none)" style="${inputStyle}"></label>
+                        <label>Plot<input type="text" id="fldcmp-ttl-${sid}" value="" placeholder="(none)" style="${inputStyle}"></label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Axes</div>
-                        <label>X<input type="text" id="fldcmp-xl-${id}" value="${mkLbl('X')}" style="${inputStyle}"></label>
-                        <label>Y<input type="text" id="fldcmp-yl-${id}" value="${mkLbl('Y')}" style="${inputStyle}"></label>
-                        <label>Z<input type="text" id="fldcmp-zl-${id}" value="${mkLbl('Z')}" style="${inputStyle}"></label>
+                        <label>X<input type="text" id="fldcmp-xl-${sid}" value="${mkLbl('X')}" style="${inputStyle}"></label>
+                        <label>Y<input type="text" id="fldcmp-yl-${sid}" value="${mkLbl('Y')}" style="${inputStyle}"></label>
+                        <label>Z<input type="text" id="fldcmp-zl-${sid}" value="${mkLbl('Z')}" style="${inputStyle}"></label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Volume</div>
-                        <label>Opacity<input type="range" id="fldcmp-op-${id}" min="0.05" max="1" step="0.05" value="0.3"></label>
-                        <label>Surfaces<input type="range" id="fldcmp-ns-${id}" min="1" max="20" step="1" value="5"></label>
+                        <label>Opacity<input type="range" id="fldcmp-op-${sid}" min="0.05" max="1" step="0.05" value="0.3"></label>
+                        <label>Surfaces<input type="range" id="fldcmp-ns-${sid}" min="1" max="20" step="1" value="5"></label>
                       </div>
                       <div class="rp-panel-section">
                         <div class="rp-panel-title">Download</div>
-                        <button class="rp-3d-btn" id="fldcmp-png-${id}">PNG</button>
+                        <button class="rp-3d-btn" id="fldcmp-png-${sid}">PNG</button>
                       </div>`;
 
                     // Build one trace per run — each run may have grid or unstructured mesh
@@ -4073,20 +4295,20 @@ const rappture = {
                                   font: { size: 11 } },
                     };
 
-                    setTimeout(() => {
-                        Plotly.newPlot(plotDiv, [...buildTraces(0.3, 5), ...buildLegendTraces()], layout3, { responsive: true });
+                    _whenVisible(outerWrap, () => {
+                        Plotly.newPlot(plotDiv, [...buildTraces(0.3, 5), ...buildLegendTraces()], layout3, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
                         const applyCmp3 = () => {
-                            const op = parseFloat(cp.querySelector(`#fldcmp-op-${id}`).value);
-                            const ns = parseInt(cp.querySelector(`#fldcmp-ns-${id}`).value);
-                            const ttl = cp.querySelector(`#fldcmp-ttl-${id}`).value;
+                            const op = parseFloat(cp.querySelector(`#fldcmp-op-${sid}`).value);
+                            const ns = parseInt(cp.querySelector(`#fldcmp-ns-${sid}`).value);
+                            const ttl = cp.querySelector(`#fldcmp-ttl-${sid}`).value;
                             const cam = plotDiv._fullLayout && plotDiv._fullLayout.scene ? plotDiv._fullLayout.scene.camera : undefined;
                             Plotly.react(plotDiv, [...buildTraces(op, ns), ...buildLegendTraces()], {
                                 ...layout3,
                                 title: { text: ttl },
                                 scene: {
-                                    xaxis: { title: cp.querySelector(`#fldcmp-xl-${id}`).value },
-                                    yaxis: { title: cp.querySelector(`#fldcmp-yl-${id}`).value },
-                                    zaxis: { title: cp.querySelector(`#fldcmp-zl-${id}`).value },
+                                    xaxis: { title: cp.querySelector(`#fldcmp-xl-${sid}`).value },
+                                    yaxis: { title: cp.querySelector(`#fldcmp-yl-${sid}`).value },
+                                    zaxis: { title: cp.querySelector(`#fldcmp-zl-${sid}`).value },
                                     ...(cam ? { camera: cam } : {}),
                                 },
                             });
@@ -4094,9 +4316,9 @@ const rappture = {
                         cp.querySelectorAll('input, select').forEach(el =>
                             el.addEventListener(el.type === 'range' ? 'input' : 'change', applyCmp3));
                         cp.querySelectorAll('input[type=text]').forEach(el => el.addEventListener('input', applyCmp3));
-                        cp.querySelector(`#fldcmp-png-${id}`).addEventListener('click', () =>
+                        cp.querySelector(`#fldcmp-png-${sid}`).addEventListener('click', () =>
                             Plotly.downloadImage(plotDiv, { format: 'png', filename: outerLabel.replace(/[^a-z0-9]/gi,'_') }));
-                    }, 50);
+                    });
 
                 } else {
                     // Fallback: stacked sub-renders
@@ -4105,7 +4327,7 @@ const rappture = {
                     const renderer = this.outputRenderers[type];
                     if (renderer) sources.forEach(({ run, data }) => {
                         const hdr = document.createElement('div');
-                        hdr.style.cssText = 'font-size:11px;font-weight:700;color:var(--rp-text-muted);padding:2px 0';
+                        hdr.style.cssText = 'font-size:12px;font-weight:700;color:var(--rp-text-muted);padding:2px 0';
                         hdr.textContent = run.label;
                         body.appendChild(hdr);
                         const subElem = renderer.call(this, id + '__' + run.run_id, data);
@@ -4222,7 +4444,7 @@ const rappture = {
                 });
 
                 const plotDiv = document.createElement('div');
-                plotDiv.style.cssText = 'width:100%;height:420px';
+                // style via .rp-output-plot CSS class
                 body.style.cssText = 'padding:0;display:flex;flex-direction:column';
                 body.appendChild(plotDiv);
 
@@ -4336,7 +4558,7 @@ const rappture = {
                         const cell = document.createElement('div');
                         cell.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:200px;flex:1';
                         const runLbl = document.createElement('div');
-                        runLbl.style.cssText = `font-size:11px;font-weight:600;color:${runColor};background:${runColor}22;border:1px solid ${runColor};border-radius:3px;padding:2px 8px`;
+                        runLbl.style.cssText = `font-size:12px;font-weight:600;color:${runColor};background:${runColor}22;border:1px solid ${runColor};border-radius:3px;padding:2px 8px`;
                         runLbl.textContent = runName;
                         cell.appendChild(runLbl);
                         const frameDiv = document.createElement('div');
@@ -4721,8 +4943,20 @@ const rappture = {
                     td.title = `${name} (${num})`;
                     td.textContent = sym;
                     td.dataset.sym = sym;
+                    td.setAttribute('role', 'gridcell');
+                    td.setAttribute('aria-label', `${name}, atomic number ${num}`);
                     if (!disabled) {
+                        td.setAttribute('tabindex', '0');
                         td.addEventListener('click', () => this._peSelect(widget, el, returnvalue));
+                        td.addEventListener('keydown', (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                this._peSelect(widget, el, returnvalue);
+                                tableWrap.style.display = 'none';
+                                selectedRow.setAttribute('aria-expanded', 'false');
+                                selectedRow.focus();
+                            }
+                        });
                     }
                 } else {
                     td.className = 'rp-pe-cell rp-pe-empty';
@@ -4749,31 +4983,46 @@ const rappture = {
         // Toggle table visibility on click of selected row
         const tableWrap = widget.querySelector('.rp-pe-table-wrap');
         const selectedRow = widget.querySelector('.rp-pe-selected-row');
+
+        const _peClose = () => {
+            tableWrap.style.display = 'none';
+            const arrow = widget.querySelector('.rp-pe-arrow');
+            if (arrow) arrow.classList.remove('rp-pe-arrow-open');
+            selectedRow.setAttribute('aria-expanded', 'false');
+        };
+
+        selectedRow.setAttribute('aria-expanded', 'false');
         selectedRow.addEventListener('click', (e) => {
             const isOpen = tableWrap.style.display !== 'none';
             // Close all other open tables first
             document.querySelectorAll('.rp-pe-table-wrap').forEach(w => { w.style.display = 'none'; });
             document.querySelectorAll('.rp-pe-arrow').forEach(a => { a.classList.remove('rp-pe-arrow-open'); });
+            document.querySelectorAll('.rp-pe-selected-row').forEach(b => b.setAttribute('aria-expanded', 'false'));
             if (!isOpen) {
                 tableWrap.style.display = '';
                 widget.querySelector('.rp-pe-arrow').classList.add('rp-pe-arrow-open');
+                selectedRow.setAttribute('aria-expanded', 'true');
+                // Focus first enabled cell
+                const firstCell = tableWrap.querySelector('.rp-pe-cell:not(.rp-pe-disabled):not(.rp-pe-empty)');
+                if (firstCell) setTimeout(() => firstCell.focus(), 50);
             }
             e.stopPropagation();
         });
 
-        // Close when clicking outside
-        document.addEventListener('click', () => {
-            tableWrap.style.display = 'none';
-            const arrow = widget.querySelector('.rp-pe-arrow');
-            if (arrow) arrow.classList.remove('rp-pe-arrow-open');
+        // Close on Escape key
+        tableWrap.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                _peClose();
+                selectedRow.focus();
+            }
         });
 
+        // Close when clicking outside
+        document.addEventListener('click', _peClose);
+
         // Close and update when an element is selected
-        table.addEventListener('click', () => {
-            tableWrap.style.display = 'none';
-            const arrow = widget.querySelector('.rp-pe-arrow');
-            if (arrow) arrow.classList.remove('rp-pe-arrow-open');
-        });
+        table.addEventListener('click', _peClose);
     },
 
     _peSelect(widget, el, returnvalue, silent) {
@@ -4798,13 +5047,19 @@ const rappture = {
     switchPhase(path) {
         // Hide all panels, deactivate all tabs
         document.querySelectorAll('.rp-phase-panel').forEach(p => p.style.display = 'none');
-        document.querySelectorAll('.rp-phase-tab').forEach(t => t.classList.remove('rp-phase-tab-active'));
+        document.querySelectorAll('.rp-phase-tab').forEach(t => {
+            t.classList.remove('rp-phase-tab-active');
+            t.setAttribute('aria-selected', 'false');
+        });
         // Show selected panel and activate its tab
         const panelId = 'phase-panel-' + path.replace(/[.()\s]/g, '_');
         const panel = document.getElementById(panelId);
         if (panel) panel.style.display = '';
         const tab = document.querySelector(`.rp-phase-tab[data-phase="${path}"]`);
-        if (tab) tab.classList.add('rp-phase-tab-active');
+        if (tab) {
+            tab.classList.add('rp-phase-tab-active');
+            tab.setAttribute('aria-selected', 'true');
+        }
     },
 
     // ── Preset / tab helpers ─────────────────────────────────────────────────
@@ -4825,11 +5080,21 @@ const rappture = {
     switchTab(btn, panelId) {
         const container = btn.closest('.rp-group-tabbed');
         if (!container) return;
-        container.querySelectorAll('.rp-tab-btn').forEach(b => b.classList.remove('active'));
-        container.querySelectorAll('.rp-tab-panel').forEach(p => p.classList.remove('active'));
+        container.querySelectorAll('.rp-tab-btn').forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-selected', 'false');
+        });
+        container.querySelectorAll('.rp-tab-panel').forEach(p => {
+            p.classList.remove('active');
+            p.hidden = true;
+        });
         btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
         const panel = document.getElementById(panelId);
-        if (panel) panel.classList.add('active');
+        if (panel) {
+            panel.classList.add('active');
+            panel.hidden = false;
+        }
     },
 
     // ── Enable conditions ────────────────────────────────────────────────────
