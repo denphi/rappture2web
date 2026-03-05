@@ -34,8 +34,9 @@ setup(
     },
     include_package_data=True,
     install_requires=[
-        "fastapi>=0.100.0",
+        "fastapi>=0.95.2,<=0.103.2",
         "uvicorn>=0.20.0",
+        "websockets>=10.0",
         "jinja2>=3.1.0",
         "python-multipart>=0.0.6",
         "lxml>=4.9.0",

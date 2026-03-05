@@ -278,9 +278,9 @@ async def run_simulation(
         # Pass server URL as argv[1]
         command = command.replace("@driver", server_url)
     elif use_native_rappture:
-        # Native Rappture mode: create driver.xml, run `rappture -load driver.xml`
+        # Native Rappture mode: create driver.xml, run `rappture -execute driver.xml`
         driver_path = create_driver_xml(tool_xml_path, input_values)
-        native_command = f"{rappture_bin} -load {driver_path}"
+        native_command = f"{rappture_bin} -execute {driver_path} -tool {tool_xml_path}"
     else:
         # Classic mode: create driver.xml, run tool script directly
         driver_path = create_driver_xml(tool_xml_path, input_values)
