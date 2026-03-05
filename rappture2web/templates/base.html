@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ tool.title }} - Rappture</title>
-    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260304m">
+    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260305n">
     <script>window._rpBasePath = {{ base_path | tojson }};</script>
     <script src="{{ base_path }}/static/js/plotly-3.4.0.min.js"></script>
     <script>Plotly.setPlotConfig({ topojsonURL: '{{ base_path }}/static/js/' });</script>
@@ -14,13 +14,46 @@
 </head>
 <body>
     <a href="#rp-main-content" class="rp-skip-link">Skip to main content</a>
-    <header class="rp-header" role="banner">
-        <h1 class="rp-title">{{ tool.title }}</h1>
+    <header class="rp-header{% if nanohub_support_url or nanohub_terminate_url %} rp-header-has-toolbar{% endif %}" role="banner">
+        <div class="rp-brand-bar">
+            <div class="rp-brand">
+                <img
+                    src="{{ base_path }}/static/img/nanohub_logo_color.jpg"
+                    alt="nanoHUB"
+                    class="rp-nanohub-logo">
+                <div class="rp-brand-text">
+                    <span class="rp-brand-platform">nanoHUB</span>
+                    <h1 class="rp-title">{{ tool.title }}</h1>
+                </div>
+            </div>
+        </div>
+        {% if nanohub_support_url or nanohub_terminate_url %}
+        <nav class="rp-toolbar" aria-label="Session actions">
+            <div class="rp-toolbar-inner">
+                <ul class="rp-toolbar-actions">
+                    {% if nanohub_support_url %}
+                    <li>
+                        <a class="rp-toolbar-link" href="{{ nanohub_support_url }}" target="_blank" rel="noopener noreferrer">
+                            Support
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% if nanohub_terminate_url %}
+                    <li>
+                        <a class="rp-toolbar-link rp-toolbar-link-danger" href="{{ nanohub_terminate_url }}">
+                            Close Session
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </nav>
+        {% endif %}
     </header>
     <main id="rp-main-content" class="rp-main" role="main">
         {% block content %}{% endblock %}
     </main>
-    <script src="{{ base_path }}/static/js/rappture.js?v=20260305b"></script>
+    <script src="{{ base_path }}/static/js/rappture.js?v=20260305c"></script>
     <script src="{{ base_path }}/static/js/rp-utils.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderers-simple.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-curve.js?v=20260305a"></script>

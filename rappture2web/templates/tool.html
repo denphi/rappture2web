@@ -12,7 +12,7 @@
         <form id="rp-form" class="rp-form" aria-label="Simulation inputs">
             {% if has_phases %}
             {# Phase tab strip #}
-            <div class="rp-phase-tabs" role="tablist" aria-label="Simulation phases">
+            <div class="rp-phase-tabs" role="tablist" aria-label="Simulation phases" aria-orientation="horizontal">
                 {% for widget in inputs %}
                 {% set panel_id = "phase-panel-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
                 {% set tab_id = "phase-tab-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
@@ -22,6 +22,7 @@
                         role="tab"
                         aria-selected="{{ 'true' if loop.first else 'false' }}"
                         aria-controls="{{ panel_id }}"
+                        tabindex="{{ '0' if loop.first else '-1' }}"
                         data-phase="{{ widget.path }}"
                         onclick="rappture.switchPhase('{{ widget.path }}')">
                     {{ widget.label or widget.id }}
@@ -35,7 +36,7 @@
                  id="{{ panel_id }}"
                  role="tabpanel"
                  aria-labelledby="{{ tab_id }}"
-                 {% if not loop.first %}style="display:none"{% endif %}>
+                 {% if not loop.first %}hidden{% endif %}>
                 {% include "widgets/phase.html" ignore missing %}
             </div>
             {% endfor %}

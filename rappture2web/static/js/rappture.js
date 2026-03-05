@@ -699,48 +699,19 @@ const rappture = {
         const placeholder = container.querySelector('.rp-results-placeholder');
         if (placeholder) placeholder.remove();
 
-        let logPanel = document.getElementById('rp-panel-__log__');
-        if (!logPanel) {
-            // Create the Log tab via the same streaming path
-            const pre = document.createElement('pre');
-            pre.id = 'rp-live-log-pre';
-            pre.style.cssText = 'font-size:13px;white-space:pre-wrap;background:#1e293b;color:#e2e8f0;padding:14px;border-radius:4px;max-height:400px;overflow-y:auto;margin:0';
-            pre.textContent = text;
+        let logBody = document.getElementById('rp-live-log-pre');
+        if (!logBody) {
+            // Build log output through the same selector + panel path as all outputs.
+            this._renderSingleOutputTab('__log__', { type: 'log', label: 'Log', content: text }, 'Log');
+            const logPanel = document.getElementById('rp-panel-__log__');
+            logBody = logPanel ? logPanel.querySelector('.rp-output-body') : null;
+            if (logBody) logBody.id = 'rp-live-log-pre';
+            return;
+        }
 
-            let tabBar = container.querySelector('.rp-output-tabs');
-            let panelWrap = container.querySelector('.rp-output-panels');
-            if (!tabBar) {
-                tabBar = document.createElement('div');
-                tabBar.className = 'rp-output-tabs';
-                panelWrap = document.createElement('div');
-                panelWrap.className = 'rp-output-panels';
-                container.appendChild(tabBar);
-                container.appendChild(panelWrap);
-            }
-
-            const isFirst = tabBar.children.length === 0;
-            const btn = document.createElement('button');
-            btn.className = 'rp-output-tab-btn' + (isFirst ? ' active' : '');
-            btn.textContent = 'Log';
-            btn.addEventListener('click', () => {
-                tabBar.querySelectorAll('.rp-output-tab-btn').forEach(b => b.classList.remove('active'));
-                panelWrap.querySelectorAll('.rp-output-panel').forEach(p => p.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById('rp-panel-__log__').classList.add('active');
-            });
-            tabBar.appendChild(btn);
-
-            logPanel = document.createElement('div');
-            logPanel.className = 'rp-output-panel' + (isFirst ? ' active' : '');
-            logPanel.id = 'rp-panel-__log__';
-            logPanel.appendChild(pre);
-            panelWrap.appendChild(logPanel);
-        } else {
-            const pre = document.getElementById('rp-live-log-pre');
-            if (pre) {
-                pre.textContent += text;
-                pre.scrollTop = pre.scrollHeight;
-            }
+        if (logBody) {
+            logBody.textContent += text;
+            logBody.scrollTop = logBody.scrollHeight;
         }
     },
 
@@ -954,6 +925,7 @@ const rappture = {
             const upBtn = document.createElement('button');
             upBtn.className = 'rp-run-reorder-btn';
             upBtn.title = 'Move up';
+            upBtn.setAttribute('aria-label', `Move ${run.label} up`);
             upBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="8,3 14,13 2,13"/></svg>';
             upBtn.disabled = isTop;
             upBtn.addEventListener('click', () => this._moveRun(idx, -1));
@@ -961,6 +933,7 @@ const rappture = {
             const downBtn = document.createElement('button');
             downBtn.className = 'rp-run-reorder-btn';
             downBtn.title = 'Move down';
+            downBtn.setAttribute('aria-label', `Move ${run.label} down`);
             downBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><polygon points="8,13 14,3 2,3"/></svg>';
             downBtn.disabled = idx === this._runs.length - 1;
             downBtn.addEventListener('click', () => this._moveRun(idx, 1));
@@ -988,6 +961,7 @@ const rappture = {
             const delBtn = document.createElement('button');
             delBtn.className = 'rp-run-delete';
             delBtn.title = 'Delete run';
+            delBtn.setAttribute('aria-label', `Delete ${run.label}`);
             delBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><line x1="2" y1="2" x2="14" y2="14" stroke="currentColor" stroke-width="2"/><line x1="14" y1="2" x2="2" y2="14" stroke="currentColor" stroke-width="2"/></svg>';
             delBtn.addEventListener('click', () => this.deleteRun(run.run_id));
 
@@ -1104,6 +1078,9 @@ const rappture = {
         swatch.className = 'rp-run-color';
         swatch.style.background = run._color;
         swatch.title = 'Set run color';
+        swatch.setAttribute('aria-label', `Set color for ${run.label}`);
+        swatch.setAttribute('aria-haspopup', 'dialog');
+        swatch.setAttribute('aria-expanded', 'false');
 
         const popup = document.createElement('div');
         popup.className = 'rp-color-popup';
@@ -1140,6 +1117,7 @@ const rappture = {
         hexInput.value = run._color;
         hexInput.maxLength = 7;
         hexInput.placeholder = '#rrggbb';
+        hexInput.setAttribute('aria-label', `Custom color hex code for ${run.label}`);
         hexInput.addEventListener('input', () => {
             const v = hexInput.value.trim();
             if (/^#[0-9a-fA-F]{6}$/.test(v)) {
@@ -1156,11 +1134,27 @@ const rappture = {
             e.stopPropagation();
             const isOpen = popup.style.display !== 'none';
             // Close any other open popups
-            document.querySelectorAll('.rp-color-popup').forEach(p => { p.style.display = 'none'; });
+            document.querySelectorAll('.rp-color-popup').forEach(p => {
+                p.style.display = 'none';
+                const parent = p.closest('.rp-color-wrap');
+                const parentSwatch = parent && parent.querySelector('.rp-run-color');
+                if (parentSwatch) parentSwatch.setAttribute('aria-expanded', 'false');
+            });
             popup.style.display = isOpen ? 'none' : 'block';
+            swatch.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
         });
 
-        document.addEventListener('click', () => { popup.style.display = 'none'; }, { capture: true, passive: true });
+        popup.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                popup.style.display = 'none';
+                swatch.setAttribute('aria-expanded', 'false');
+                swatch.focus();
+            }
+        });
+        document.addEventListener('click', () => {
+            popup.style.display = 'none';
+            swatch.setAttribute('aria-expanded', 'false');
+        }, { capture: true, passive: true });
 
         wrap.appendChild(swatch);
         wrap.appendChild(popup);
@@ -1740,21 +1734,78 @@ const rappture = {
 
     // ── Phase tabs ───────────────────────────────────────────────────────────
 
+    _syncTabState(tabs, activeTab) {
+        tabs.forEach(t => {
+            const isActive = t === activeTab;
+            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            t.setAttribute('tabindex', isActive ? '0' : '-1');
+        });
+    },
+
+    _activateTabFromKeyboard(tablist, fromTab, direction) {
+        const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+        if (!tabs.length) return;
+        const currIdx = tabs.indexOf(fromTab);
+        let idx = currIdx;
+        if (direction === 'first') idx = 0;
+        else if (direction === 'last') idx = tabs.length - 1;
+        else idx = (currIdx + direction + tabs.length) % tabs.length;
+        const nextTab = tabs[idx];
+        if (!nextTab) return;
+        nextTab.focus();
+        nextTab.click();
+    },
+
+    initTabAccessibility() {
+        document.querySelectorAll('[role="tablist"]').forEach(tablist => {
+            const tabs = Array.from(tablist.querySelectorAll('[role="tab"]'));
+            if (!tabs.length) return;
+            const selected = tabs.find(t => t.getAttribute('aria-selected') === 'true') || tabs[0];
+            this._syncTabState(tabs, selected);
+
+            tabs.forEach(tab => {
+                tab.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        this._activateTabFromKeyboard(tablist, tab, 1);
+                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        this._activateTabFromKeyboard(tablist, tab, -1);
+                    } else if (e.key === 'Home') {
+                        e.preventDefault();
+                        this._activateTabFromKeyboard(tablist, tab, 'first');
+                    } else if (e.key === 'End') {
+                        e.preventDefault();
+                        this._activateTabFromKeyboard(tablist, tab, 'last');
+                    } else if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        tab.click();
+                    }
+                });
+                tab.addEventListener('focus', () => {
+                    tabs.forEach(t => t.setAttribute('tabindex', t === tab ? '0' : '-1'));
+                });
+            });
+        });
+    },
+
     switchPhase(path) {
         // Hide all panels, deactivate all tabs
-        document.querySelectorAll('.rp-phase-panel').forEach(p => p.style.display = 'none');
+        document.querySelectorAll('.rp-phase-panel').forEach(p => { p.hidden = true; });
         document.querySelectorAll('.rp-phase-tab').forEach(t => {
             t.classList.remove('rp-phase-tab-active');
             t.setAttribute('aria-selected', 'false');
+            t.setAttribute('tabindex', '-1');
         });
         // Show selected panel and activate its tab
         const panelId = 'phase-panel-' + path.replace(/[.()\s]/g, '_');
         const panel = document.getElementById(panelId);
-        if (panel) panel.style.display = '';
+        if (panel) panel.hidden = false;
         const tab = document.querySelector(`.rp-phase-tab[data-phase="${path}"]`);
         if (tab) {
             tab.classList.add('rp-phase-tab-active');
             tab.setAttribute('aria-selected', 'true');
+            tab.setAttribute('tabindex', '0');
         }
     },
 
@@ -1776,15 +1827,18 @@ const rappture = {
     switchTab(btn, panelId) {
         const container = btn.closest('.rp-group-tabbed, .rp-phase');
         if (!container) return;
-        container.querySelectorAll('.rp-tab-btn').forEach(b => {
+        const tabs = container.querySelectorAll('.rp-tab-btn');
+        tabs.forEach(b => {
             b.classList.remove('active');
             b.setAttribute('aria-selected', 'false');
+            b.setAttribute('tabindex', '-1');
         });
         container.querySelectorAll('.rp-tab-panel').forEach(p => {
             p.classList.remove('active');
         });
         btn.classList.add('active');
         btn.setAttribute('aria-selected', 'true');
+        btn.setAttribute('tabindex', '0');
         // panelId may contain raw path chars; normalize to match element id
         const safeId = panelId.replace(/\./g,'_').replace(/\(/g,'_').replace(/\)/g,'_').replace(/:/g,'_');
         const panel = document.getElementById(safeId);
@@ -1924,6 +1978,7 @@ const rappture = {
 document.addEventListener('DOMContentLoaded', () => {
     rappture.initEnableConditions();
     rappture.initColorInputs();
+    rappture.initTabAccessibility();
     rappture.connectWebSocket();
     rappture._fetchRunHistory();
     document.querySelectorAll('.rp-periodicelement').forEach(w => rappture.initPeriodicElement(w));

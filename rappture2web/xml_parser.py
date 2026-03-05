@@ -21,7 +21,7 @@ INPUT_TYPES = {
 OUTPUT_TYPES = {
     "curve", "histogram", "field", "image", "string", "number", "integer",
     "boolean", "table", "log", "sequence", "structure", "mesh", "group",
-    "mapviewer",
+    "mapviewer", "drawing",
 }
 
 # Special non-widget elements
@@ -358,6 +358,26 @@ def _parse_output_element(elem, parent_path):
         node.attrs["current"] = _get_text(elem, "current")
     elif tag == "field":
         node.attrs["about"] = about_info
+    elif tag == "drawing":
+        # Parse axis labels/units
+        for ax in ("xaxis", "yaxis", "zaxis"):
+            ax_elem = elem.find(ax)
+            node.attrs[ax] = {
+                "label": _get_text(ax_elem, "label") if ax_elem is not None else "",
+                "units": _get_text(ax_elem, "units") if ax_elem is not None else "",
+            }
+        # Parse molecule children (PDB or VTK)
+        molecules = []
+        for mol_elem in elem.findall("molecule"):
+            mol_id = mol_elem.get("id", "")
+            pdb_text = _get_text(mol_elem, "pdb")
+            vtk_text = _get_text(mol_elem, "vtk")
+            molecules.append({
+                "id": mol_id,
+                "pdb": pdb_text.strip() if pdb_text else "",
+                "vtk": vtk_text.strip() if vtk_text else "",
+            })
+        node.attrs["molecules"] = molecules
     elif tag == "group":
         # Output groups can overlay plots
         node.children = [

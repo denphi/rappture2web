@@ -19,36 +19,86 @@ def _get_session():
     return session, sessiondir
 
 
+def _parse_nanohub_resources():
+    """Parse nanoHUB SESSIONDIR/resources into a dict.
+
+    Returns {} when not on nanoHUB or the file is missing.
+    """
+    session, sessiondir = _get_session()
+    if not session or not sessiondir:
+        return {}
+
+    fn = os.path.join(sessiondir, "resources")
+    if not os.path.exists(fn):
+        return {}
+
+    values = {"session": session}
+    with open(fn) as f:
+        for line in f:
+            parts = line.strip().split(" ", 1)
+            if len(parts) != 2:
+                continue
+            key, value = parts
+            values[key] = value.strip().strip('"')
+    return values
+
+
 def _get_proxy_addr(port):
     """Parse nanoHUB resources file and return (base_path, proxy_url).
 
     Returns (None, None) when not running on nanoHUB or resources file missing.
     """
-    session, sessiondir = _get_session()
-    if not session or not sessiondir:
-        return None, None
+    resources = _parse_nanohub_resources()
+    hub_url = resources.get("hub_url")
+    fxc = resources.get("filexfer_cookie")
+    session = resources.get("session")
+    fxp = None
+    if resources.get("filexfer_port"):
+        try:
+            full_port = int(resources["filexfer_port"])
+            fxp = str(full_port % 1000)
+        except ValueError:
+            fxp = None
 
-    fn = os.path.join(sessiondir, "resources")
-    if not os.path.exists(fn):
-        return None, None
-
-    hub_url = fxp = fxc = None
-    with open(fn) as f:
-        for line in f:
-            if line.startswith("hub_url"):
-                hub_url = line.split(" ", 1)[1].strip().replace('"', "")
-            elif line.startswith("filexfer_port"):
-                full_port = int(line.split()[1])
-                fxp = str(full_port % 1000)
-            elif line.startswith("filexfer_cookie"):
-                fxc = line.split()[1]
-
-    if not (hub_url and fxp and fxc):
+    if not (hub_url and fxp and fxc and session):
         return None, None
 
     base_path = "/weber/{}/{}/{}/".format(session, fxc, fxp).rstrip("/")
     proxy_url = "https://proxy." + hub_url.split("//", 1)[1] + base_path + "/"
     return base_path, proxy_url
+
+
+def _nanohub_urls():
+    """Return detected nanoHUB support/terminate URLs or empty strings."""
+    resources = _parse_nanohub_resources()
+    hub_url = resources.get("hub_url", "").rstrip("/")
+    sessionid = resources.get("sessionid")
+    app_name = resources.get("application_name", "").strip()
+    if not app_name and resources.get("appname"):
+        app_name = resources.get("appname", "").strip()
+    if app_name.startswith("app-"):
+        app_name = app_name[4:]
+    app_name = app_name.strip().lower()
+
+    support_url = ""
+    terminate_url = ""
+    if hub_url and app_name:
+        support_url = f"{hub_url}/feedback/report_problems?group=app-{app_name}"
+    if hub_url and app_name and sessionid:
+        terminate_url = f"{hub_url}/tools/{app_name}/stop?sess={sessionid}"
+    return support_url, terminate_url
+
+
+def _resolve_nanohub_urls():
+    """Resolve support/terminate URLs with environment overrides."""
+    detected_support_url, detected_terminate_url = _nanohub_urls()
+    support_url = os.environ.get("NANOHUB_SUPPORT_URL")
+    terminate_url = os.environ.get("NANOHUB_TERMINATE_URL")
+    if support_url is None:
+        support_url = detected_support_url
+    if terminate_url is None:
+        terminate_url = detected_terminate_url
+    return support_url or "", terminate_url or ""
 
 
 def main():
@@ -125,6 +175,7 @@ def main():
 
     # On nanoHUB the app runs on args.port (8001) and wrwroxy forwards from 8000
     use_wrwroxy = args.wrwroxy and (shutil.which("wrwroxy") is not None)
+    nanohub_support_url, nanohub_terminate_url = _resolve_nanohub_urls()
 
     from .app import app, set_tool
 
@@ -139,6 +190,8 @@ def main():
         use_library_mode=args.library_mode,
         use_cache=not args.no_cache,
         base_path=base_path,
+        nanohub_support_url=nanohub_support_url,
+        nanohub_terminate_url=nanohub_terminate_url,
     )
 
     print("Loading tool: {}".format(tool_path))
@@ -148,6 +201,10 @@ def main():
     print("Run cache directory: {}".format(cache_dir))
     if proxy_url:
         print("nanoHUB proxy URL: {}".format(proxy_url))
+    if nanohub_support_url:
+        print("nanoHUB support URL: {}".format(nanohub_support_url))
+    if nanohub_terminate_url:
+        print("nanoHUB terminate URL: {}".format(nanohub_terminate_url))
 
     # Open browser only when not behind a proxy and not suppressed
     if not args.no_browser and not base_path:

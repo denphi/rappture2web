@@ -48,6 +48,8 @@ _server_url: str = ""
 _use_library_mode: bool = False
 _use_cache: bool = True
 _base_path: str = ""
+_nanohub_support_url: str = ""
+_nanohub_terminate_url: str = ""
 
 APP_DIR = Path(__file__).parent
 
@@ -78,17 +80,21 @@ templates.env.filters["strip_units"] = _strip_units
 
 def set_tool(xml_path: str, cache_dir: str | None = None,
              server_url: str = "", use_library_mode: bool = False,
-             use_cache: bool = True, base_path: str = ""):
+             use_cache: bool = True, base_path: str = "",
+             nanohub_support_url: str = "",
+             nanohub_terminate_url: str = ""):
     """Configure the tool and start-up options."""
     global _tool_def, _tool_xml_path, _history, _server_url
     global _use_library_mode, _use_cache, _base_path
+    global _nanohub_support_url, _nanohub_terminate_url
 
     _tool_xml_path = str(Path(xml_path).resolve())
-    tool_dir = str(Path(_tool_xml_path).parent)
 
     _use_library_mode = use_library_mode
     _use_cache = use_cache
     _base_path = base_path.rstrip("/")
+    _nanohub_support_url = (nanohub_support_url or "").strip()
+    _nanohub_terminate_url = (nanohub_terminate_url or "").strip()
 
     _tool_def = parse_tool_xml(_tool_xml_path, base_path=_base_path)
     _server_url = server_url
@@ -158,6 +164,8 @@ async def index(request: Request):
         "outputs": _tool_def.outputs,
         "tool_xml_path": _tool_xml_path,
         "base_path": _base_path,
+        "nanohub_support_url": _nanohub_support_url,
+        "nanohub_terminate_url": _nanohub_terminate_url,
     })
 
 

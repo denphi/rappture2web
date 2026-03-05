@@ -8,7 +8,7 @@
     <div class="rp-group-header" id="{{ tablist_id }}-header">{{ widget.label }}</div>
     {% endif %}
     <div class="rp-tabs">
-        <div class="rp-tab-buttons" role="tablist" aria-label="{{ widget.label or widget.id }}">
+        <div class="rp-tab-buttons" role="tablist" aria-label="{{ widget.label or widget.id }}" aria-orientation="horizontal">
             {% for child in tab_children %}
             {% set tab_id = tablist_id ~ "-tab-" ~ loop.index0 %}
             {% set panel_id = widget.path ~ "-tab-" ~ loop.index0 %}
@@ -18,6 +18,7 @@
                     role="tab"
                     aria-selected="{{ 'true' if loop.first else 'false' }}"
                     aria-controls="{{ panel_id | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') }}"
+                    tabindex="{{ '0' if loop.first else '-1' }}"
                     {% if child.enable %}data-enable='{{ child.enable }}'{% endif %}
                     onclick="rappture.switchTab(this, '{{ panel_id }}')">
                 {{ child.label or child.id }}
