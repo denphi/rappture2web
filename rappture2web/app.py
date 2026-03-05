@@ -82,6 +82,14 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
     global _use_library_mode, _use_cache, _base_path
 
     _tool_xml_path = str(Path(xml_path).resolve())
+    tool_dir = str(Path(_tool_xml_path).parent)
+
+    # Mount the tool directory so note HTML files can load images via /tool-files/
+    try:
+        app.mount("/tool-files", StaticFiles(directory=tool_dir), name="tool-files")
+    except Exception:
+        pass  # Already mounted or directory not found
+
     _tool_def = parse_tool_xml(_tool_xml_path)
     _server_url = server_url
     _use_library_mode = use_library_mode

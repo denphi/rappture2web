@@ -448,18 +448,17 @@ def _resolve_note_contents(widgets, tool_dir: Path):
                 fpath = tool_dir / fname
                 if fpath.exists():
                     html = fpath.read_text(errors="replace")
-                    # Inline relative <img src="..."> as base64 data URIs
-                    def _inline_img(m):
-                        src = m.group(1)
-                        if src.startswith("data:") or src.startswith("http"):
+                    # Rewrite relative src paths to go through /tool-files/
+                    # so the browser can fetch them directly without inlining.
+                    html_subdir = fpath.parent.name  # e.g. "intro_page"
+                    def _rewrite_src(m):
+                        quote = m.group(1)
+                        src = m.group(2)
+                        if src.startswith("data:") or src.startswith("http") or src.startswith("/"):
                             return m.group(0)
-                        img_path = fpath.parent / src
-                        if img_path.exists():
-                            mime = "image/gif" if src.endswith(".gif") else "image/png" if src.endswith(".png") else "image/jpeg"
-                            b64 = base64.b64encode(img_path.read_bytes()).decode("ascii")
-                            return f'src="data:{mime};base64,{b64}"'
-                        return m.group(0)
-                    html = re.sub(r'src="([^"]+)"', _inline_img, html)
+                        # Rewrite to /tool-files/<subdir>/<src>
+                        return f'src={quote}/tool-files/{html_subdir}/{src}{quote}'
+                    html = re.sub(r'src=(["\'])([^"\']+)\1', _rewrite_src, html)
                     w.attrs["contents"] = "html://" + html
         # Recurse into group/phase children
         if hasattr(w, "children") and w.children:

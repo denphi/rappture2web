@@ -8,9 +8,7 @@
 {% set has_phases = inputs | selectattr('type', 'equalto', 'phase') | list | length == inputs | length and inputs | length > 0 %}
 <div class="rp-layout">
     <aside class="rp-sidebar" role="complementary" aria-label="Tool inputs and controls">
-        <div class="rp-about" aria-label="{{ tool.about }}">
-            <p>{{ tool.about[:200] }}{% if tool.about|length > 200 %}...{% endif %}</p>
-        </div>
+
         <form id="rp-form" class="rp-form" aria-label="Simulation inputs">
             {% if has_phases %}
             {# Phase tab strip #}
