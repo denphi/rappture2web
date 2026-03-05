@@ -134,12 +134,30 @@ async def tool_static_file(file_path: str):
     """Serve static files from the tool directory (e.g. images in note HTML)."""
     if not _tool_xml_path:
         return Response(status_code=404)
-    tool_dir = Path(_tool_xml_path).parent
-    target = (tool_dir / file_path).resolve()
-    # Security: ensure the resolved path stays within tool_dir
-    try:
-        target.relative_to(tool_dir.resolve())
-    except ValueError:
+    tool_dir = Path(_tool_xml_path).parent.resolve()
+    # "__up__" keeps browser URL normalization from collapsing "/tool-files/../..."
+    # while still mapping to a parent-relative filesystem path.
+    raw_parts = [p for p in file_path.split("/") if p not in ("", ".")]
+    up_count = sum(1 for p in raw_parts if p == "__up__")
+    if up_count > 1:
+        return Response(status_code=403)
+    rel_parts = [".." if p == "__up__" else p for p in raw_parts]
+    rel_path = "/".join(rel_parts)
+    target = (tool_dir / rel_path).resolve()
+
+    allowed_roots = [tool_dir]
+    if up_count:
+        allowed_roots.append(tool_dir.parent.resolve())
+
+    allowed = False
+    for root in allowed_roots:
+        try:
+            target.relative_to(root)
+            allowed = True
+            break
+        except ValueError:
+            continue
+    if not allowed:
         return Response(status_code=403)
     if not target.exists() or not target.is_file():
         return Response(status_code=404)

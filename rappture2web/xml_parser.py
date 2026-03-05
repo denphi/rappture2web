@@ -457,9 +457,27 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
     return tool_def
 
 
+def _encode_tool_files_relpath(target: Path, tool_dir: Path) -> str:
+    """Encode a resolved target path into a /tool-files-safe relative path.
+
+    Parent traversals are encoded as "__up__" so browsers don't normalize
+    "/tool-files/../..." into "/...".
+    """
+    import os
+
+    rel = Path(os.path.relpath(str(target.resolve()), str(tool_dir.resolve()))).as_posix()
+    encoded_parts = []
+    for part in rel.split("/"):
+        if part in ("", "."):
+            continue
+        encoded_parts.append("__up__" if part == ".." else part)
+    return "/".join(encoded_parts)
+
+
 def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
     """Resolve file:// references in note widget contents and inline images."""
     import re
+    tool_dir = tool_dir.resolve()
     for w in widgets:
         if w.type == "note":
             contents = w.attrs.get("contents", "")
@@ -468,24 +486,46 @@ def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
                 fpath = tool_dir / fname
                 if fpath.exists():
                     html = fpath.read_text(errors="replace")
-                    # Rewrite relative src paths to go through /tool-files/
-                    # Include base_path so the reverse proxy can route the request.
-                    try:
-                        html_subdir = str(fpath.parent.relative_to(tool_dir)).replace('\\', '/')
-                    except ValueError:
-                        html_subdir = fpath.parent.name
+                    # Rewrite relative src/href paths to go through /tool-files/.
+                    # Resolve path references relative to the note HTML file.
                     bp = base_path.rstrip("/")
-                    if html_subdir and html_subdir != ".":
-                        prefix = f"{bp}/tool-files/{html_subdir}/"
-                    else:
-                        prefix = f"{bp}/tool-files/"
-                    def _rewrite_src(m, _prefix=prefix):
-                        quote = m.group(1)
-                        src = m.group(2)
-                        if src.startswith("data:") or src.startswith("http") or src.startswith("/"):
-                            return m.group(0)
-                        return f'src={quote}{_prefix}{src}{quote}'
-                    html = re.sub(r'src\s*=\s*(["\'])([^"\']+)\1', _rewrite_src, html)
+
+                    def _rewrite_attr(match):
+                        attr = match.group("attr")
+                        quote = match.group("quote")
+                        raw = match.group("value").strip()
+                        lower = raw.lower()
+                        if (
+                            lower.startswith("data:")
+                            or lower.startswith("http://")
+                            or lower.startswith("https://")
+                            or lower.startswith("//")
+                            or lower.startswith("mailto:")
+                            or lower.startswith("javascript:")
+                            or raw.startswith("#")
+                            or raw.startswith("/")
+                        ):
+                            return match.group(0)
+
+                        # Keep query/fragment while resolving filesystem path.
+                        suffix = ""
+                        for sep in ("?", "#"):
+                            idx = raw.find(sep)
+                            if idx != -1:
+                                suffix = raw[idx:]
+                                raw = raw[:idx]
+                                break
+
+                        resolved = (fpath.parent / raw).resolve()
+                        encoded_rel = _encode_tool_files_relpath(resolved, tool_dir)
+                        return f'{attr}={quote}{bp}/tool-files/{encoded_rel}{suffix}{quote}'
+
+                    html = re.sub(
+                        r'(?P<attr>src|href)\s*=\s*(?P<quote>["\'])(?P<value>[^"\']+)(?P=quote)',
+                        _rewrite_attr,
+                        html,
+                        flags=re.IGNORECASE,
+                    )
                     w.attrs["contents"] = "html://" + html
         # Recurse into group/phase children
         if hasattr(w, "children") and w.children:
