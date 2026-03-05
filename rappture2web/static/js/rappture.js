@@ -681,6 +681,20 @@ const rappture = {
 
     /** Append log text — creates or updates a "Log" tab during streaming. */
     _appendLog(text) {
+        // Parse Rappture protocol lines before displaying
+        for (const line of text.split('\n')) {
+            const progMatch = line.match(/^=RAPPTURE-PROGRESS=>(\d+)\s*(.*)/);
+            if (progMatch) {
+                const pct = progMatch[1];
+                const msg = progMatch[2].trim();
+                this._setStatus(`${pct}%${msg ? ' — ' + msg : ''}`);
+            }
+            const errMatch = line.match(/^=RAPPTURE-ERROR=>(.*)/);
+            if (errMatch) {
+                this._setStatus('Error: ' + errMatch[1].trim(), 'error');
+            }
+        }
+
         const container = document.getElementById('rp-results');
         const placeholder = container.querySelector('.rp-results-placeholder');
         if (placeholder) placeholder.remove();

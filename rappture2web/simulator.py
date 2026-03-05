@@ -295,11 +295,25 @@ async def run_simulation(
 
     # ── Execute ──────────────────────────────────────────────────────────────
     try:
+        # Build a clean environment: strip Python-related vars so the tool's
+        # own python/virtualenv calls use the system python, not ours.
+        import os
+        clean_env = {k: v for k, v in os.environ.items()
+                     if k not in ('PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV',
+                                  'CONDA_PREFIX', 'CONDA_DEFAULT_ENV')}
+        # Remove our venv from PATH so 'python' resolves to the system python
+        path_parts = clean_env.get('PATH', '').split(os.pathsep)
+        venv = os.environ.get('VIRTUAL_ENV') or os.environ.get('CONDA_PREFIX', '')
+        if venv:
+            path_parts = [p for p in path_parts if not p.startswith(venv)]
+        clean_env['PATH'] = os.pathsep.join(path_parts)
+
         process = await asyncio.create_subprocess_shell(
             exec_command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=tool_dir,
+            env=clean_env,
         )
 
         stdout_chunks: list[str] = []

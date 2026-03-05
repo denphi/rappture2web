@@ -1,6 +1,6 @@
 <div class="rp-widget rp-phase" data-path="{{ widget.path }}" data-type="phase"
      {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}>
-    <div class="rp-phase-header">{{ widget.label or widget.id }}</div>
+    {% if not has_phases %}<div class="rp-phase-header">{{ widget.label or widget.id }}</div>{% endif %}
     {% if widget.attrs.is_tabbed %}
     {# Phase whose direct children are all labeled groups → render as inner tabs #}
     {% set tablist_id = "phase-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
