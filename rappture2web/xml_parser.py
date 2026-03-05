@@ -361,7 +361,10 @@ def _parse_output_children(parent_elem, parent_path):
                 label="Log",
             )
             if child.text:
-                node.attrs["content"] = child.text.strip()
+                raw = child.text.strip()
+                if raw.startswith("@@RP-ENC:"):
+                    raw = _decode_rp_enc(raw).decode("utf-8", errors="replace")
+                node.attrs["content"] = raw
             children.append(node)
     return children
 
@@ -481,9 +484,12 @@ def parse_run_xml(xml_path: str) -> dict:
         elif tag == "image":
             outputs[elem_id] = _parse_image_output(child)
         elif tag == "log":
+            raw_log = child.text.strip() if child.text else ""
+            if raw_log.startswith("@@RP-ENC:"):
+                raw_log = _decode_rp_enc(raw_log).decode("utf-8", errors="replace")
             outputs["log"] = {
                 "type": "log",
-                "content": child.text.strip() if child.text else "",
+                "content": raw_log,
             }
         elif tag == "table":
             outputs[elem_id] = _parse_table_output(child)
@@ -531,6 +537,8 @@ def _parse_curve_output(elem):
     label = _get_text(about, "label") if about is not None else ""
     curve_type = _get_text(about, "type") if about is not None else ""   # line/scatter/bar
     group = _get_text(about, "group") if about is not None else ""
+    _style_text = (_get_text(about, "style") or _get_text(about, "color") or "") if about is not None else ""
+    curve_style = _parse_rappture_style(_style_text)
 
     xaxis_elem = elem.find("xaxis")
     yaxis_elem = elem.find("yaxis")
@@ -562,10 +570,13 @@ def _parse_curve_output(elem):
         if xy_elem is not None and xy_elem.text:
             x_vals, y_vals = _parse_xy_text(xy_elem.text)
             trace_label = _get_text(comp.find("about"), "label") if comp.find("about") is not None else ""
+            style_text = _get_text(comp, "style") or ""
+            style = _parse_rappture_style(style_text) or curve_style
             traces.append({
                 "x": x_vals,
                 "y": y_vals,
                 "label": trace_label,
+                "style": style,
             })
 
     # If no component wrapper, try direct xy
@@ -575,7 +586,7 @@ def _parse_curve_output(elem):
             xy_elem = elem.find("xy")
         if xy_elem is not None and xy_elem.text:
             x_vals, y_vals = _parse_xy_text(xy_elem.text)
-            traces.append({"x": x_vals, "y": y_vals, "label": label})
+            traces.append({"x": x_vals, "y": y_vals, "label": label, "style": curve_style})
 
     return {
         "type": "curve",
@@ -1018,6 +1029,28 @@ def _parse_sequence_output(elem):
         "index_label": index_label,
         "elements": elements,
     }
+
+
+def _parse_rappture_style(style_text):
+    """Parse a Rappture style string like '-color red -linestyle dashed -linewidth 2'.
+    Returns a dict with keys: color, linestyle, linewidth, symbol, fill, opacity.
+    """
+    result = {}
+    if not style_text:
+        return result
+    import re
+    tokens = re.split(r'\s+', style_text.strip())
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith('-') and i + 1 < len(tokens):
+            key = tok[1:]
+            val = tokens[i + 1]
+            result[key] = val
+            i += 2
+        else:
+            i += 1
+    return result
 
 
 def _parse_xy_text(text):

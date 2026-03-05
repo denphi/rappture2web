@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ tool.title }} - Rappture</title>
-    <link rel="stylesheet" href="/static/css/rappture.css?v=20260304h">
+    <link rel="stylesheet" href="/static/css/rappture.css?v=20260304m">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -18,7 +18,17 @@
     <main id="rp-main-content" class="rp-main" role="main">
         {% block content %}{% endblock %}
     </main>
-    <script src="/static/js/rappture.js?v=20260304h"></script>
+    <script src="/static/js/rappture.js?v=20260304m"></script>
+    <script src="/static/js/rp-utils.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderers-simple.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-curve.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-table.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-sequence.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-field.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-field-3d.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-field-vtk.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-field-unstructured.js?v=20260304m"></script>
+    <script src="/static/js/rp-renderer-field-vector.js?v=20260304m"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
