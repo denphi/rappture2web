@@ -38,10 +38,7 @@
                  role="tabpanel"
                  aria-labelledby="{{ tab_id }}"
                  {% if not loop.first %}style="display:none"{% endif %}>
-                {% for child in widget.children %}
-                    {% set widget = child %}
-                    {% include "widgets/" + child.type + ".html" ignore missing %}
-                {% endfor %}
+                {% include "widgets/phase.html" ignore missing %}
             </div>
             {% endfor %}
             {% else %}

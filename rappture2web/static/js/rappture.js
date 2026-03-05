@@ -1760,7 +1760,7 @@ const rappture = {
     },
 
     switchTab(btn, panelId) {
-        const container = btn.closest('.rp-group-tabbed');
+        const container = btn.closest('.rp-group-tabbed, .rp-phase');
         if (!container) return;
         container.querySelectorAll('.rp-tab-btn').forEach(b => {
             b.classList.remove('active');
@@ -1768,21 +1768,21 @@ const rappture = {
         });
         container.querySelectorAll('.rp-tab-panel').forEach(p => {
             p.classList.remove('active');
-            p.hidden = true;
         });
         btn.classList.add('active');
         btn.setAttribute('aria-selected', 'true');
-        const panel = document.getElementById(panelId);
+        // panelId may contain raw path chars; normalize to match element id
+        const safeId = panelId.replace(/\./g,'_').replace(/\(/g,'_').replace(/\)/g,'_').replace(/:/g,'_');
+        const panel = document.getElementById(safeId);
         if (panel) {
             panel.classList.add('active');
-            panel.hidden = false;
         }
     },
 
     // ── Enable conditions ────────────────────────────────────────────────────
 
     initEnableConditions() {
-        const widgets = document.querySelectorAll('.rp-widget[data-enable]');
+        const widgets = document.querySelectorAll('[data-enable]');
         if (!widgets.length) return;
 
         const conditions = [];
@@ -1812,8 +1812,18 @@ const rappture = {
         if (['yes', 'on', 'true', '1'].includes(expr)) return true;
         if (['no', 'off', 'false', '0'].includes(expr)) return false;
 
-        // Comparison: path op value
-        const compMatch = expr.match(/^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+        // Handle || (OR) — split and short-circuit
+        if (expr.includes('||')) {
+            return expr.split('||').some(part => this.evaluateEnable(part.trim()));
+        }
+        // Handle && (AND) — split and short-circuit
+        if (expr.includes('&&')) {
+            return expr.split('&&').every(part => this.evaluateEnable(part.trim()));
+        }
+
+        // Single comparison: path op value
+        // Use a greedy path match up to the first operator
+        const compMatch = expr.match(/^(.*?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
         if (compMatch) {
             const actual = this.getInputValue(compMatch[1].trim());
             if (actual === null) return false;
@@ -1836,8 +1846,10 @@ const rappture = {
 
     getInputValue(path) {
         const cleanPath = path.replace(/:[\w]+/g, '');
-        let widget = document.querySelector(`.rp-widget[data-path="${cleanPath}"]`)
-            || document.querySelector(`.rp-widget[data-path="input.${cleanPath}"]`);
+        // Escape characters special in CSS attribute selectors
+        const esc = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        let widget = document.querySelector(`.rp-widget[data-path="${esc(cleanPath)}"]`)
+            || document.querySelector(`.rp-widget[data-path="input.${esc(cleanPath)}"]`);
         if (!widget) return null;
 
         const type = widget.dataset.type;

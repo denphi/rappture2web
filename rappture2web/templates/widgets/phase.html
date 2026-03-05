@@ -1,10 +1,48 @@
 <div class="rp-widget rp-phase" data-path="{{ widget.path }}" data-type="phase"
-     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+     {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}>
     <div class="rp-phase-header">{{ widget.label or widget.id }}</div>
+    {% if widget.attrs.is_tabbed %}
+    {# Phase whose direct children are all labeled groups → render as inner tabs #}
+    {% set tablist_id = "phase-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
+    {% set tab_children = widget.children | selectattr('type', 'equalto', 'group') | list %}
+    <div class="rp-tabs">
+        <div class="rp-tab-buttons" role="tablist" aria-label="{{ widget.label or widget.id }}">
+            {% for child in tab_children %}
+            {% set tab_id = tablist_id ~ "-tab-" ~ loop.index0 %}
+            {% set panel_id = widget.path ~ "-tab-" ~ loop.index0 %}
+            <button type="button"
+                    id="{{ tab_id }}"
+                    class="rp-tab-btn {% if loop.first %}active{% endif %}"
+                    role="tab"
+                    aria-selected="{{ 'true' if loop.first else 'false' }}"
+                    aria-controls="{{ panel_id | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') }}"
+                    {% if child.enable %}data-enable='{{ child.enable }}'{% endif %}
+                    onclick="rappture.switchTab(this, '{{ panel_id }}')">
+                {{ child.label or child.id }}
+            </button>
+            {% endfor %}
+        </div>
+        {% for child in tab_children %}
+        {% set tab_id = tablist_id ~ "-tab-" ~ loop.index0 %}
+        {% set panel_id = widget.path ~ "-tab-" ~ loop.index0 %}
+        <div class="rp-tab-panel {% if loop.first %}active{% endif %}"
+             id="{{ panel_id | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') }}"
+             role="tabpanel"
+             aria-labelledby="{{ tab_id }}"
+             {% if child.enable %}data-enable='{{ child.enable }}'{% endif %}>
+            {% for subchild in child.children %}
+                {% set widget = subchild %}
+                {% include "widgets/" + subchild.type + ".html" ignore missing %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
     <div class="rp-phase-content">
         {% for child in widget.children %}
             {% set widget = child %}
             {% include "widgets/" + child.type + ".html" ignore missing %}
         {% endfor %}
     </div>
+    {% endif %}
 </div>

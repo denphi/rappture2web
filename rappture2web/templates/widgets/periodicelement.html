@@ -3,7 +3,7 @@
      data-returnvalue="{{ widget.attrs.returnvalue or 'symbol' }}"
      data-active="{{ widget.attrs.active or '' }}"
      data-inactive="{{ widget.attrs.inactive or '' }}"
-     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}>
+     {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}>
     <label class="rp-label" id="{{ input_id }}-label">{{ widget.label or widget.id }}</label>
     <button type="button"
             class="rp-pe-selected-row"

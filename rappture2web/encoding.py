@@ -62,6 +62,6 @@ def to_data_uri(data: str, mime_type: str = "image/png") -> str:
         b64 = base64.b64encode(raw_bytes).decode("ascii")
         return f"data:{mime_type};base64,{b64}"
     elif data.strip():
-        # Assume raw base64
-        return f"data:{mime_type};base64,{data.strip()}"
+        # Assume raw base64 — strip all whitespace (line-wrapped base64 is common)
+        return f"data:{mime_type};base64,{data.strip().replace(chr(10), '').replace(chr(13), '').replace(' ', '')}"
     return ""

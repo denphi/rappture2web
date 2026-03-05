@@ -48,6 +48,7 @@ class WidgetNode:
     icon: str = ""
     enable: str = ""
     default: str = ""
+    current: str = ""
     color: str = ""
     children: list = field(default_factory=list)
     attrs: dict = field(default_factory=dict)  # Type-specific attributes
@@ -201,9 +202,20 @@ def parse_group(elem, node, parent_path):
     about_info, layout = _get_about(elem)
     node.attrs["layout"] = layout
 
-    # Check if this is a group-of-groups (renders as tabs)
-    child_groups = [c for c in elem if c.tag == "group"]
-    node.attrs["is_tabbed"] = len(child_groups) > 1
+    # A group renders as tabs when:
+    #   1. layout is not explicitly "vertical"
+    #   2. ALL direct element children (ignoring <about>) are <group> elements
+    #   3. Every child group has a label
+    # If the group contains anything besides groups (number, choice, etc.) it
+    # falls back to vertical layout per the Rappture spec.
+    is_vertical = (layout.lower() == "vertical") if layout else False
+    non_about_children = [c for c in elem if c.tag != "about"]
+    all_children_are_groups = bool(non_about_children) and all(c.tag == "group" for c in non_about_children)
+    all_have_labels = all(
+        bool(_get_text(c.find("about"), "label")) if c.find("about") is not None else False
+        for c in non_about_children
+    )
+    node.attrs["is_tabbed"] = (not is_vertical and all_children_are_groups and all_have_labels)
 
     # Parse children
     node.children = _parse_input_children(elem, node.path)
@@ -212,6 +224,14 @@ def parse_group(elem, node, parent_path):
 def parse_phase(elem, node, parent_path):
     """Parse phase (tab page) and its children."""
     node.children = _parse_input_children(elem, node.path)
+    # If all direct children are labeled groups, render them as tabs inside the phase
+    non_about = [c for c in elem if c.tag != "about"]
+    all_groups = bool(non_about) and all(c.tag == "group" for c in non_about)
+    all_labeled = all(
+        bool(_get_text(c.find("about"), "label")) if c.find("about") is not None else False
+        for c in non_about
+    )
+    node.attrs["is_tabbed"] = all_groups and all_labeled
 
 
 # Map of type to parser function
@@ -259,6 +279,7 @@ def _parse_input_element(elem, parent_path):
         enable=about_info.get("enable", ""),
         color=about_info.get("color", ""),
         default=_get_text(elem, "default"),
+        current=_get_text(elem, "current"),
     )
 
     # Parse type-specific attributes

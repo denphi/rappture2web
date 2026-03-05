@@ -1,5 +1,5 @@
 <div class="rp-widget rp-loader" data-path="{{ widget.path }}" data-type="loader"
-     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}
+     {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}
      data-upload-targets="{{ widget.attrs.upload_targets | join(',') }}"
      data-download-sources="{{ widget.attrs.download_sources | join(',') }}"
      data-loader-default="{{ widget.attrs.loader_default or '' }}"

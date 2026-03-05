@@ -13,6 +13,7 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
 
 /* Accessibility utilities */
 .rp-sr-only {
@@ -58,9 +59,9 @@ body {
     height: 100%;
 }
 .rp-sidebar {
-    width: 380px;
+    width: 50vw;
     min-width: 320px;
-    max-width: 480px;
+    max-width: 75vw;
     background: var(--rp-sidebar-bg);
     border-right: 1px solid var(--rp-border);
     overflow-y: auto;
@@ -212,10 +213,17 @@ body {
 .rp-horizontal {
     flex-direction: row;
     flex-wrap: wrap;
+    align-items: stretch;
 }
 .rp-horizontal > .rp-widget {
     flex: 1;
     min-width: 120px;
+}
+.rp-horizontal > .rp-image {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Tabs */
@@ -253,7 +261,7 @@ body {
     display: none;
     padding: 12px 0;
 }
-.rp-tab-panel.active, .rp-tab-panel:not([hidden]) { display: flex; flex-direction: column; gap: 10px; }
+.rp-tab-panel.active { display: flex; flex-direction: column; gap: 10px; }
 
 /* multichoice fieldset reset */
 .rp-multichoice-fieldset { border: none; padding: 0; min-inline-size: 0; }

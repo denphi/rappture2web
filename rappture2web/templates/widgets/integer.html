@@ -1,6 +1,6 @@
 {% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-integer" data-path="{{ widget.path }}" data-type="integer"
-     {% if widget.enable %}data-enable="{{ widget.enable }}"{% endif %}
+     {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}
      {% if widget.color %}data-color="{{ widget.color }}"{% elif widget.attrs.color %}data-color="{{ widget.attrs.color }}"{% endif %}>
     <label class="rp-label" for="{{ input_id }}" title="{{ widget.description }}">
         {{ widget.label or widget.id }}
