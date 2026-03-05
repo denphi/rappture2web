@@ -76,7 +76,10 @@ rappture._registerRenderer('string', {
     render(id, data) {
         const label = (data.about && data.about.label) || data.label || id;
         const item = rappture.createOutputItem(label, 'string');
-        item.querySelector('.rp-output-body').textContent = data.current || '';
+        const pre = document.createElement('pre');
+        pre.style.cssText = 'font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:6px 8px;margin:0';
+        pre.textContent = data.current || '';
+        item.querySelector('.rp-output-body').appendChild(pre);
         return item;
     },
     compare(sources, id) {
