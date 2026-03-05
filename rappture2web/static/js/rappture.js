@@ -41,6 +41,9 @@ function _plotResizeObserver(el, plotDiv, skip) {
 
 const rappture = {
 
+    // ── Base path (set by server for reverse-proxy support) ──────────────────
+    _bp: (typeof window._rpBasePath === 'string' ? window._rpBasePath : ''),
+
     // ── Renderer registry ────────────────────────────────────────────────────
 
     /**
@@ -163,7 +166,7 @@ const rappture = {
 
     connectWebSocket() {
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const url = `${proto}://${location.host}/ws`;
+        const url = `${proto}://${location.host}${this._bp}/ws`;
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
@@ -336,7 +339,7 @@ const rappture = {
         const targetsAttr = widget && widget.dataset.uploadTargets;
         const targets = targetsAttr ? targetsAttr.split(',').filter(Boolean) : null;
         const pattern = (widget && widget.dataset.example) || '*.xml';
-        fetch('/api/loader-examples/' + encodeURIComponent(filename) + '?pattern=' + encodeURIComponent(pattern))
+        fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(filename) + '?pattern=' + encodeURIComponent(pattern))
             .then(r => r.json())
             .then(data => { if (data.content) this._applyExampleXml(data.content, targets); })
             .catch(() => {});
@@ -368,7 +371,7 @@ const rappture = {
         const fd = new FormData();
         fd.append('file', file);
         try {
-            const resp = await fetch('/api/upload-run', { method: 'POST', body: fd });
+            const resp = await fetch(this._bp + '/api/upload-run', { method: 'POST', body: fd });
             const data = await resp.json();
             if (!resp.ok || data.error) {
                 this._setStatus('Upload failed: ' + (data.error || resp.statusText));
@@ -394,7 +397,7 @@ const rappture = {
         const inputs = await this.collectInputs();
 
         try {
-            const response = await fetch('/simulate', {
+            const response = await fetch(this._bp + '/simulate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ inputs }),
@@ -865,7 +868,7 @@ const rappture = {
 
     async _fetchRunHistory(selectNewest = false) {
         try {
-            const resp = await fetch('/api/runs');
+            const resp = await fetch(this._bp + '/api/runs');
             const runs = await resp.json();
             // Server returns oldest-first; we display newest-first (index 0 = top)
             const saved = this._loadUIState();
@@ -1024,7 +1027,7 @@ const rappture = {
             span.addEventListener('dblclick', () => this._startRename(run, span));
             input.replaceWith(span);
             try {
-                await fetch(`/api/runs/${run.run_id}`, {
+                await fetch(`${this._bp}/api/runs/${run.run_id}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ label: newLabel }),
@@ -1062,7 +1065,7 @@ const rappture = {
 
     async _pushReorder() {
         try {
-            await fetch('/api/runs/reorder', {
+            await fetch(this._bp + '/api/runs/reorder', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // Send newest-first list; server stores as-is
@@ -1177,7 +1180,7 @@ const rappture = {
         for (const run of checked) {
             if (!run.outputs) {
                 try {
-                    const resp = await fetch(`/api/runs/${run.run_id}`);
+                    const resp = await fetch(`${this._bp}/api/runs/${run.run_id}`);
                     const full = await resp.json();
                     Object.assign(run, full);
                 } catch {}
@@ -1211,7 +1214,7 @@ const rappture = {
 
     async deleteRun(runId) {
         try {
-            await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+            await fetch(`${this._bp}/api/runs/${runId}`, { method: 'DELETE' });
             const idx = this._runs.findIndex(r => r.run_id === runId);
             if (idx >= 0) this._runs.splice(idx, 1);
             this._renderRunHistory();

@@ -45,6 +45,12 @@ def main():
         help="Pass server URL as argv[1] to tool scripts instead of driver.xml "
              "(requires tool script to use rappture2web.rp_library)",
     )
+    parser.add_argument(
+        "--base-path",
+        default="",
+        help="Base URL path prefix when served behind a reverse proxy "
+             "(e.g. /mytool). No trailing slash.",
+    )
 
     args = parser.parse_args()
 
@@ -58,7 +64,8 @@ def main():
 
     from .app import app, set_tool
 
-    server_url = f"http://{args.host}:{args.port}"
+    base_path = args.base_path.rstrip("/")
+    server_url = f"http://{args.host}:{args.port}{base_path}"
 
     set_tool(
         xml_path=str(tool_path),
@@ -66,6 +73,7 @@ def main():
         server_url=server_url,
         use_library_mode=args.library_mode,
         use_cache=not args.no_cache,
+        base_path=base_path,
     )
 
     print(f"Loading tool: {tool_path}")
@@ -80,7 +88,8 @@ def main():
         threading.Timer(1.2, webbrowser.open, args=[server_url]).start()
 
     import uvicorn
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info",
+                root_path=base_path)
 
 
 if __name__ == "__main__":

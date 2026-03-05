@@ -45,6 +45,7 @@ _ws_clients: list[WebSocket] = []
 _server_url: str = ""
 _use_library_mode: bool = False
 _use_cache: bool = True
+_base_path: str = ""
 
 APP_DIR = Path(__file__).parent
 
@@ -75,16 +76,17 @@ templates.env.filters["strip_units"] = _strip_units
 
 def set_tool(xml_path: str, cache_dir: str | None = None,
              server_url: str = "", use_library_mode: bool = False,
-             use_cache: bool = True):
+             use_cache: bool = True, base_path: str = ""):
     """Configure the tool and start-up options."""
     global _tool_def, _tool_xml_path, _history, _server_url
-    global _use_library_mode, _use_cache
+    global _use_library_mode, _use_cache, _base_path
 
     _tool_xml_path = str(Path(xml_path).resolve())
     _tool_def = parse_tool_xml(_tool_xml_path)
     _server_url = server_url
     _use_library_mode = use_library_mode
     _use_cache = use_cache
+    _base_path = base_path.rstrip("/")
 
     _history = RunHistory(cache_dir=cache_dir)
     if cache_dir:
@@ -126,6 +128,7 @@ async def index(request: Request):
         "inputs": _tool_def.inputs,
         "outputs": _tool_def.outputs,
         "tool_xml_path": _tool_xml_path,
+        "base_path": _base_path,
     })
 
 
