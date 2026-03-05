@@ -84,17 +84,19 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
     _tool_xml_path = str(Path(xml_path).resolve())
     tool_dir = str(Path(_tool_xml_path).parent)
 
-    # Mount the tool directory so note HTML files can load images via /tool-files/
-    try:
-        app.mount("/tool-files", StaticFiles(directory=tool_dir), name="tool-files")
-    except Exception:
-        pass  # Already mounted or directory not found
-
-    _tool_def = parse_tool_xml(_tool_xml_path)
-    _server_url = server_url
     _use_library_mode = use_library_mode
     _use_cache = use_cache
     _base_path = base_path.rstrip("/")
+
+    # Mount the tool directory so note HTML files can load images via /tool-files/
+    mount_path = f"{_base_path}/tool-files" if _base_path else "/tool-files"
+    try:
+        app.mount(mount_path, StaticFiles(directory=tool_dir), name="tool-files")
+    except Exception:
+        pass  # Already mounted or directory not found
+
+    _tool_def = parse_tool_xml(_tool_xml_path, base_path=_base_path)
+    _server_url = server_url
 
     _history = RunHistory(cache_dir=cache_dir)
     if cache_dir:
