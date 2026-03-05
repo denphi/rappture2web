@@ -450,14 +450,17 @@ def _resolve_note_contents(widgets, tool_dir: Path):
                     html = fpath.read_text(errors="replace")
                     # Rewrite relative src paths to go through /tool-files/
                     # so the browser can fetch them directly without inlining.
-                    html_subdir = fpath.parent.name  # e.g. "intro_page"
-                    def _rewrite_src(m):
+                    try:
+                        html_subdir = str(fpath.parent.relative_to(tool_dir)).replace('\\', '/')
+                    except ValueError:
+                        html_subdir = fpath.parent.name
+                    prefix = f"/tool-files/{html_subdir}/" if html_subdir and html_subdir != "." else "/tool-files/"
+                    def _rewrite_src(m, _prefix=prefix):
                         quote = m.group(1)
                         src = m.group(2)
                         if src.startswith("data:") or src.startswith("http") or src.startswith("/"):
                             return m.group(0)
-                        # Rewrite to /tool-files/<subdir>/<src>
-                        return f'src={quote}/tool-files/{html_subdir}/{src}{quote}'
+                        return f'src={quote}{_prefix}{src}{quote}'
                     html = re.sub(r'src=(["\'])([^"\']+)\1', _rewrite_src, html)
                     w.attrs["contents"] = "html://" + html
         # Recurse into group/phase children
