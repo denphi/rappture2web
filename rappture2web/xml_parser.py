@@ -465,7 +465,7 @@ def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
                         if src.startswith("data:") or src.startswith("http") or src.startswith("/"):
                             return m.group(0)
                         return f'src={quote}{_prefix}{src}{quote}'
-                    html = re.sub(r'src=(["\'])([^"\']+)\1', _rewrite_src, html)
+                    html = re.sub(r'src\s*=\s*(["\'])([^"\']+)\1', _rewrite_src, html)
                     w.attrs["contents"] = "html://" + html
         # Recurse into group/phase children
         if hasattr(w, "children") and w.children:
