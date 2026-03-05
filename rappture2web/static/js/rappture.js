@@ -1807,22 +1807,49 @@ const rappture = {
         evaluate();
     },
 
+    // Split expr on a top-level operator (not inside parentheses)
+    _splitTopLevel(expr, op) {
+        const parts = [];
+        let depth = 0, start = 0;
+        for (let i = 0; i < expr.length; i++) {
+            if (expr[i] === '(') depth++;
+            else if (expr[i] === ')') depth--;
+            else if (depth === 0 && expr.startsWith(op, i)) {
+                parts.push(expr.slice(start, i).trim());
+                i += op.length - 1;
+                start = i + 1;
+            }
+        }
+        parts.push(expr.slice(start).trim());
+        return parts.length > 1 ? parts : null;
+    },
+
     evaluateEnable(expr) {
         expr = expr.trim();
+        // Strip outer parentheses
+        while (expr.startsWith('(') && expr.endsWith(')')) {
+            let depth = 0, matched = true;
+            for (let i = 0; i < expr.length - 1; i++) {
+                if (expr[i] === '(') depth++;
+                else if (expr[i] === ')') depth--;
+                if (depth === 0) { matched = false; break; }
+            }
+            if (!matched) break;
+            expr = expr.slice(1, -1).trim();
+        }
+
         if (['yes', 'on', 'true', '1'].includes(expr)) return true;
         if (['no', 'off', 'false', '0'].includes(expr)) return false;
 
-        // Handle || (OR) — split and short-circuit
-        if (expr.includes('||')) {
-            return expr.split('||').some(part => this.evaluateEnable(part.trim()));
-        }
-        // Handle && (AND) — split and short-circuit
-        if (expr.includes('&&')) {
-            return expr.split('&&').every(part => this.evaluateEnable(part.trim()));
-        }
+        // Handle || (OR) — split at top level and short-circuit
+        const orParts = this._splitTopLevel(expr, '||');
+        if (orParts) return orParts.some(p => this.evaluateEnable(p));
+
+        // Handle && (AND) — split at top level and short-circuit
+        const andParts = this._splitTopLevel(expr, '&&');
+        if (andParts) return andParts.every(p => this.evaluateEnable(p));
 
         // Single comparison: path op value
-        // Use a greedy path match up to the first operator
         const compMatch = expr.match(/^(.*?)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
         if (compMatch) {
             const actual = this.getInputValue(compMatch[1].trim());
