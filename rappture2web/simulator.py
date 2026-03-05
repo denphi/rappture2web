@@ -299,8 +299,7 @@ async def run_simulation(
         # own python/virtualenv calls use the system python, not ours.
         import os
         clean_env = {k: v for k, v in os.environ.items()
-                     if k not in ('PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV',
-                                  'CONDA_PREFIX', 'CONDA_DEFAULT_ENV')}
+                     if k not in ()}  # 'PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV'
         # Remove our venv from PATH so 'python' resolves to the system python
         path_parts = clean_env.get('PATH', '').split(os.pathsep)
         venv = os.environ.get('VIRTUAL_ENV') or os.environ.get('CONDA_PREFIX', '')

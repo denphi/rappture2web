@@ -49,10 +49,9 @@
                 <button type="button" id="rp-simulate-btn" class="rp-btn rp-btn-simulate" onclick="rappture.simulate()">
                     Simulate
                 </button>
-                <button type="button" class="rp-btn rp-btn-upload" onclick="rappture.triggerUploadRun()" aria-label="Upload a run.xml output file">
-                    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true" focusable="false" style="vertical-align:middle;margin-right:4px"><path d="M8 1L4 5h3v5h2V5h3L8 1zm-5 11v1h10v-1H3z"/></svg>Upload XML
-                </button>
+                {% if not is_nanohub %}
                 <input type="file" id="rp-upload-run-input" accept=".xml" style="display:none" aria-label="Upload run XML file" onchange="rappture.uploadRunFile(this)">
+                {% endif %}
                 <span id="rp-status" class="rp-status" role="status" aria-live="polite" aria-atomic="true"></span>
             </div>
         </form>

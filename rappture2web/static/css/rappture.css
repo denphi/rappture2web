@@ -133,6 +133,14 @@ body {
     letter-spacing: 0.01em;
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
+.rp-toolbar-link[type="button"] {
+    font-family: inherit;
+    font-size: inherit;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
 .rp-toolbar-link:hover {
     background: rgba(255,255,255,0.16);
     border-color: rgba(255,255,255,0.6);

@@ -89,6 +89,20 @@ def _nanohub_urls():
     return support_url, terminate_url
 
 
+def _resolve_nanohub_tool_name(resources: dict | None = None):
+    """Return normalized nanoHUB tool name used in /tools/* and /resources/* URLs."""
+    env_name = os.environ.get("NANOHUB_TOOL_NAME")
+    if env_name:
+        name = env_name.strip().lower()
+        return name[4:] if name.startswith("app-") else name
+
+    resources = resources or _parse_nanohub_resources()
+    app_name = (resources.get("application_name") or resources.get("appname") or "").strip().lower()
+    if app_name.startswith("app-"):
+        app_name = app_name[4:]
+    return app_name
+
+
 def _resolve_nanohub_urls():
     """Resolve support/terminate URLs with environment overrides."""
     detected_support_url, detected_terminate_url = _nanohub_urls()
@@ -175,6 +189,14 @@ def main():
 
     # On nanoHUB the app runs on args.port (8001) and wrwroxy forwards from 8000
     use_wrwroxy = args.wrwroxy and (shutil.which("wrwroxy") is not None)
+    resources = _parse_nanohub_resources()
+    is_nanohub = bool(resources)
+    nanohub_tool_name = _resolve_nanohub_tool_name(resources)
+    nanohub_about_url = ""
+    nanohub_questions_url = ""
+    if is_nanohub and nanohub_tool_name:
+        nanohub_about_url = f"https://nanohub.org/tools/{nanohub_tool_name}"
+        nanohub_questions_url = f"https://nanohub.org/resources/{nanohub_tool_name}/questions"
     nanohub_support_url, nanohub_terminate_url = _resolve_nanohub_urls()
 
     from .app import app, set_tool
@@ -190,8 +212,11 @@ def main():
         use_library_mode=args.library_mode,
         use_cache=not args.no_cache,
         base_path=base_path,
+        is_nanohub=is_nanohub,
         nanohub_support_url=nanohub_support_url,
         nanohub_terminate_url=nanohub_terminate_url,
+        nanohub_about_url=nanohub_about_url,
+        nanohub_questions_url=nanohub_questions_url,
     )
 
     print("Loading tool: {}".format(tool_path))
@@ -201,6 +226,10 @@ def main():
     print("Run cache directory: {}".format(cache_dir))
     if proxy_url:
         print("nanoHUB proxy URL: {}".format(proxy_url))
+    if nanohub_about_url:
+        print("nanoHUB about URL: {}".format(nanohub_about_url))
+    if nanohub_questions_url:
+        print("nanoHUB questions URL: {}".format(nanohub_questions_url))
     if nanohub_support_url:
         print("nanoHUB support URL: {}".format(nanohub_support_url))
     if nanohub_terminate_url:

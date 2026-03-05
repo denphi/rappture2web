@@ -48,8 +48,11 @@ _server_url: str = ""
 _use_library_mode: bool = False
 _use_cache: bool = True
 _base_path: str = ""
+_is_nanohub: bool = False
 _nanohub_support_url: str = ""
 _nanohub_terminate_url: str = ""
+_nanohub_about_url: str = ""
+_nanohub_questions_url: str = ""
 
 APP_DIR = Path(__file__).parent
 
@@ -81,20 +84,28 @@ templates.env.filters["strip_units"] = _strip_units
 def set_tool(xml_path: str, cache_dir: str | None = None,
              server_url: str = "", use_library_mode: bool = False,
              use_cache: bool = True, base_path: str = "",
+             is_nanohub: bool = False,
              nanohub_support_url: str = "",
-             nanohub_terminate_url: str = ""):
+             nanohub_terminate_url: str = "",
+             nanohub_about_url: str = "",
+             nanohub_questions_url: str = ""):
     """Configure the tool and start-up options."""
     global _tool_def, _tool_xml_path, _history, _server_url
     global _use_library_mode, _use_cache, _base_path
+    global _is_nanohub
     global _nanohub_support_url, _nanohub_terminate_url
+    global _nanohub_about_url, _nanohub_questions_url
 
     _tool_xml_path = str(Path(xml_path).resolve())
 
     _use_library_mode = use_library_mode
     _use_cache = use_cache
     _base_path = base_path.rstrip("/")
+    _is_nanohub = bool(is_nanohub)
     _nanohub_support_url = (nanohub_support_url or "").strip()
     _nanohub_terminate_url = (nanohub_terminate_url or "").strip()
+    _nanohub_about_url = (nanohub_about_url or "").strip()
+    _nanohub_questions_url = (nanohub_questions_url or "").strip()
 
     _tool_def = parse_tool_xml(_tool_xml_path, base_path=_base_path)
     _server_url = server_url
@@ -182,8 +193,11 @@ async def index(request: Request):
         "outputs": _tool_def.outputs,
         "tool_xml_path": _tool_xml_path,
         "base_path": _base_path,
+        "is_nanohub": _is_nanohub,
         "nanohub_support_url": _nanohub_support_url,
         "nanohub_terminate_url": _nanohub_terminate_url,
+        "nanohub_about_url": _nanohub_about_url,
+        "nanohub_questions_url": _nanohub_questions_url,
     })
 
 
@@ -480,6 +494,9 @@ async def api_upload_run(file: UploadFile = File(...)):
     """Accept an uploaded run.xml, parse its outputs, and add to history."""
     import tempfile
     from .xml_parser import parse_run_xml
+
+    if _is_nanohub:
+        return JSONResponse({"error": "Upload XML is disabled on nanoHUB"}, status_code=403)
 
     content = await file.read()
     with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:

@@ -26,11 +26,3 @@
     <small class="rp-hints">{{ widget.hints }}</small>
     {% endif %}
 </div>
-<script>
-(function() {
-    var wrap = document.currentScript.previousElementSibling;
-    while (wrap && !wrap.classList.contains('rp-periodicelement')) wrap = wrap.previousElementSibling;
-    if (!wrap) return;
-    rappture.initPeriodicElement(wrap);
-})();
-</script>

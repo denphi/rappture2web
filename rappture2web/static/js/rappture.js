@@ -39,6 +39,35 @@ function _plotResizeObserver(el, plotDiv, skip) {
     });
 }
 
+/**
+ * Guard Plotly resize calls for hidden/not-yet-mounted elements.
+ * Plotly throws "Resize must be passed a displayed plot div element."
+ * in these cases; swallow that path and keep UI noise-free.
+ */
+function _patchPlotlyResizeGuard() {
+    if (!window.Plotly || !Plotly.Plots || typeof Plotly.Plots.resize !== 'function') return;
+    if (Plotly.Plots._rpResizePatched) return;
+    const origResize = Plotly.Plots.resize.bind(Plotly.Plots);
+    Plotly.Plots.resize = function(plotDiv) {
+        if (!plotDiv || !plotDiv.isConnected) return Promise.resolve();
+        const rect = plotDiv.getBoundingClientRect ? plotDiv.getBoundingClientRect() : { width: 0, height: 0 };
+        const style = window.getComputedStyle ? window.getComputedStyle(plotDiv) : null;
+        if (rect.width <= 0 || rect.height <= 0 || (style && style.display === 'none')) {
+            return Promise.resolve();
+        }
+        try {
+            const out = origResize(plotDiv);
+            if (out && typeof out.then === 'function') return out.catch(() => {});
+            return Promise.resolve(out);
+        } catch {
+            return Promise.resolve();
+        }
+    };
+    Plotly.Plots._rpResizePatched = true;
+}
+
+_patchPlotlyResizeGuard();
+
 const rappture = {
 
     // ── Base path (set by server for reverse-proxy support) ──────────────────
@@ -345,6 +374,29 @@ const rappture = {
             .catch(() => {});
     },
 
+    initLoaders() {
+        document.querySelectorAll('.rp-loader').forEach(widget => {
+            const sel = widget.querySelector('.rp-loader-select');
+            if (!sel || sel.dataset.rpInit === '1') return;
+            sel.dataset.rpInit = '1';
+            const defaultFile = widget.dataset.loaderDefault || '';
+            const pattern = widget.dataset.example || '*.xml';
+            fetch(this._bp + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
+                .then(r => r.json())
+                .then(examples => {
+                    examples.forEach(ex => {
+                        const opt = document.createElement('option');
+                        opt.value = ex.filename;
+                        opt.textContent = ex.label;
+                        if (ex.filename === defaultFile) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                    if (sel.value) this.loadExampleByName(sel);
+                })
+                .catch(() => {});
+        });
+    },
+
     /** Load an uploaded XML file and populate input widgets from it. */
     loadExample(fileInput) {
         const file = fileInput.files && fileInput.files[0];
@@ -360,8 +412,10 @@ const rappture = {
     // ── Upload run XML ────────────────────────────────────────────────────────
 
     triggerUploadRun() {
-        document.getElementById('rp-upload-run-input').value = '';
-        document.getElementById('rp-upload-run-input').click();
+        const uploadInput = document.getElementById('rp-upload-run-input');
+        if (!uploadInput) return;
+        uploadInput.value = '';
+        uploadInput.click();
     },
 
     async uploadRunFile(input) {
@@ -2017,6 +2071,7 @@ document.addEventListener('DOMContentLoaded', () => {
     rappture.initEnableConditions();
     rappture.initColorInputs();
     rappture.initTabAccessibility();
+    rappture.initLoaders();
     rappture._watchResultsResize();
     rappture.connectWebSocket();
     rappture._fetchRunHistory();

@@ -18,25 +18,3 @@
         </label>
     </div>
 </div>
-<script>
-(function() {
-    var allLoaders = document.querySelectorAll('.rp-loader');
-    var widget = allLoaders[allLoaders.length - 1];
-    var sel = widget.querySelector('.rp-loader-select');
-    var defaultFile = widget.dataset.loaderDefault || '';
-    var pattern = widget.dataset.example || '*.xml';
-    fetch((rappture._bp || '') + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
-        .then(function(r) { return r.json(); })
-        .then(function(examples) {
-            examples.forEach(function(ex) {
-                var opt = document.createElement('option');
-                opt.value = ex.filename;
-                opt.textContent = ex.label;
-                if (ex.filename === defaultFile) opt.selected = true;
-                sel.appendChild(opt);
-            });
-            if (sel.value) rappture.loadExampleByName(sel);
-        })
-        .catch(function() {});
-})();
-</script>

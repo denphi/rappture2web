@@ -13,8 +13,11 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    {% set has_nanohub_links = nanohub_about_url or nanohub_questions_url or nanohub_support_url or nanohub_terminate_url %}
+    {% set show_upload_menu = not is_nanohub %}
+    {% set show_toolbar = has_nanohub_links or show_upload_menu %}
     <a href="#rp-main-content" class="rp-skip-link">Skip to main content</a>
-    <header class="rp-header{% if nanohub_support_url or nanohub_terminate_url %} rp-header-has-toolbar{% endif %}" role="banner">
+    <header class="rp-header{% if show_toolbar %} rp-header-has-toolbar{% endif %}" role="banner">
         <div class="rp-brand-bar">
             <div class="rp-brand">
                 <img
@@ -27,10 +30,25 @@
                 </div>
             </div>
         </div>
-        {% if nanohub_support_url or nanohub_terminate_url %}
+        {% if show_toolbar %}
         <nav class="rp-toolbar" aria-label="Session actions">
             <div class="rp-toolbar-inner">
                 <ul class="rp-toolbar-actions">
+                    {% if is_nanohub %}
+                    {% if nanohub_about_url %}
+                    <li>
+                        <a class="rp-toolbar-link" href="{{ nanohub_about_url }}" target="_blank" rel="noopener noreferrer">
+                            About This Tool
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% if nanohub_questions_url %}
+                    <li>
+                        <a class="rp-toolbar-link" href="{{ nanohub_questions_url }}" target="_blank" rel="noopener noreferrer">
+                            Questions
+                        </a>
+                    </li>
+                    {% endif %}
                     {% if nanohub_support_url %}
                     <li>
                         <a class="rp-toolbar-link" href="{{ nanohub_support_url }}" target="_blank" rel="noopener noreferrer">
@@ -45,6 +63,13 @@
                         </a>
                     </li>
                     {% endif %}
+                    {% else %}
+                    <li>
+                        <button type="button" class="rp-toolbar-link" onclick="rappture.triggerUploadRun()">
+                            Upload XML
+                        </button>
+                    </li>
+                    {% endif %}
                 </ul>
             </div>
         </nav>
@@ -53,7 +78,7 @@
     <main id="rp-main-content" class="rp-main" role="main">
         {% block content %}{% endblock %}
     </main>
-    <script src="{{ base_path }}/static/js/rappture.js?v=20260305d"></script>
+    <script src="{{ base_path }}/static/js/rappture.js?v=20260305f"></script>
     <script src="{{ base_path }}/static/js/rp-utils.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderers-simple.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-curve.js?v=20260305a"></script>
