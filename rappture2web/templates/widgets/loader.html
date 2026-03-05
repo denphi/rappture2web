@@ -25,7 +25,7 @@
     var sel = widget.querySelector('.rp-loader-select');
     var defaultFile = widget.dataset.loaderDefault || '';
     var pattern = widget.dataset.example || '*.xml';
-    fetch('/api/loader-examples?pattern=' + encodeURIComponent(pattern))
+    fetch((rappture._bp || '') + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
         .then(function(r) { return r.json(); })
         .then(function(examples) {
             examples.forEach(function(ex) {

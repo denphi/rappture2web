@@ -64,6 +64,16 @@ def _set_xml_value(root, rappture_path: str, value: str):
     current = elem.find("current")
     if current is None:
         current = ET.SubElement(elem, "current")
+    # For number elements, ensure units are appended so Rappture::Units::convert works.
+    # The web UI strips units from the display value; we restore them here.
+    if elem.tag == "number":
+        units_elem = elem.find("units")
+        if units_elem is not None and units_elem.text:
+            units = units_elem.text.strip()
+            v = value.strip()
+            # Append units only if the value is a bare number (ends with digit or '.')
+            if v and (v[-1].isdigit() or v[-1] == '.'):
+                value = f"{v} {units}"
     current.text = value
 
 
