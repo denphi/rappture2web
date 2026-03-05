@@ -163,6 +163,10 @@ async def simulate(request: Request):
     }
     await _broadcast({"type": "status", "status": "running", "job_id": job_id})
 
+    async def _stream_log(text: str):
+        _session["log"] += text
+        await _broadcast({"type": "log", "text": text})
+
     result = await run_simulation(
         tool_xml_path=_tool_xml_path,
         input_values=input_values,
@@ -170,6 +174,7 @@ async def simulate(request: Request):
         use_library_mode=_use_library_mode,
         history=_history,
         use_cache=_use_cache,
+        log_callback=_stream_log,
     )
 
     # In library mode, api_simulate_done already recorded the run with real

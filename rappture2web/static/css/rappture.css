@@ -419,7 +419,7 @@ body {
     background: white;
     border: 1px solid var(--rp-border);
     border-radius: var(--rp-radius);
-    overflow: hidden;
+    overflow: auto;
 }
 .rp-output-item.rp-output-plot-item {
     flex: 1;
@@ -593,7 +593,9 @@ body {
     border: 1px solid #fde68a;
     border-radius: var(--rp-radius);
     padding: 10px 12px;
+    overflow: hidden;
 }
+.rp-note img { max-width: 100%; height: auto; display: block; }
 .rp-note-label { font-weight: 600; margin-bottom: 4px; }
 .rp-note-text { font-size: 13px; color: var(--rp-text-muted); }
 

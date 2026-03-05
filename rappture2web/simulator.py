@@ -227,6 +227,7 @@ async def run_simulation(
     history: RunHistory | None = None,
     use_cache: bool = True,
     timeout: int = 300,
+    log_callback=None,
 ) -> dict:
     """Run a Rappture simulation.
 
@@ -301,10 +302,28 @@ async def run_simulation(
             cwd=tool_dir,
         )
 
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+
+        async def _read_stream(stream, chunks):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace")
+                chunks.append(text)
+                if log_callback is not None:
+                    await log_callback(text)
+
         try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=timeout
+            await asyncio.wait_for(
+                asyncio.gather(
+                    _read_stream(process.stdout, stdout_chunks),
+                    _read_stream(process.stderr, stderr_chunks),
+                ),
+                timeout=timeout,
             )
+            await process.wait()
         except asyncio.TimeoutError:
             process.kill()
             return {
@@ -314,8 +333,8 @@ async def run_simulation(
                 "cached": False,
             }
 
-        stdout_text = stdout.decode("utf-8", errors="replace")
-        stderr_text = stderr.decode("utf-8", errors="replace")
+        stdout_text = "".join(stdout_chunks)
+        stderr_text = "".join(stderr_chunks)
 
         # ── Parse output (classic and native rappture modes) ──────────────────
         outputs = {}
