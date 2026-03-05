@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import json
 import os
-import re
 import shutil
 import time
 import uuid
@@ -21,18 +20,6 @@ from .xml_parser import parse_run_xml
 def _find_rappture_binary() -> str | None:
     """Return the path to the 'rappture' executable, or None if not found."""
     return shutil.which("rappture")
-
-
-def _command_invokes_python(command: str) -> bool:
-    """Return True when command appears to call a python executable explicitly."""
-    # Match tokens like python, python3, python3.11, /usr/bin/python3, etc.
-    return re.search(r"(^|[\s'\"`;/|&()])(?:[^ \t'\"`;/|&()]*\/)?python(?:\d+(?:\.\d+)*)?(?=($|[\s'\"`;/|&()]))",
-                     command) is not None
-
-
-def _missing_rappture_package(stderr_text: str) -> bool:
-    """Return True when stderr indicates Tcl cannot load the Rappture package."""
-    return "can't find package Rappture" in stderr_text
 
 
 # ─── Driver XML helpers ───────────────────────────────────────────────────────
@@ -308,82 +295,37 @@ async def run_simulation(
 
     # ── Execute ──────────────────────────────────────────────────────────────
     try:
-        # Build a clean environment. We always drop PYTHONPATH/PYTHONHOME to
-        # avoid cross-process module leakage. PATH/venv sanitization is only
-        # applied for explicit python commands; wrapper scripts on nanoHUB may
-        # rely on PATH to locate Rappture-aware interpreters.
-        clean_env = {k: v for k, v in os.environ.items()
-                     if k not in ("PYTHONPATH", "PYTHONHOME")}
-        if _command_invokes_python(exec_command):
-            for key in ("VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"):
-                clean_env.pop(key, None)
+        process = await asyncio.create_subprocess_shell(
+            exec_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=tool_dir,
+        )
 
-            venv = os.environ.get("VIRTUAL_ENV") or os.environ.get("CONDA_PREFIX", "")
-            if venv:
-                path_parts = clean_env.get("PATH", "").split(os.pathsep)
-                path_parts = [p for p in path_parts if not p.startswith(venv)]
-                clean_env["PATH"] = os.pathsep.join(path_parts)
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
 
-        async def _execute(command_text: str, env: dict, login_shell: bool = False) -> dict:
-            if login_shell and shutil.which("bash"):
-                process = await asyncio.create_subprocess_exec(
-                    "bash",
-                    "-lc",
-                    command_text,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=tool_dir,
-                    env=env,
-                )
-            else:
-                process = await asyncio.create_subprocess_shell(
-                    command_text,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=tool_dir,
-                    env=env,
-                )
+        async def _read_stream(stream, chunks):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace")
+                chunks.append(text)
+                if log_callback is not None:
+                    await log_callback(text)
 
-            stdout_chunks: list[str] = []
-            stderr_chunks: list[str] = []
-
-            async def _read_stream(stream, chunks):
-                while True:
-                    line = await stream.readline()
-                    if not line:
-                        break
-                    text = line.decode("utf-8", errors="replace")
-                    chunks.append(text)
-                    if log_callback is not None:
-                        await log_callback(text)
-
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(
-                        _read_stream(process.stdout, stdout_chunks),
-                        _read_stream(process.stderr, stderr_chunks),
-                    ),
-                    timeout=timeout,
-                )
-                await process.wait()
-            except asyncio.TimeoutError:
-                process.kill()
-                return {
-                    "timed_out": True,
-                    "returncode": None,
-                    "stdout": "".join(stdout_chunks),
-                    "stderr": "".join(stderr_chunks),
-                }
-
-            return {
-                "timed_out": False,
-                "returncode": process.returncode,
-                "stdout": "".join(stdout_chunks),
-                "stderr": "".join(stderr_chunks),
-            }
-
-        run_result = await _execute(exec_command, clean_env, login_shell=False)
-        if run_result["timed_out"]:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    _read_stream(process.stdout, stdout_chunks),
+                    _read_stream(process.stderr, stderr_chunks),
+                ),
+                timeout=timeout,
+            )
+            await process.wait()
+        except asyncio.TimeoutError:
+            process.kill()
             return {
                 "status": "error",
                 "log": f"Simulation timed out after {timeout}s",
@@ -391,29 +333,8 @@ async def run_simulation(
                 "cached": False,
             }
 
-        retried_login_shell = False
-        first_stderr = run_result["stderr"]
-        if (run_result["returncode"] != 0 and _missing_rappture_package(first_stderr)
-                and shutil.which("bash") is not None):
-            retried_login_shell = True
-            if log_callback is not None:
-                await log_callback("Retrying simulation in login shell to resolve Rappture package path...\n")
-            # Use full inherited environment for retry, matching manual shell behavior.
-            run_result = await _execute(exec_command, dict(os.environ), login_shell=True)
-            if run_result["timed_out"]:
-                return {
-                    "status": "error",
-                    "log": f"Simulation timed out after {timeout}s",
-                    "outputs": {},
-                    "cached": False,
-                }
-            if run_result["returncode"] != 0:
-                run_result["stderr"] = first_stderr + "\n--- retry (bash -lc) ---\n" + run_result["stderr"]
-
-        stdout_text = run_result["stdout"]
-        stderr_text = run_result["stderr"]
-        if retried_login_shell and run_result["returncode"] == 0:
-            stdout_text = "Retried in login shell after Rappture package lookup failed.\n" + stdout_text
+        stdout_text = "".join(stdout_chunks)
+        stderr_text = "".join(stderr_chunks)
 
         # ── Parse output (classic and native rappture modes) ──────────────────
         outputs = {}
@@ -442,7 +363,7 @@ async def run_simulation(
         if stderr_text:
             log += "\n--- stderr ---\n" + stderr_text
 
-        status = "success" if run_result["returncode"] == 0 else "error"
+        status = "success" if process.returncode == 0 else "error"
 
         # ── Save to history ──────────────────────────────────────────────────
         # In library mode, api_simulate_done already records the run with
@@ -459,7 +380,7 @@ async def run_simulation(
 
         return {
             "status": status,
-            "returncode": run_result["returncode"],
+            "returncode": process.returncode,
             "outputs": outputs,
             "log": log,
             "run_xml": run_xml_path,
