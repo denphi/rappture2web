@@ -212,71 +212,59 @@ rappture._registerRenderer('sequence', {
             cPlay.style.display = ''; cPause.style.display = 'none';
         };
 
-        const framesRow = document.createElement('div');
-        framesRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start';
-        body.appendChild(framesRow);
-
-        // Per-source cache: array of { cell, plotlyDivs: {oid: plotlyDiv} }
-        const _cmpCache = [];
+        const framesHost = document.createElement('div');
+        framesHost.style.cssText = 'display:flex;flex-direction:column;gap:10px;min-height:0;';
+        body.appendChild(framesHost);
 
         const renderSeqCompareFrame = (frameIdx) => {
             slider.value = frameIdx;
             cPrev.disabled = frameIdx === 0;
             cNext.disabled = frameIdx === maxFrames - 1;
             lbl.textContent = indexLabel + ' ' + (frameIdx + 1) + ' / ' + maxFrames;
+            framesHost.innerHTML = '';
 
-            sources.forEach(({ run, data }, si) => {
+            // Build ordered output ids for this frame and collect per-run sources.
+            const order = [];
+            const byOutput = new Map(); // oid -> [{run, data}, ...]
+            sources.forEach(({ run, data }) => {
                 const elems = data.elements || [];
                 const el = elems[Math.min(frameIdx, elems.length - 1)];
                 if (!el) return;
-                const runColor = run._color || '#3b82f6';
-                const runName = run.label || `Run ${run.run_num || '?'}`;
                 const cmpEntries = rappture._mergeGroupedOutputs(Object.entries(el.outputs || {}));
-
-                if (!_cmpCache[si]) {
-                    // First render: full DOM build, cache rendered items
-                    const cell = document.createElement('div');
-                    cell.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:200px;flex:1';
-                    const runLbl = document.createElement('div');
-                    runLbl.style.cssText = `font-size:12px;font-weight:600;color:${runColor};background:${runColor}22;border:1px solid ${runColor};border-radius:3px;padding:2px 8px`;
-                    runLbl.textContent = runName;
-                    cell.appendChild(runLbl);
-                    const frameDiv = document.createElement('div');
-                    frameDiv.style.cssText = 'width:100%';
-                    const renderedItems = {};
-                    for (const [oid, odata] of cmpEntries) {
-                        const renderer = rappture.outputRenderers[odata.type];
-                        if (renderer) {
-                            const rendered = renderer.call(rappture.outputRenderers, oid, odata);
-                            if (rendered) {
-                                const inner = rendered.querySelector('.rp-output-body');
-                                const node = inner || rendered;
-                                frameDiv.appendChild(node);
-                                renderedItems[oid] = { node, type: odata.type };
-                            }
-                        }
+                for (const [oid, odata] of cmpEntries) {
+                    if (!byOutput.has(oid)) {
+                        byOutput.set(oid, []);
+                        order.push(oid);
                     }
-                    cell.appendChild(frameDiv);
-                    framesRow.appendChild(cell);
-                    _cmpCache[si] = { cell, renderedItems };
-                } else {
-                    // Subsequent frames: update Plotly in-place via getTraces (lazy plotly div lookup)
-                    const cached = _cmpCache[si];
-                    for (const [oid, odata] of cmpEntries) {
-                        const item = cached.renderedItems[oid];
-                        if (!item) continue;
-                        const reg = rappture._rendererRegistry[odata.type];
-                        if (reg && reg.getTraces) {
-                            if (!item.plotlyDiv) {
-                                item.plotlyDiv = item.node.querySelector('.js-plotly-plot');
-                            }
-                            if (item.plotlyDiv && item.plotlyDiv._fullLayout) {
-                                Plotly.react(item.plotlyDiv, reg.getTraces(odata), item.plotlyDiv.layout);
-                            }
-                        }
-                    }
+                    byOutput.get(oid).push({ run, data: odata });
                 }
             });
+
+            for (const oid of order) {
+                const oidSources = byOutput.get(oid) || [];
+                if (oidSources.length === 0) continue;
+                const first = oidSources[0].data;
+                const type = first.type;
+                let rendered = null;
+
+                const regEntry = rappture._rendererRegistry[type];
+                if (regEntry && typeof regEntry.compare === 'function' && oidSources.length > 1) {
+                    const compared = regEntry.compare.call(rappture, oidSources, oid);
+                    rendered = compared && (compared.elem || compared);
+                }
+                if (!rendered) {
+                    const renderer = rappture.outputRenderers[type];
+                    if (renderer) {
+                        rendered = renderer.call(rappture.outputRenderers, oid, first);
+                    }
+                }
+                if (!rendered) continue;
+
+                const hdr = rendered.querySelector('.rp-output-header');
+                if (hdr) hdr.style.display = 'none';
+                rendered.style.cssText = 'width:100%;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
+                framesHost.appendChild(rendered);
+            }
 
             if (frameIdx >= maxFrames - 1) _cStop();
         };
