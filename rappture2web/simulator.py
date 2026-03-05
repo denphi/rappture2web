@@ -271,22 +271,16 @@ async def run_simulation(
         command = _re.sub(r'\bpython\b', 'python3', command)
 
     driver_path = None
-    rappture_bin = _find_rappture_binary()
-    use_native_rappture = (rappture_bin is not None) and (not use_library_mode)
 
     if use_library_mode and server_url:
         # Pass server URL as argv[1]
         command = command.replace("@driver", server_url)
-    elif use_native_rappture:
-        # Native Rappture mode: create driver.xml, run `rappture -execute driver.xml`
-        driver_path = create_driver_xml(tool_xml_path, input_values)
-        native_command = f"{rappture_bin} -execute {driver_path} -tool {tool_xml_path}"
     else:
         # Classic mode: create driver.xml, run tool script directly
         driver_path = create_driver_xml(tool_xml_path, input_values)
         command = command.replace("@driver", driver_path)
 
-    exec_command = native_command if use_native_rappture else command
+    exec_command = command
 
     # ── Execute ──────────────────────────────────────────────────────────────
     try:
