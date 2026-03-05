@@ -602,7 +602,7 @@ def parse_run_xml(xml_path: str) -> dict:
         elif tag == "field":
             outputs[elem_id] = _parse_field_output(child, mesh_registry)
         elif tag == "sequence":
-            outputs[elem_id] = _parse_sequence_output(child)
+            outputs[elem_id] = _parse_sequence_output(child, mesh_registry=mesh_registry)
         elif tag == "mapviewer":
             outputs[elem_id] = _parse_mapviewer_output(child)
         elif tag == "group":
@@ -1217,7 +1217,7 @@ def _parse_mapviewer_output(elem):
     }
 
 
-def _parse_sequence_output(elem):
+def _parse_sequence_output(elem, mesh_registry=None):
     """Parse a <sequence> output element."""
     about = elem.find("about")
     # Sequences contain multiple elements at different indices
@@ -1232,7 +1232,7 @@ def _parse_sequence_output(elem):
                 if gc.tag == "curve":
                     el_outputs[gc_id] = _parse_curve_output(gc)
                 elif gc.tag == "field":
-                    el_outputs[gc_id] = _parse_field_output(gc)
+                    el_outputs[gc_id] = _parse_field_output(gc, mesh_registry=mesh_registry)
                 elif gc.tag == "image":
                     el_outputs[gc_id] = _parse_image_output(gc)
         elements.append({"index": idx, "outputs": el_outputs})
