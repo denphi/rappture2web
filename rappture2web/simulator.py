@@ -282,24 +282,17 @@ async def run_simulation(
         command = _re.sub(r'\bpython\b', 'python3', command)
 
     driver_path = None
-    rappture_bin = _find_rappture_binary()
-    use_native_rappture = (rappture_bin is not None) and (not use_library_mode)
 
     if use_library_mode and server_url:
         # Pass server URL as argv[1]
         command = command.replace("@driver", server_url)
-        exec_command = command
-    elif use_native_rappture:
-        # Native Rappture mode: create driver.xml, run `rappture -execute driver.xml`
-        driver_path = create_driver_xml(tool_xml_path, input_values)
-        exec_command = f"{rappture_bin} -execute {driver_path} -tool {tool_xml_path}"
     else:
         # Classic mode: create driver.xml, run tool script directly
         driver_path = create_driver_xml(tool_xml_path, input_values)
         command = command.replace("@driver", driver_path)
-        exec_command = command
 
-    # ── Execute ──────────────────────────────────────────────────────────────
+    exec_command = command
+
     try:
         process = await asyncio.create_subprocess_shell(
             exec_command,
@@ -362,6 +355,20 @@ async def run_simulation(
             if run_xml_path and os.path.exists(run_xml_path):
                 try:
                     outputs = parse_run_xml(run_xml_path)
+                    # Some Rappture tools write logs only into <output><log>.
+                    # Merge that content so the UI/run history log is not empty.
+                    log_output = outputs.get("log", {})
+                    xml_log = ""
+                    if isinstance(log_output, dict):
+                        xml_log = str(log_output.get("content", "") or "")
+                    if xml_log.strip() and xml_log not in stdout_text:
+                        if stdout_text and not stdout_text.endswith("\n"):
+                            stdout_text += "\n"
+                        stdout_text += xml_log
+                        if not stdout_text.endswith("\n"):
+                            stdout_text += "\n"
+                        if log_callback is not None:
+                            await log_callback(xml_log if xml_log.endswith("\n") else xml_log + "\n")
                 except Exception as exc:
                     stderr_text += f"\nError parsing run.xml: {exc}"
 

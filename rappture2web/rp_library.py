@@ -51,6 +51,9 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+# Active library handle used by module-level compatibility helpers (Utils.*).
+_active_library = None
+
 # ─── URL / file detection ──────────────────────────────────────────────────────
 
 def _is_url(s: str) -> bool:
@@ -692,9 +695,11 @@ class RpLibrary:
     """Mimics Rappture.library() — path-based get/put interface."""
 
     def __init__(self, server_url: str):
+        global _active_library
         self._url = server_url.rstrip("/")
         self._inputs = _InputStore(server_url)
         self._outputs = _OutputStore(server_url, streaming=True)
+        _active_library = self
 
     def get(self, path: str) -> str:
         """Read a value by Rappture path (inputs only)."""
@@ -836,6 +841,34 @@ def PyXml(server_url: str) -> RpNode:
 def result(lib: RpLibrary, status: int = 0):
     """Signal simulation done (classic Rappture.result(driver) pattern)."""
     lib.result(status)
+
+
+class _Utils:
+    """Compatibility subset of Rappture.Utils."""
+
+    def progress(self, percent: float, message: str = ""):
+        """Send progress to the web UI while a simulation is running."""
+        try:
+            pct = float(percent)
+        except (TypeError, ValueError):
+            pct = 0.0
+        pct = max(0.0, min(100.0, pct))
+        msg = str(message or "")
+
+        lib = _active_library
+        if lib is not None:
+            lib._outputs._http_post("/api/progress", {
+                "percent": pct,
+                "message": msg,
+            })
+            return
+
+        # Fallback keeps compatibility with tools expecting protocol text.
+        line = f"=RAPPTURE-PROGRESS=>{int(pct)} {msg}".rstrip()
+        print(line)
+
+
+Utils = _Utils()
 
 
 # ─── Units stub (for scripts that use Rappture.Units.convert) ────────────────

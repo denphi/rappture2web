@@ -35,6 +35,7 @@ _session: dict = {
     "inputs": {},
     "outputs": {},
     "log": "",
+    "progress": {"percent": None, "message": ""},
     "run_id": None,
     "run_num": None,
     "cached": False,
@@ -221,11 +222,13 @@ async def simulate(request: Request):
         "inputs": input_values,
         "outputs": {},
         "log": "",
+        "progress": {"percent": 0, "message": "Simulation started"},
         "run_id": None,
         "run_num": None,
         "cached": False,
     }
     await _broadcast({"type": "status", "status": "running", "job_id": job_id})
+    await _broadcast({"type": "progress", "percent": 0, "message": "Simulation started"})
 
     async def _stream_log(text: str):
         _session["log"] += text
@@ -253,6 +256,8 @@ async def simulate(request: Request):
         "status": result["status"],
         "outputs": result.get("outputs", {}),
         "log": result.get("log", ""),
+        "progress": {"percent": 100, "message": "Complete"} if result["status"] == "success"
+                    else _session.get("progress", {"percent": None, "message": ""}),
         "run_id": result.get("run_id"),
         "run_num": result.get("run_num"),
         "cached": result.get("cached", False),
@@ -290,11 +295,13 @@ async def api_simulate_start(request: Request):
         "inputs": input_values,
         "outputs": {},
         "log": "",
+        "progress": {"percent": 0, "message": "Simulation started"},
         "run_id": None,
         "run_num": None,
         "cached": False,
     }
     await _broadcast({"type": "status", "status": "running", "job_id": job_id})
+    await _broadcast({"type": "progress", "percent": 0, "message": "Simulation started"})
     return JSONResponse({"job_id": job_id})
 
 
@@ -324,12 +331,38 @@ async def api_post_log(request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/progress")
+async def api_post_progress(request: Request):
+    """Receive and broadcast simulation progress updates."""
+    data = await request.json()
+    percent_raw = data.get("percent", data.get("pct", 0))
+    message = str(data.get("message", "")).strip()
+    try:
+        percent = float(percent_raw)
+    except (TypeError, ValueError):
+        percent = 0.0
+    percent = max(0.0, min(100.0, percent))
+
+    _session["progress"] = {"percent": percent, "message": message}
+    if _session.get("status") != "running":
+        _session["status"] = "running"
+
+    await _broadcast({
+        "type": "progress",
+        "percent": percent,
+        "message": message,
+    })
+    return JSONResponse({"ok": True})
+
+
 @app.post("/api/simulate/done")
 async def api_simulate_done(request: Request):
     """Called by rp_library when the simulation completes."""
     data = await request.json()
     status = data.get("status", "success")
     _session["status"] = status
+    if status == "success":
+        _session["progress"] = {"percent": 100.0, "message": "Complete"}
 
     # Record in history
     run_record = _history.add(
@@ -358,6 +391,7 @@ async def api_get_outputs():
     """Return current session outputs (polling fallback)."""
     return JSONResponse({
         "status": _session["status"],
+        "progress": _session.get("progress", {"percent": None, "message": ""}),
         "outputs": _session["outputs"],
         "log": _session["log"],
     })
@@ -551,6 +585,7 @@ async def websocket_endpoint(ws: WebSocket):
     await ws.send_json({
         "type": "state",
         "status": _session["status"],
+        "progress": _session.get("progress", {"percent": None, "message": ""}),
         "outputs": _session["outputs"],
         "log": _session["log"],
         "runs": [

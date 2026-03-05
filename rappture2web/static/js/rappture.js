@@ -231,7 +231,12 @@ const rappture = {
             case 'state':
                 // Initial state on connect
                 if (msg.runs) { this._runs = msg.runs.slice().reverse(); this._renderRunHistory(); }
-                if (msg.status === 'running') this._setRunning(true);
+                if (msg.status === 'running') {
+                    this._setRunning(true);
+                    const p = (msg.progress && msg.progress.percent !== null) ? msg.progress.percent : null;
+                    const m = (msg.progress && msg.progress.message) ? msg.progress.message : '';
+                    this._renderProgressStatus(p, m);
+                }
                 if (msg.outputs && Object.keys(msg.outputs).length) {
                     this.renderOutputs(msg.outputs, msg.log || '');
                 }
@@ -240,6 +245,10 @@ const rappture = {
             case 'status':
                 this._setRunning(msg.status === 'running');
                 this._setStatus(msg.status === 'running' ? 'Simulation running...' : msg.status);
+                break;
+
+            case 'progress':
+                this._renderProgressStatus(msg.percent, msg.message || '');
                 break;
 
             case 'output':
@@ -2063,6 +2072,16 @@ const rappture = {
         if (!el) return;
         el.textContent = text;
         el.className = 'rp-status' + (cls ? ' ' + cls : '');
+    },
+
+    _renderProgressStatus(percent, message = '') {
+        const hasPct = Number.isFinite(percent);
+        if (hasPct) {
+            const pct = Math.max(0, Math.min(100, Math.round(percent)));
+            this._setStatus(`${pct}%${message ? ' — ' + message : ''}`);
+            return;
+        }
+        this._setStatus(message || 'Simulation running...');
     },
 };
 
