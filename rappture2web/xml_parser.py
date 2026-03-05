@@ -432,7 +432,7 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
         tool_def.outputs = _parse_output_children(output_elem, "output")
 
     # Resolve file:// references in note widgets
-    _resolve_note_contents(tool_def.inputs, xml_path.parent)
+    _resolve_note_contents(tool_def.inputs, xml_path.parent, base_path=base_path)
 
     return tool_def
 
@@ -449,16 +449,16 @@ def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
                 if fpath.exists():
                     html = fpath.read_text(errors="replace")
                     # Rewrite relative src paths to go through /tool-files/
-                    # FastAPI serves /tool-files/{path} directly (base_path is
-                    # stripped by the reverse proxy before reaching FastAPI).
+                    # Include base_path so the reverse proxy can route the request.
                     try:
                         html_subdir = str(fpath.parent.relative_to(tool_dir)).replace('\\', '/')
                     except ValueError:
                         html_subdir = fpath.parent.name
+                    bp = base_path.rstrip("/")
                     if html_subdir and html_subdir != ".":
-                        prefix = f"/tool-files/{html_subdir}/"
+                        prefix = f"{bp}/tool-files/{html_subdir}/"
                     else:
-                        prefix = "/tool-files/"
+                        prefix = f"{bp}/tool-files/"
                     def _rewrite_src(m, _prefix=prefix):
                         quote = m.group(1)
                         src = m.group(2)
@@ -469,10 +469,10 @@ def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
                     w.attrs["contents"] = "html://" + html
         # Recurse into group/phase children
         if hasattr(w, "children") and w.children:
-            _resolve_note_contents(w.children, tool_dir)
+            _resolve_note_contents(w.children, tool_dir, base_path=base_path)
         if hasattr(w, "attrs") and "tabs" in w.attrs:
             for tab in w.attrs["tabs"]:
-                _resolve_note_contents(tab.get("widgets", []), tool_dir)
+                _resolve_note_contents(tab.get("widgets", []), tool_dir, base_path=base_path)
 
 
 def parse_run_xml(xml_path: str) -> dict:
