@@ -13,7 +13,7 @@
             aria-label="{{ widget.label or widget.id }}"
             {% if widget.description %}aria-describedby="{{ input_id }}-desc"{% endif %}>
         {% for opt in widget.attrs.options %}
-        <option value="{{ opt.label or opt.value }}"
+        <option value="{{ opt.value or opt.label }}"
                 {% if opt.label == widget.default or opt.value == widget.default or (widget.current and (opt.label == widget.current or opt.value == widget.current)) %}selected{% endif %}
                 title="{{ opt.description }}">
             {{ opt.label or opt.value }}
