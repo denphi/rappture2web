@@ -223,25 +223,35 @@ rappture._registerRenderer('sequence', {
             lbl.textContent = indexLabel + ' ' + (frameIdx + 1) + ' / ' + maxFrames;
             framesHost.innerHTML = '';
 
-            // Build ordered output ids for this frame and collect per-run sources.
+            // Build ordered output groups for this frame and collect per-run sources.
             const order = [];
-            const byOutput = new Map(); // oid -> [{run, data}, ...]
+            const byOutput = new Map(); // key -> { oid, sources: [{run, data}, ...] }
             sources.forEach(({ run, data }) => {
                 const elems = data.elements || [];
                 const el = elems[Math.min(frameIdx, elems.length - 1)];
                 if (!el) return;
                 const cmpEntries = rappture._mergeGroupedOutputs(Object.entries(el.outputs || {}));
-                for (const [oid, odata] of cmpEntries) {
-                    if (!byOutput.has(oid)) {
-                        byOutput.set(oid, []);
-                        order.push(oid);
+                for (let entryIdx = 0; entryIdx < cmpEntries.length; entryIdx++) {
+                    const [oid, odata] = cmpEntries[entryIdx];
+                    const t = String((odata && odata.type) || '');
+                    // For field outputs, group by label (or per-frame position fallback)
+                    // so runs with different generated field ids still overlay together.
+                    const key = (t === 'field' || t.startsWith('field_'))
+                        ? (odata && odata.label ? `__fieldlbl__${odata.label}` : `__fieldpos__${entryIdx}`)
+                        : oid;
+                    if (!byOutput.has(key)) {
+                        byOutput.set(key, { oid, sources: [] });
+                        order.push(key);
                     }
-                    byOutput.get(oid).push({ run, data: odata });
+                    byOutput.get(key).sources.push({ run, data: odata });
                 }
             });
 
-            for (const oid of order) {
-                const oidSources = byOutput.get(oid) || [];
+            for (const key of order) {
+                const group = byOutput.get(key);
+                if (!group) continue;
+                const oid = group.oid;
+                const oidSources = group.sources || [];
                 if (oidSources.length === 0) continue;
                 const first = oidSources[0].data;
                 const type = first.type;
