@@ -313,6 +313,73 @@ class _OutputStore:
             normalized["layers"] = layers
             return normalized
 
+        if out_type == "drawing":
+            normalized = {"type": "drawing"}
+            about = rec.get("about", {})
+            if isinstance(about, dict):
+                normalized["label"] = str(about.get("label", ""))
+                normalized["description"] = str(about.get("description", ""))
+                normalized["camera"] = str(about.get("camera", ""))
+            else:
+                normalized["label"] = str(about) if about else ""
+                normalized["description"] = ""
+                normalized["camera"] = ""
+
+            for axis in ("xaxis", "yaxis", "zaxis"):
+                ax = rec.get(axis, {})
+                if isinstance(ax, dict):
+                    normalized[axis] = {
+                        "label": str(ax.get("label", "")),
+                        "units": str(ax.get("units", "")),
+                    }
+                else:
+                    normalized[axis] = {"label": "", "units": ""}
+
+            molecules = []
+            for key, val in rec.items():
+                if not key.startswith("molecule(") or not isinstance(val, dict):
+                    continue
+                mol_id = key[9:-1]  # strip molecule( ... )
+                mol_about = val.get("about", {}) if isinstance(val.get("about", {}), dict) else {}
+                molecules.append({
+                    "id": mol_id,
+                    "label": str(mol_about.get("label", "")),
+                    "style": str(mol_about.get("style", "")),
+                    "pdb": str(val.get("pdb", "") or ""),
+                    "vtk": str(val.get("vtk", "") or ""),
+                })
+            normalized["molecules"] = molecules
+
+            polydata = []
+            for key, val in rec.items():
+                if not key.startswith("polydata(") or not isinstance(val, dict):
+                    continue
+                pd_id = key[9:-1]  # strip polydata( ... )
+                pd_about = val.get("about", {}) if isinstance(val.get("about", {}), dict) else {}
+                polydata.append({
+                    "id": pd_id,
+                    "label": str(pd_about.get("label", "")),
+                    "style": str(pd_about.get("style", "")),
+                    "vtk": str(val.get("vtk", "") or ""),
+                })
+            normalized["polydata"] = polydata
+
+            glyphs = []
+            for key, val in rec.items():
+                if not key.startswith("glyphs(") or not isinstance(val, dict):
+                    continue
+                gl_id = key[7:-1]  # strip glyphs( ... )
+                gl_about = val.get("about", {}) if isinstance(val.get("about", {}), dict) else {}
+                glyphs.append({
+                    "id": gl_id,
+                    "label": str(gl_about.get("label", "")),
+                    "shape": str(gl_about.get("shape", "")),
+                    "style": str(gl_about.get("style", "")),
+                    "vtk": str(val.get("vtk", "") or ""),
+                })
+            normalized["glyphs"] = glyphs
+            return normalized
+
         if out_type == "mesh":
             # Parse dim to int
             dim = int(rec.get("dim", 3))

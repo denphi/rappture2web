@@ -359,6 +359,11 @@ def _parse_output_element(elem, parent_path):
     elif tag == "field":
         node.attrs["about"] = about_info
     elif tag == "drawing":
+        node.attrs["about"] = {
+            "label": about_info.get("label", ""),
+            "description": about_info.get("description", ""),
+            "camera": _get_text(elem.find("about"), "camera") if elem.find("about") is not None else "",
+        }
         # Parse axis labels/units
         for ax in ("xaxis", "yaxis", "zaxis"):
             ax_elem = elem.find(ax)
@@ -366,18 +371,44 @@ def _parse_output_element(elem, parent_path):
                 "label": _get_text(ax_elem, "label") if ax_elem is not None else "",
                 "units": _get_text(ax_elem, "units") if ax_elem is not None else "",
             }
-        # Parse molecule children (PDB or VTK)
+        # Parse component children
         molecules = []
         for mol_elem in elem.findall("molecule"):
             mol_id = mol_elem.get("id", "")
-            pdb_text = _get_text(mol_elem, "pdb")
-            vtk_text = _get_text(mol_elem, "vtk")
+            mol_about = mol_elem.find("about")
             molecules.append({
                 "id": mol_id,
-                "pdb": pdb_text.strip() if pdb_text else "",
-                "vtk": vtk_text.strip() if vtk_text else "",
+                "label": _get_text(mol_about, "label") if mol_about is not None else "",
+                "style": _get_text(mol_about, "style") if mol_about is not None else "",
+                "pdb": (_get_text(mol_elem, "pdb") or "").strip(),
+                "vtk": (_get_text(mol_elem, "vtk") or "").strip(),
             })
         node.attrs["molecules"] = molecules
+
+        polydata = []
+        for pd_elem in elem.findall("polydata"):
+            pd_id = pd_elem.get("id", "")
+            pd_about = pd_elem.find("about")
+            polydata.append({
+                "id": pd_id,
+                "label": _get_text(pd_about, "label") if pd_about is not None else "",
+                "style": _get_text(pd_about, "style") if pd_about is not None else "",
+                "vtk": (_get_text(pd_elem, "vtk") or "").strip(),
+            })
+        node.attrs["polydata"] = polydata
+
+        glyphs = []
+        for gl_elem in elem.findall("glyphs"):
+            gl_id = gl_elem.get("id", "")
+            gl_about = gl_elem.find("about")
+            glyphs.append({
+                "id": gl_id,
+                "label": _get_text(gl_about, "label") if gl_about is not None else "",
+                "shape": _get_text(gl_about, "shape") if gl_about is not None else "",
+                "style": _get_text(gl_about, "style") if gl_about is not None else "",
+                "vtk": (_get_text(gl_elem, "vtk") or "").strip(),
+            })
+        node.attrs["glyphs"] = glyphs
     elif tag == "group":
         # Output groups can overlay plots
         node.children = [
@@ -605,6 +636,8 @@ def parse_run_xml(xml_path: str) -> dict:
             outputs[elem_id] = _parse_sequence_output(child, mesh_registry=mesh_registry)
         elif tag == "mapviewer":
             outputs[elem_id] = _parse_mapviewer_output(child)
+        elif tag == "drawing":
+            outputs[elem_id] = _parse_drawing_output(child)
         elif tag == "group":
             # Output groups contain overlaid items
             group_outputs = {}
@@ -1214,6 +1247,70 @@ def _parse_mapviewer_output(elem):
         "projection": projection,
         "scope": scope,
         "layers": layers,
+    }
+
+
+def _parse_drawing_output(elem):
+    """Parse a <drawing> output element with molecule/polydata/glyph components."""
+    about = elem.find("about")
+
+    def _decode_payload(text):
+        raw = (text or "").strip()
+        if not raw:
+            return ""
+        if raw.startswith("@@RP-ENC:"):
+            return _decode_rp_enc(raw).decode("utf-8", errors="replace")
+        return raw
+
+    molecules = []
+    for mol in elem.findall("molecule"):
+        mol_about = mol.find("about")
+        molecules.append({
+            "id": mol.get("id", ""),
+            "label": _get_text(mol_about, "label") if mol_about is not None else "",
+            "style": _get_text(mol_about, "style") if mol_about is not None else "",
+            "pdb": _decode_payload(_get_text(mol, "pdb")),
+            "vtk": _decode_payload(_get_text(mol, "vtk")),
+        })
+
+    polydata = []
+    for pd in elem.findall("polydata"):
+        pd_about = pd.find("about")
+        polydata.append({
+            "id": pd.get("id", ""),
+            "label": _get_text(pd_about, "label") if pd_about is not None else "",
+            "style": _get_text(pd_about, "style") if pd_about is not None else "",
+            "vtk": _decode_payload(_get_text(pd, "vtk")),
+        })
+
+    glyphs = []
+    for gl in elem.findall("glyphs"):
+        gl_about = gl.find("about")
+        glyphs.append({
+            "id": gl.get("id", ""),
+            "label": _get_text(gl_about, "label") if gl_about is not None else "",
+            "shape": _get_text(gl_about, "shape") if gl_about is not None else "",
+            "style": _get_text(gl_about, "style") if gl_about is not None else "",
+            "vtk": _decode_payload(_get_text(gl, "vtk")),
+        })
+
+    axes = {}
+    for axis in ("xaxis", "yaxis", "zaxis"):
+        ax = elem.find(axis)
+        axes[axis] = {
+            "label": _get_text(ax, "label") if ax is not None else "",
+            "units": _get_text(ax, "units") if ax is not None else "",
+        }
+
+    return {
+        "type": "drawing",
+        "label": _get_text(about, "label") if about is not None else "",
+        "description": _get_text(about, "description") if about is not None else "",
+        "camera": _get_text(about, "camera") if about is not None else "",
+        "molecules": molecules,
+        "polydata": polydata,
+        "glyphs": glyphs,
+        **axes,
     }
 
 
