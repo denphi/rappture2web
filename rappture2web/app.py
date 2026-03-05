@@ -9,8 +9,10 @@ import os
 import uuid
 from pathlib import Path
 
+import mimetypes
+
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -88,13 +90,6 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
     _use_cache = use_cache
     _base_path = base_path.rstrip("/")
 
-    # Mount the tool directory so note HTML files can load images via /tool-files/
-    mount_path = f"{_base_path}/tool-files" if _base_path else "/tool-files"
-    try:
-        app.mount(mount_path, StaticFiles(directory=tool_dir), name="tool-files")
-    except Exception:
-        pass  # Already mounted or directory not found
-
     _tool_def = parse_tool_xml(_tool_xml_path, base_path=_base_path)
     _server_url = server_url
 
@@ -124,6 +119,25 @@ def _serialize(obj):
     if isinstance(obj, dict):
         return {k: _serialize(v) for k, v in obj.items()}
     return obj
+
+
+# ─── Tool static files ───────────────────────────────────────────────────────
+
+@app.get("/tool-files/{file_path:path}")
+async def tool_static_file(file_path: str):
+    """Serve static files from the tool directory (e.g. images in note HTML)."""
+    if not _tool_xml_path:
+        return Response(status_code=404)
+    tool_dir = Path(_tool_xml_path).parent
+    target = (tool_dir / file_path).resolve()
+    # Security: ensure the resolved path stays within tool_dir
+    try:
+        target.relative_to(tool_dir.resolve())
+    except ValueError:
+        return Response(status_code=403)
+    if not target.exists() or not target.is_file():
+        return Response(status_code=404)
+    return FileResponse(str(target))
 
 
 # ─── Page ────────────────────────────────────────────────────────────────────
