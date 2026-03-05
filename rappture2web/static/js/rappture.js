@@ -420,6 +420,60 @@ const rappture = {
 
     // Accumulated outputs during streaming (library mode)
     _streamedOutputs: {},
+    _resultsResizeObserver: null,
+    _resultsResizeRaf: 0,
+    _resultsResizeTarget: null,
+
+    _resizeOutputPanel(panel) {
+        if (!panel) return;
+        panel.querySelectorAll('.rp-output-plot').forEach(plotDiv => {
+            if (window.Plotly) Plotly.Plots.resize(plotDiv);
+        });
+        panel.querySelectorAll('canvas').forEach(c => {
+            c.dispatchEvent(new Event('resize'));
+            const wrap = c.parentElement;
+            if (wrap) wrap.dispatchEvent(new Event('resize'));
+        });
+    },
+
+    _queueActiveOutputResize() {
+        if (this._resultsResizeRaf) return;
+        this._resultsResizeRaf = requestAnimationFrame(() => {
+            this._resultsResizeRaf = 0;
+            const activePanel = document.querySelector('#rp-results .rp-output-panel.active');
+            this._resizeOutputPanel(activePanel);
+        });
+    },
+
+    _watchResultsResize() {
+        const container = document.getElementById('rp-results');
+        if (!container || typeof ResizeObserver === 'undefined') return;
+        if (this._resultsResizeObserver && this._resultsResizeTarget === container) return;
+
+        if (this._resultsResizeObserver) {
+            this._resultsResizeObserver.disconnect();
+            this._resultsResizeObserver = null;
+        }
+
+        this._resultsResizeTarget = container;
+        let lastW = 0;
+        let lastH = 0;
+        this._resultsResizeObserver = new ResizeObserver(entries => {
+            const rect = entries && entries[0] && entries[0].contentRect;
+            if (!rect) {
+                this._queueActiveOutputResize();
+                return;
+            }
+            const w = Math.round(rect.width);
+            const h = Math.round(rect.height);
+            if (w === lastW && h === lastH) return;
+            lastW = w;
+            lastH = h;
+            this._queueActiveOutputResize();
+        });
+        this._resultsResizeObserver.observe(container);
+        this._queueActiveOutputResize();
+    },
 
     /** Render all outputs at once (classic mode / run replay). */
     renderOutputs(outputs, log) {
@@ -494,16 +548,7 @@ const rappture = {
             const activePanel = document.getElementById(activePanelId);
             if (activePanel) {
                 activePanel.classList.add('active');
-                requestAnimationFrame(() => {
-                    const plotDiv = activePanel.querySelector('.rp-output-plot');
-                    if (plotDiv && window.Plotly) Plotly.Plots.resize(plotDiv);
-                    // Trigger ResizeObserver for Three.js canvases that just became visible
-                    activePanel.querySelectorAll('canvas').forEach(c => {
-                        c.dispatchEvent(new Event('resize'));
-                        const wrap = c.parentElement;
-                        if (wrap) wrap.dispatchEvent(new Event('resize'));
-                    });
-                });
+                this._queueActiveOutputResize();
             }
         };
 
@@ -647,14 +692,7 @@ const rappture = {
                 const activePanel = document.getElementById(panelId);
                 if (activePanel) {
                     activePanel.classList.add('active');
-                    requestAnimationFrame(() => {
-                        const plotDiv = activePanel.querySelector('.rp-output-plot');
-                        if (plotDiv && window.Plotly) Plotly.Plots.resize(plotDiv);
-                        activePanel.querySelectorAll('canvas').forEach(c => {
-                            const wrap = c.parentElement;
-                            if (wrap) wrap.dispatchEvent(new Event('resize'));
-                        });
-                    });
+                    this._queueActiveOutputResize();
                 }
             });
         }
@@ -1979,6 +2017,7 @@ document.addEventListener('DOMContentLoaded', () => {
     rappture.initEnableConditions();
     rappture.initColorInputs();
     rappture.initTabAccessibility();
+    rappture._watchResultsResize();
     rappture.connectWebSocket();
     rappture._fetchRunHistory();
     document.querySelectorAll('.rp-periodicelement').forEach(w => rappture.initPeriodicElement(w));
