@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
 import uuid
@@ -20,6 +21,13 @@ from .xml_parser import parse_run_xml
 def _find_rappture_binary() -> str | None:
     """Return the path to the 'rappture' executable, or None if not found."""
     return shutil.which("rappture")
+
+
+def _command_invokes_python(command: str) -> bool:
+    """Return True when command appears to call a python executable explicitly."""
+    # Match tokens like python, python3, python3.11, /usr/bin/python3, etc.
+    return re.search(r"(^|[\s'\"`;/|&()])(?:[^ \t'\"`;/|&()]*\/)?python(?:\d+(?:\.\d+)*)?(?=($|[\s'\"`;/|&()]))",
+                     command) is not None
 
 
 # ─── Driver XML helpers ───────────────────────────────────────────────────────
@@ -295,17 +303,21 @@ async def run_simulation(
 
     # ── Execute ──────────────────────────────────────────────────────────────
     try:
-        # Build a clean environment: strip Python-related vars so the tool's
-        # own python/virtualenv calls use the system python, not ours.
-        import os
+        # Build a clean environment. We always drop PYTHONPATH/PYTHONHOME to
+        # avoid cross-process module leakage. PATH/venv sanitization is only
+        # applied for explicit python commands; wrapper scripts on nanoHUB may
+        # rely on PATH to locate Rappture-aware interpreters.
         clean_env = {k: v for k, v in os.environ.items()
-                     if k not in ()}  # 'PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV', 'CONDA_PREFIX', 'CONDA_DEFAULT_ENV'
-        # Remove our venv from PATH so 'python' resolves to the system python
-        path_parts = clean_env.get('PATH', '').split(os.pathsep)
-        venv = os.environ.get('VIRTUAL_ENV') or os.environ.get('CONDA_PREFIX', '')
-        if venv:
-            path_parts = [p for p in path_parts if not p.startswith(venv)]
-        clean_env['PATH'] = os.pathsep.join(path_parts)
+                     if k not in ("PYTHONPATH", "PYTHONHOME")}
+        if _command_invokes_python(exec_command):
+            for key in ("VIRTUAL_ENV", "CONDA_PREFIX", "CONDA_DEFAULT_ENV"):
+                clean_env.pop(key, None)
+
+            venv = os.environ.get("VIRTUAL_ENV") or os.environ.get("CONDA_PREFIX", "")
+            if venv:
+                path_parts = clean_env.get("PATH", "").split(os.pathsep)
+                path_parts = [p for p in path_parts if not p.startswith(venv)]
+                clean_env["PATH"] = os.pathsep.join(path_parts)
 
         process = await asyncio.create_subprocess_shell(
             exec_command,
