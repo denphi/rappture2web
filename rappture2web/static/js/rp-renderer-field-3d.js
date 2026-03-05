@@ -109,6 +109,7 @@
                 <div class="rp-panel-title">Download</div>
                 <div class="rp-panel-btns">
                   <button class="rp-3d-btn" id="fld3-png-${sid}">PNG</button>
+                  <button class="rp-3d-btn" id="fld3-dl-json-${sid}">JSON</button>
                 </div>
               </div>`;
 
@@ -212,6 +213,7 @@
                 const fldLabel = ((data.about && data.about.label) || data.label || id).replace(/[^a-z0-9]/gi, '_');
                 cp.querySelector(`#fld3-png-${sid}`).addEventListener('click', () =>
                     Plotly.downloadImage(plotDiv, { format: 'png', filename: fldLabel }));
+                rappture._rpUtils.wireDownloadData(cp, data, fldLabel, 'fld3', sid);
             });
 
             return item;

@@ -443,6 +443,7 @@
                 <div class="rp-panel-btns">
                   <button class="rp-3d-btn" id="fld2-svg-${sid}">SVG</button>
                   <button class="rp-3d-btn" id="fld2-png-${sid}">PNG</button>
+                  <button class="rp-3d-btn" id="fld2-dl-json-${sid}">JSON</button>
                 </div>
               </div>`;
 
@@ -543,6 +544,7 @@
                     rappture._downloadPlot(plotDiv, fldLabel, 'svg'));
                 cp.querySelector(`#fld2-png-${sid}`).addEventListener('click', () =>
                     rappture._downloadPlot(plotDiv, fldLabel, 'png'));
+                rappture._rpUtils.wireDownloadData(cp, data, fldLabel, 'fld2', sid);
             });
 
             return item;

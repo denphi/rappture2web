@@ -267,6 +267,29 @@ rappture._rpUtils = {
     },
 
     /**
+     * Wire a JSON data download button.
+     * Expects a button with ID `${prefix}-dl-json-${sid}`.
+     * @param {HTMLElement} cp - Control panel element
+     * @param {Object} data - The raw data object for this output item
+     * @param {string} fileLabel - Base filename for download
+     * @param {string} prefix - ID prefix
+     * @param {string} sid - Sanitized ID suffix
+     */
+    wireDownloadData(cp, data, fileLabel, prefix, sid) {
+        const btn = cp.querySelector(`#${prefix}-dl-json-${sid}`);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (fileLabel || 'data') + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    },
+
+    /**
      * Initialize a Plotly chart when its container becomes visible.
      * Handles the common _whenVisible + newPlot + resize pattern.
      *
@@ -340,7 +363,7 @@ rappture._rpUtils = {
      * @returns {string} HTML string
      */
     downloadSectionHtml(prefix, sid, formats) {
-        formats = formats || ['svg', 'eps', 'png'];
+        formats = formats || ['svg', 'eps', 'png', 'json'];
         const btns = formats.map(f =>
             `<button class="rp-3d-btn" id="${prefix}-dl-${f}-${sid}">${f.toUpperCase()}</button>`
         ).join('');

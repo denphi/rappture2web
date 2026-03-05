@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>LANDPARAM (rappture2web demo)</title>
+  <about>LANDPARAM computes land use change parameters for sub-Saharan Africa (SSA).
+
+For a given level of market access change, the tool returns:
+  1) Own-price land supply elasticity and land transformation elasticity by region
+  2) Cropland area converted from forest, grassland, and shrubland (Mha)
+  3) A map of grid-cell level updated cultivation probabilities
+  4) A supply curve of new cropland area vs. market access shock
+
+Based on: Liu and Villoria (2015). Spatial logit model of grid-cell cultivation probability.
+  </about>
+  <command>
+    python3 @tool/mapviewer.py @driver
+  </command>
+</tool>
+<input>
+  <number id="market_access_pct">
+    <about>
+      <label>Market access increase (%)</label>
+      <description>Percentage increase in market access (land profitability shock). Higher values lead to more cropland conversion.</description>
+    </about>
+    <min>1</min>
+    <max>50</max>
+    <default>10</default>
+    <units>%</units>
+  </number>
+  <choice id="region_filter">
+    <about>
+      <label>SSA sub-region</label>
+      <description>Which sub-Saharan Africa sub-region to highlight on the cultivation probability map.</description>
+    </about>
+    <option><about><label>All SSA</label></about><value>all</value></option>
+    <option><about><label>East Africa</label></about><value>E</value></option>
+    <option><about><label>South Africa</label></about><value>S</value></option>
+    <option><about><label>West Africa</label></about><value>W</value></option>
+    <option><about><label>Central Africa</label></about><value>C</value></option>
+    <default>all</default>
+  </choice>
+  <choice id="cover_type">
+    <about>
+      <label>Land cover type</label>
+      <description>Filter the cultivation probability map by the grid cell's baseline land cover.</description>
+    </about>
+    <option><about><label>All covers</label></about><value>all</value></option>
+    <option><about><label>Forest (F)</label></about><value>F</value></option>
+    <option><about><label>Grassland (G)</label></about><value>G</value></option>
+    <option><about><label>Shrubland (S)</label></about><value>S</value></option>
+    <default>all</default>
+  </choice>
+</input>
+</run>

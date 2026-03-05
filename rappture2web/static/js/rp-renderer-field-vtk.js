@@ -111,6 +111,7 @@
                 <div class="rp-panel-btns">
                   <button class="rp-3d-btn" id="fld3v-svg-${sid}">SVG</button>
                   <button class="rp-3d-btn" id="fld3v-png-${sid}">PNG</button>
+                  <button class="rp-3d-btn" id="fld3v-dl-json-${sid}">JSON</button>
                 </div>
               </div>`;
 
@@ -255,6 +256,7 @@
                     Plotly.downloadImage(plotDiv, { format: 'svg', filename: fname }));
                 cp.querySelector(`#fld3v-png-${sid}`).addEventListener('click', () =>
                     Plotly.downloadImage(plotDiv, { format: 'png', filename: fname }));
+                rappture._rpUtils.wireDownloadData(cp, data, fname, 'fld3v', sid);
             });
 
             return item;

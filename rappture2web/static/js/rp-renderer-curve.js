@@ -257,6 +257,7 @@ rappture._registerRenderer('curve', {
             }
             U.wireThemeToggle(cp, plotDiv, 'plt', sid);
             U.wireDownloadButtons(cp, plotDiv, plotLabel, 'plt', sid);
+            U.wireDownloadData(cp, data, plotLabel, 'plt', sid);
         }, 50);
 
         return item;
@@ -485,6 +486,7 @@ rappture._registerRenderer('histogram', {
             cp.querySelector(`#ht-legpos-${sid}`).addEventListener('change', applyLayout);
             U.wireThemeToggle(cp, plotDiv, 'ht', sid);
             U.wireDownloadButtons(cp, plotDiv, htLabel, 'ht', sid);
+            U.wireDownloadData(cp, data, htLabel, 'ht', sid);
         }, 50);
         return item;
     },

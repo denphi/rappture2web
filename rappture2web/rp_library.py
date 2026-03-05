@@ -225,6 +225,91 @@ class _OutputStore:
         """Normalize a record into the structure the JS renderer expects."""
         out_type = rec.get("type", "")
 
+        if out_type == "mapviewer":
+            normalized = {"type": "mapviewer"}
+            about = rec.get("about", {})
+            if isinstance(about, dict):
+                normalized["label"] = about.get("label", "")
+            else:
+                normalized["label"] = str(about)
+            normalized["projection"] = str(rec.get("projection", "natural earth"))
+            normalized["scope"] = str(rec.get("scope", "world"))
+            layers = []
+            for key, val in rec.items():
+                if not key.startswith("layer(") or not isinstance(val, dict):
+                    continue
+                layer_id = key[6:-1]  # strip "layer(" and ")"
+                layer_about = val.get("about", {})
+                layer_label = (layer_about.get("label", layer_id)
+                               if isinstance(layer_about, dict) else layer_id)
+                layer_type = str(val.get("type", "scatter"))
+                color = val.get("color") or None
+                size = str(val.get("size", "6"))
+                colorscale = str(val.get("colorscale", "Viridis"))
+                opacity = str(val.get("opacity", "1"))
+                data_text = str(val.get("data", ""))
+                parsed = {"id": layer_id, "type": layer_type, "label": layer_label,
+                          "color": color, "size": size, "colorscale": colorscale, "opacity": opacity}
+                if layer_type == "scatter":
+                    lats, lons, texts = [], [], []
+                    for line in data_text.strip().splitlines():
+                        parts = line.strip().split(None, 2)
+                        if len(parts) >= 2:
+                            try:
+                                lats.append(float(parts[0]))
+                                lons.append(float(parts[1]))
+                                texts.append(parts[2] if len(parts) > 2 else "")
+                            except ValueError:
+                                pass
+                    parsed["lats"] = lats
+                    parsed["lons"] = lons
+                    parsed["texts"] = texts
+                elif layer_type == "choropleth":
+                    locations, values = [], []
+                    for line in data_text.strip().splitlines():
+                        parts = line.strip().split(None, 1)
+                        if len(parts) == 2:
+                            try:
+                                locations.append(parts[0])
+                                values.append(float(parts[1]))
+                            except ValueError:
+                                pass
+                    parsed["locations"] = locations
+                    parsed["values"] = values
+                elif layer_type == "line":
+                    segments = []
+                    for line in data_text.strip().splitlines():
+                        parts = line.strip().split(None, 4)
+                        if len(parts) >= 4:
+                            try:
+                                segments.append({
+                                    "lat0": float(parts[0]), "lon0": float(parts[1]),
+                                    "lat1": float(parts[2]), "lon1": float(parts[3]),
+                                    "label": parts[4] if len(parts) > 4 else "",
+                                })
+                            except ValueError:
+                                pass
+                    parsed["segments"] = segments
+                elif layer_type == "heatmap":
+                    lats, lons, values, texts = [], [], [], []
+                    for line in data_text.strip().splitlines():
+                        parts = line.strip().split(None, 3)
+                        if len(parts) >= 3:
+                            try:
+                                lats.append(float(parts[0]))
+                                lons.append(float(parts[1]))
+                                values.append(float(parts[2]))
+                                texts.append(parts[3] if len(parts) > 3 else "")
+                            except ValueError:
+                                pass
+                    parsed["lats"] = lats
+                    parsed["lons"] = lons
+                    parsed["values"] = values
+                    parsed["texts"] = texts
+                layers.append(parsed)
+            normalized["layers"] = layers
+            return normalized
+
         if out_type == "mesh":
             # Parse dim to int
             dim = int(rec.get("dim", 3))

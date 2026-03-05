@@ -21,6 +21,7 @@ INPUT_TYPES = {
 OUTPUT_TYPES = {
     "curve", "histogram", "field", "image", "string", "number", "integer",
     "boolean", "table", "log", "sequence", "structure", "mesh", "group",
+    "mapviewer",
 }
 
 # Special non-widget elements
@@ -515,6 +516,8 @@ def parse_run_xml(xml_path: str) -> dict:
             outputs[elem_id] = _parse_field_output(child, mesh_registry)
         elif tag == "sequence":
             outputs[elem_id] = _parse_sequence_output(child)
+        elif tag == "mapviewer":
+            outputs[elem_id] = _parse_mapviewer_output(child)
         elif tag == "group":
             # Output groups contain overlaid items
             group_outputs = {}
@@ -997,6 +1000,133 @@ def _parse_field_output(elem, mesh_registry=None):
         "label": label or group,
         "group": group,
         "components": components,
+    }
+
+
+def _parse_mapviewer_output(elem):
+    """Parse a <mapviewer> output element.
+
+    Supports layers of type: scatter (lat/lon points), choropleth (country/region fills),
+    and lines (great-circle or path lines).
+
+    XML structure example:
+        <mapviewer id="map">
+          <about><label>My Map</label></about>
+          <projection>natural earth</projection>  <!-- optional Plotly geo projection -->
+          <layer id="cities" type="scatter">
+            <about><label>Cities</label></about>
+            <color>#e74c3c</color>
+            <size>8</size>
+            <data>
+              <!-- lat lon text -->
+              40.71 -74.01 New York
+              51.51 -0.13 London
+              35.69 139.69 Tokyo
+            </data>
+          </layer>
+          <layer id="countries" type="choropleth">
+            <about><label>Population</label></about>
+            <colorscale>Viridis</colorscale>
+            <data>
+              <!-- iso3 value -->
+              USA 331000000
+              CHN 1411000000
+              IND 1380000000
+            </data>
+          </layer>
+        </mapviewer>
+    """
+    about = elem.find("about")
+    label = _get_text(about, "label") if about is not None else ""
+    projection = _get_text(elem, "projection") or "natural earth"
+    scope = _get_text(elem, "scope") or "world"
+
+    layers = []
+    for layer in elem.findall("layer"):
+        layer_id = layer.get("id", "layer")
+        # type can be an XML attribute or a child text element
+        layer_type = layer.get("type") or _get_text(layer, "type") or "scatter"
+        layer_about = layer.find("about")
+        layer_label = _get_text(layer_about, "label") if layer_about is not None else layer_id
+        color = _get_text(layer, "color") or None
+        size = _get_text(layer, "size") or "6"
+        colorscale = _get_text(layer, "colorscale") or "Viridis"
+        opacity = _get_text(layer, "opacity") or "1"
+        data_text = _get_text(layer, "data") or ""
+
+        parsed = {"id": layer_id, "type": layer_type, "label": layer_label,
+                  "color": color, "size": size, "colorscale": colorscale, "opacity": opacity}
+
+        if layer_type == "scatter":
+            lats, lons, texts = [], [], []
+            for line in data_text.strip().splitlines():
+                parts = line.strip().split(None, 2)
+                if len(parts) >= 2:
+                    try:
+                        lats.append(float(parts[0]))
+                        lons.append(float(parts[1]))
+                        texts.append(parts[2] if len(parts) > 2 else "")
+                    except ValueError:
+                        pass
+            parsed["lats"] = lats
+            parsed["lons"] = lons
+            parsed["texts"] = texts
+
+        elif layer_type == "choropleth":
+            locations, values = [], []
+            for line in data_text.strip().splitlines():
+                parts = line.strip().split(None, 1)
+                if len(parts) == 2:
+                    try:
+                        locations.append(parts[0])
+                        values.append(float(parts[1]))
+                    except ValueError:
+                        pass
+            parsed["locations"] = locations
+            parsed["values"] = values
+
+        elif layer_type == "line":
+            # Each line: lat_start lon_start lat_end lon_end [label]
+            segments = []
+            for line in data_text.strip().splitlines():
+                parts = line.strip().split(None, 4)
+                if len(parts) >= 4:
+                    try:
+                        segments.append({
+                            "lat0": float(parts[0]), "lon0": float(parts[1]),
+                            "lat1": float(parts[2]), "lon1": float(parts[3]),
+                            "label": parts[4] if len(parts) > 4 else "",
+                        })
+                    except ValueError:
+                        pass
+            parsed["segments"] = segments
+
+        elif layer_type == "heatmap":
+            # Each line: lat lon value [text]
+            lats, lons, values, texts = [], [], [], []
+            for line in data_text.strip().splitlines():
+                parts = line.strip().split(None, 3)
+                if len(parts) >= 3:
+                    try:
+                        lats.append(float(parts[0]))
+                        lons.append(float(parts[1]))
+                        values.append(float(parts[2]))
+                        texts.append(parts[3] if len(parts) > 3 else "")
+                    except ValueError:
+                        pass
+            parsed["lats"] = lats
+            parsed["lons"] = lons
+            parsed["values"] = values
+            parsed["texts"] = texts
+
+        layers.append(parsed)
+
+    return {
+        "type": "mapviewer",
+        "label": label,
+        "projection": projection,
+        "scope": scope,
+        "layers": layers,
     }
 
 
