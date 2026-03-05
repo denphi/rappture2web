@@ -252,6 +252,20 @@ rappture._registerRenderer('sequence', {
                     const compared = regEntry.compare.call(rappture, oidSources, oid);
                     rendered = compared && (compared.elem || compared);
                 }
+                // Field subtypes (field_2d/field_3d/...) do not define compare handlers.
+                // Route them through the main 'field' compare so runs overlay in one plot
+                // with selected run colors and first-run emphasis.
+                if (!rendered && oidSources.length > 1 && type.startsWith('field_')) {
+                    const fieldSources = oidSources.map(s => ({
+                        run: s.run,
+                        data: { ...s.data, type: 'field' },
+                    }));
+                    const fieldReg = rappture._rendererRegistry.field;
+                    if (fieldReg && typeof fieldReg.compare === 'function') {
+                        const compared = fieldReg.compare.call(rappture, fieldSources, oid);
+                        rendered = compared && (compared.elem || compared);
+                    }
+                }
                 if (!rendered) {
                     const renderer = rappture.outputRenderers[type];
                     if (renderer) {
