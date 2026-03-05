@@ -192,6 +192,7 @@ const rappture = {
 
     ws: null,
     wsReconnectDelay: 2000,
+    _preferFirstOutputOnNextRender: false,
 
     connectWebSocket() {
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -265,6 +266,7 @@ const rappture = {
                 const cached = msg.cached ? ' (cached)' : '';
                 const runLabel = msg.run_num ? ` Run #${msg.run_num}` : '';
                 this._setStatus(`Complete${runLabel}${cached}`, msg.status === 'success' ? 'success' : 'error');
+                this._preferFirstOutputOnNextRender = true;
                 // Refresh run history and auto-select newest run
                 this._fetchRunHistory(true);
                 break;
@@ -470,6 +472,7 @@ const rappture = {
             const cached = result.cached ? ' (cached)' : '';
             const runLabel = result.run_num ? ` Run #${result.run_num}` : '';
             this._setStatus(`Complete${runLabel}${cached}`, result.status === 'success' ? 'success' : 'error');
+            this._preferFirstOutputOnNextRender = true;
             this._fetchRunHistory(true);
 
         } catch (err) {
@@ -601,9 +604,16 @@ const rappture = {
         panelWrap.className = 'rp-output-panels';
 
         // Determine which index should be active
-        const activeIdx = prevActiveLabel
-            ? Math.max(0, ids.findIndex(id => panels[id].label === prevActiveLabel))
-            : 0;
+        let activeIdx = 0;
+        if (this._preferFirstOutputOnNextRender) {
+            const firstNonLogIdx = ids.findIndex(id => id !== '__log__');
+            activeIdx = firstNonLogIdx >= 0 ? firstNonLogIdx : 0;
+            this._preferFirstOutputOnNextRender = false;
+        } else {
+            activeIdx = prevActiveLabel
+                ? Math.max(0, ids.findIndex(id => panels[id].label === prevActiveLabel))
+                : 0;
+        }
 
         const _switchTo = (idx) => {
             panelWrap.querySelectorAll('.rp-output-panel').forEach(p => p.classList.remove('active'));
