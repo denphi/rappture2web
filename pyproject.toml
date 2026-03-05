@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rappture2web"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Web-based Rappture tool interface - renders XML tool definitions as interactive web applications"
 readme = "README"
 license = {text = "MIT"}
@@ -25,6 +25,9 @@ dev = [
 
 [project.scripts]
 rappture2web = "rappture2web.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "rappture2web._version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
