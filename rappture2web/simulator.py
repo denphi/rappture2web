@@ -457,9 +457,9 @@ async def run_simulation(
         exec_command = command
     else:
         # Classic mode: create driver.xml.
-        # If rappture is available, use "rappture -execute driver.xml" so that
-        # NanoHub middleware (invoke_app etc.) is invoked correctly.
-        # Fall back to running the tool command directly otherwise.
+        # Use "rappture -execute driver.xml" if rappture is available —
+        # this invokes the tool correctly through NanoHub middleware and
+        # streams progress live. Fall back to the raw tool command otherwise.
         driver_path = create_driver_xml(tool_xml_path, input_values)
         rappture_bin = shutil.which("rappture")
         if rappture_bin:
