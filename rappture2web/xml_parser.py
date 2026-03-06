@@ -428,6 +428,7 @@ def parse_structure_input(elem, node, parent_path):
 
     node.attrs["components"] = components
     node.attrs["fields"] = fields
+    node.attrs["xmlPath"] = node.path
     # Expose parameters in attrs so JS can read current values directly
     # from data-structure JSON without relying on DOM input fallback.
     node.attrs["parameters"] = [

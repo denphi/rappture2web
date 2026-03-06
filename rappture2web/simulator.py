@@ -91,7 +91,11 @@ def _set_xml_value(root, rappture_path: str, value: str):
     and copies unit/label metadata from any flat sibling definition so that
     Rappture::Units::convert receives a properly unit-tagged value.
     """
+    if not rappture_path or not rappture_path.strip():
+        return
     parts = _parse_path(rappture_path)
+    if not parts:
+        return
 
     # Detect if this path targets a sub-parameter inside a structure.
     # Pattern: [..., ('structure', sid), ('number'|'integer', pid)]
