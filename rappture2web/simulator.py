@@ -35,11 +35,40 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
     for path, value in input_values.items():
         _set_xml_value(root, path, str(value))
 
+    # Ensure any <current> that is still empty/missing gets its <default> value
+    # (handles disabled widgets like workf that collectInputs skips).
+    _fill_defaults_in_tree(root)
+
     tool_dir = str(Path(tool_xml_path).parent)
     job_id = uuid.uuid4().hex[:8]
     driver_path = os.path.join(tool_dir, f"driver_{job_id}.xml")
     tree.write(driver_path, encoding="unicode", xml_declaration=True)
     return driver_path
+
+
+def _fill_defaults_in_tree(root) -> None:
+    """Walk all elements; for number/string/boolean/choice/integer/loader that
+    have a <default> but an empty or missing <current>, copy <default> into
+    <current> (with units appended for number elements).
+    """
+    VALUE_TAGS = {"number", "integer", "string", "boolean", "choice", "loader"}
+    for elem in root.iter():
+        if elem.tag not in VALUE_TAGS:
+            continue
+        default_el = elem.find("default")
+        if default_el is None or not (default_el.text or "").strip():
+            continue  # no default to fall back to
+        current_el = elem.find("current")
+        if current_el is None:
+            current_el = ET.SubElement(elem, "current")
+        # Only fill in if truly empty
+        if (current_el.text or "").strip():
+            continue
+        value = default_el.text.strip()
+        # For number elements, append units if the default is a bare number
+        if elem.tag == "number":
+            value = _append_units_if_needed(elem, value)
+        current_el.text = value
 
 
 def _set_xml_value(root, rappture_path: str, value: str):
