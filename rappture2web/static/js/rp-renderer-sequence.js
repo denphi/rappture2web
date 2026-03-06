@@ -57,15 +57,10 @@ rappture._registerRenderer('sequence', {
         const resetBtn = document.createElement('button');
         resetBtn.type = 'button'; resetBtn.className = 'rp-seq-btn rp-seq-reset'; resetBtn.innerHTML = icons.reset; resetBtn.title = 'Reset';
 
-        // Lock Y-axis checkbox — compute global y-range across all frames once
-        const lockYChk = document.createElement('input');
-        lockYChk.type = 'checkbox'; lockYChk.id = 'rp-seq-locky-' + id.replace(/[^a-z0-9]/gi, '_');
-        lockYChk.checked = true; lockYChk.style.cursor = 'pointer';
-        const lockYLbl = document.createElement('label');
-        lockYLbl.htmlFor = lockYChk.id;
-        lockYLbl.textContent = 'Lock Y axis';
-        lockYLbl.className = 'rp-seq-locky-label';
-        lockYLbl.prepend(lockYChk);
+        // Lock Y-axis checkbox id — the actual checkbox is injected into the curve's
+        // Y Axis panel section via data._seqLockYId; we look it up after first render.
+        const lockYId = 'rp-seq-locky-' + id.replace(/[^a-z0-9]/gi, '_');
+        let lockYChk = null; // resolved after first frame renders
 
         const topRow = document.createElement('div');
         topRow.className = 'rp-seq-top-row';
@@ -75,7 +70,6 @@ rappture._registerRenderer('sequence', {
         topRow.appendChild(nextBtn);
         topRow.appendChild(playBtn);
         topRow.appendChild(pauseBtn);
-        topRow.appendChild(lockYLbl);
         controls.appendChild(topRow);
         controls.appendChild(sliderWrap);
 
@@ -95,25 +89,25 @@ rappture._registerRenderer('sequence', {
         // and only update data. Map: oid -> { item, plotlyDiv }
         const _frameCache = {};
 
-        // Compute global y-range across all frames for each output id (for lock-Y feature).
-        // Map: oid -> [globalYMin, globalYMax]
+        // Compute global y-range across all frames keyed by entry position index.
+        // Using position (not oid) because grouped curve oids like __grp__Name can vary.
+        // Map: entryIndex -> [globalYMin, globalYMax]
         const _globalYRange = {};
         for (const el of data.elements) {
             const entries = rappture._mergeGroupedOutputs(Object.entries(el.outputs || {}));
-            for (const [oid, odata] of entries) {
+            entries.forEach(([, odata], idx) => {
                 const reg = rappture._rendererRegistry[odata.type];
-                if (!reg || !reg.getTraces) continue;
-                const traces = reg.getTraces(odata);
-                for (const t of traces) {
+                if (!reg || !reg.getTraces) return;
+                for (const t of reg.getTraces(odata)) {
                     if (!t.y) continue;
                     for (const v of t.y) {
                         if (typeof v !== 'number' || !isFinite(v)) continue;
-                        if (!_globalYRange[oid]) _globalYRange[oid] = [v, v];
-                        if (v < _globalYRange[oid][0]) _globalYRange[oid][0] = v;
-                        if (v > _globalYRange[oid][1]) _globalYRange[oid][1] = v;
+                        if (!_globalYRange[idx]) _globalYRange[idx] = [v, v];
+                        if (v < _globalYRange[idx][0]) _globalYRange[idx][0] = v;
+                        if (v > _globalYRange[idx][1]) _globalYRange[idx][1] = v;
                     }
                 }
-            }
+            });
         }
 
         const renderFrame = (idx) => {
@@ -132,42 +126,67 @@ rappture._registerRenderer('sequence', {
                     if (c._rpRenderer) { try { c._rpRenderer.dispose(); } catch(e) {} }
                 });
                 plotDiv.innerHTML = '';
-                for (const [oid, odata] of frameEntries) {
+                frameEntries.forEach(([oid, odata], entryIdx) => {
                     const renderer = rappture.outputRenderers[odata.type];
-                    if (renderer) {
-                        const rendered = renderer.call(rappture.outputRenderers, oid, odata);
-                        if (rendered) {
-                            const hdr = rendered.querySelector('.rp-output-header');
-                            if (hdr) hdr.style.display = 'none';
-                            rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
-                            plotDiv.appendChild(rendered);
-                            _frameCache[oid] = { rendered, type: odata.type };
-                            // Apply locked y-range once Plotly has initialized (poll since _whenVisible
-                            // inside the renderer delays Plotly.newPlot until the element is visible).
-                            if (_globalYRange[oid]) {
-                                const yr = _globalYRange[oid];
-                                let _pollCount = 0;
-                                const _poll = () => {
-                                    const pd = rendered.querySelector('.js-plotly-plot');
-                                    if (pd && pd._fullLayout) {
-                                        _frameCache[oid].plotlyDiv = pd;
-                                        if (lockYChk.checked) {
-                                            Plotly.relayout(pd, { 'yaxis.range': yr, 'yaxis.autorange': false });
+                    if (!renderer) return;
+                    // Inject Lock Y checkbox id into curve data so it renders in the Y Axis panel
+                    if ((odata.type === 'curve' || odata.type === 'histogram') && !lockYChk) {
+                        odata._seqLockYId = lockYId;
+                    }
+                    const rendered = renderer.call(rappture.outputRenderers, oid, odata);
+                    if (!rendered) return;
+                    // Resolve lockYChk from the rendered curve panel
+                    if (!lockYChk) {
+                        const chk = rendered.querySelector('#' + lockYId);
+                        if (chk) {
+                            lockYChk = chk;
+                            lockYChk.addEventListener('change', () => {
+                                const cur = parseInt(slider.value);
+                                if (cur === 0) {
+                                    for (const cached of Object.values(_frameCache)) {
+                                        if (!cached.plotlyDiv || !cached.plotlyDiv._fullLayout) continue;
+                                        const yr = _globalYRange[cached.entryIdx];
+                                        if (lockYChk.checked && yr) {
+                                            Plotly.relayout(cached.plotlyDiv, { 'yaxis.range': yr, 'yaxis.autorange': false });
+                                        } else {
+                                            Plotly.relayout(cached.plotlyDiv, { 'yaxis.autorange': true });
                                         }
-                                    } else if (_pollCount++ < 40) {
-                                        setTimeout(_poll, 50);
                                     }
-                                };
-                                setTimeout(_poll, 50);
-                            }
+                                } else {
+                                    renderFrame(cur);
+                                }
+                            });
                         }
                     }
-                }
+                    const hdr = rendered.querySelector('.rp-output-header');
+                    if (hdr) hdr.style.display = 'none';
+                    rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
+                    plotDiv.appendChild(rendered);
+                    _frameCache[oid] = { rendered, type: odata.type, entryIdx };
+                    // Apply locked y-range once Plotly has initialized (poll since _whenVisible
+                    // inside the renderer delays Plotly.newPlot until the element is visible).
+                    const yr = _globalYRange[entryIdx];
+                    if (yr) {
+                        let _pollCount = 0;
+                        const _poll = () => {
+                            const pd = rendered.querySelector('.js-plotly-plot');
+                            if (pd && pd._fullLayout) {
+                                _frameCache[oid].plotlyDiv = pd;
+                                if (lockYChk && lockYChk.checked) {
+                                    Plotly.relayout(pd, { 'yaxis.range': yr, 'yaxis.autorange': false });
+                                }
+                            } else if (_pollCount++ < 40) {
+                                setTimeout(_poll, 50);
+                            }
+                        };
+                        setTimeout(_poll, 50);
+                    }
+                });
             } else {
                 // Subsequent frames: update Plotly plots in-place via getTraces, rebuild non-Plotly outputs
-                for (const [oid, odata] of frameEntries) {
+                frameEntries.forEach(([oid, odata], entryIdx) => {
                     const cached = _frameCache[oid];
-                    if (!cached) continue;
+                    if (!cached) return;
                     const reg = rappture._rendererRegistry[odata.type];
                     if (reg && reg.getTraces) {
                         // Lazy-find the plotly div (may not have existed at cache time)
@@ -175,13 +194,19 @@ rappture._registerRenderer('sequence', {
                             cached.plotlyDiv = cached.rendered.querySelector('.js-plotly-plot');
                         }
                         if (cached.plotlyDiv && cached.plotlyDiv._fullLayout) {
-                            const newLayout = { ...cached.plotlyDiv.layout };
-                            if (lockYChk.checked && _globalYRange[oid]) {
-                                newLayout.yaxis = { ...newLayout.yaxis, range: _globalYRange[oid], autorange: false };
+                            const yr = _globalYRange[entryIdx];
+                            const newTraces = reg.getTraces(odata);
+                            // Delete existing traces then add new ones, preserving layout entirely
+                            const nExisting = cached.plotlyDiv.data.length;
+                            const deleteIdxs = Array.from({ length: nExisting }, (_, i) => i);
+                            Plotly.deleteTraces(cached.plotlyDiv, deleteIdxs);
+                            Plotly.addTraces(cached.plotlyDiv, newTraces);
+                            // Apply y-axis lock as a separate relayout
+                            if (lockYChk && lockYChk.checked && yr) {
+                                Plotly.relayout(cached.plotlyDiv, { 'yaxis.range': yr, 'yaxis.autorange': false });
                             } else {
-                                newLayout.yaxis = { ...newLayout.yaxis, autorange: true };
+                                Plotly.relayout(cached.plotlyDiv, { 'yaxis.autorange': true });
                             }
-                            Plotly.react(cached.plotlyDiv, reg.getTraces(odata), newLayout);
                         }
                     } else {
                         // Non-Plotly output: replace content
@@ -193,35 +218,15 @@ rappture._registerRenderer('sequence', {
                                 if (hdr) hdr.style.display = 'none';
                                 rendered.style.cssText = cached.rendered.style.cssText;
                                 cached.rendered.replaceWith(rendered);
-                                _frameCache[oid] = { rendered, type: odata.type };
+                                _frameCache[oid] = { rendered, type: odata.type, entryIdx };
                             }
                         }
                     }
-                }
+                });
             }
 
             if (idx === n - 1) _seqStop();
         };
-
-        // Re-render current frame when lock-Y is toggled.
-        // For frame 0 (first frame), directly relayout cached plotly divs.
-        // For subsequent frames, renderFrame handles it via Plotly.react.
-        lockYChk.addEventListener('change', () => {
-            const cur = parseInt(slider.value);
-            if (cur === 0) {
-                // First frame: apply/remove lock directly on cached plotly divs
-                for (const [oid, cached] of Object.entries(_frameCache)) {
-                    if (!cached.plotlyDiv || !cached.plotlyDiv._fullLayout) continue;
-                    if (lockYChk.checked && _globalYRange[oid]) {
-                        Plotly.relayout(cached.plotlyDiv, { 'yaxis.range': _globalYRange[oid], 'yaxis.autorange': false });
-                    } else {
-                        Plotly.relayout(cached.plotlyDiv, { 'yaxis.autorange': true });
-                    }
-                }
-            } else {
-                renderFrame(cur);
-            }
-        });
 
         slider.addEventListener('input', () => { _seqStop(); renderFrame(parseInt(slider.value)); });
         prevBtn.addEventListener('click', () => { _seqStop(); const v = Math.max(0, parseInt(slider.value) - 1); renderFrame(v); });

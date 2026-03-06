@@ -105,25 +105,28 @@ rappture._registerRenderer('curve', {
         const xMax = data.xaxis && data.xaxis.max ? parseFloat(data.xaxis.max) : undefined;
         const yMin = data.yaxis && data.yaxis.min ? parseFloat(data.yaxis.min) : undefined;
         const yMax = data.yaxis && data.yaxis.max ? parseFloat(data.yaxis.max) : undefined;
-        const xIsLog = data.xaxis && (data.xaxis.scale === 'log');
-        const yIsLog = data.yaxis && (data.yaxis.log === 'log' || data.yaxis.scale === 'log');
+        const xIsLogRequested = data.xaxis && (data.xaxis.scale === 'log');
+        const yIsLogRequested = data.yaxis && (data.yaxis.log === 'log' || data.yaxis.scale === 'log');
 
-        // Build traces and clamp zeros/negatives for log axes
-        const traces = _sanitizeTracesForLog(
-            rappture._rendererRegistry['curve'].getTraces(data, label),
-            xIsLog, yIsLog
-        );
+        // Build raw traces first to check for non-positive values, then sanitize for log axes
+        const rawTraces = rappture._rendererRegistry['curve'].getTraces(data, label);
+        const xHasNonPos = rawTraces.some(t => t.x && t.x.some(v => typeof v === 'number' && v <= 0));
+        const yHasNonPos = rawTraces.some(t => t.y && t.y.some(v => typeof v === 'number' && v <= 0));
+        // If data has non-positive values, disable log regardless of what the data requests
+        const xIsLog = xIsLogRequested && !xHasNonPos;
+        const yIsLog = yIsLogRequested && !yHasNonPos;
+        const traces = _sanitizeTracesForLog(rawTraces, xIsLog, yIsLog);
 
         const layout = {
             title: { text: '', font: { size: 14 } },
             xaxis: {
-                title: xTitle0,
+                title: { text: xTitle0 },
                 type: xIsLog ? 'log' : 'linear',
                 showgrid: true, zeroline: true,
                 ...(xMin !== undefined && xMax !== undefined ? { range: [xMin, xMax] } : {}),
             },
             yaxis: {
-                title: yTitle0,
+                title: { text: yTitle0 },
                 type: yIsLog ? 'log' : 'linear',
                 showgrid: true, zeroline: true,
                 ...(yMin !== undefined && yMax !== undefined ? { range: [yMin, yMax] } : {}),
@@ -149,7 +152,7 @@ rappture._registerRenderer('curve', {
             <label>Units<input type="text" id="plt-xu-${sid}" value="${xUnits0}"
               style="${U.inputStyle}"></label>
             <label style="flex-direction:row;align-items:center;gap:6px;margin-top:2px">
-              <input type="checkbox" id="plt-xlog-${sid}" ${data.xaxis && data.xaxis.scale === 'log' ? 'checked' : ''}> Log scale
+              <input type="checkbox" id="plt-xlog-${sid}" ${xIsLog ? 'checked' : ''}> Log scale
             </label>
             <label style="flex-direction:row;align-items:center;gap:6px">
               <input type="checkbox" id="plt-xgrid-${sid}" checked> Grid
@@ -167,6 +170,9 @@ rappture._registerRenderer('curve', {
             <label style="flex-direction:row;align-items:center;gap:6px">
               <input type="checkbox" id="plt-ygrid-${sid}" checked> Grid
             </label>
+            ${data._seqLockYId ? `<label style="flex-direction:row;align-items:center;gap:6px">
+              <input type="checkbox" id="${data._seqLockYId}"> Lock Y axis
+            </label>` : ''}
           </div>
           <div class="rp-panel-section">
             <div class="rp-panel-title">Display</div>
@@ -227,10 +233,10 @@ rappture._registerRenderer('curve', {
             const isOutsideLeft = posKey.startsWith('outside-l');
             const patch = {
                 'title.text':         cp.querySelector(`#plt-title-${sid}`).value,
-                'xaxis.title':        U.axTitle(xl, xu),
+                'xaxis.title.text':   U.axTitle(xl, xu),
                 'xaxis.type':         cp.querySelector(`#plt-xlog-${sid}`).checked ? 'log' : 'linear',
                 'xaxis.showgrid':     cp.querySelector(`#plt-xgrid-${sid}`).checked,
-                'yaxis.title':        U.axTitle(yl, yu),
+                'yaxis.title.text':   U.axTitle(yl, yu),
                 'yaxis.type':         cp.querySelector(`#plt-ylog-${sid}`).checked ? 'log' : 'linear',
                 'yaxis.showgrid':     cp.querySelector(`#plt-ygrid-${sid}`).checked,
                 'showlegend':         cp.querySelector(`#plt-leg-${sid}`).checked,
@@ -246,8 +252,8 @@ rappture._registerRenderer('curve', {
             // Sync structural changes into _rpBaseLayout so theme changes don't revert them
             if (plotDiv._rpBaseLayout) {
                 const b = plotDiv._rpBaseLayout;
-                b.xaxis = { ...b.xaxis, title: patch['xaxis.title'], type: patch['xaxis.type'], showgrid: patch['xaxis.showgrid'] };
-                b.yaxis = { ...b.yaxis, title: patch['yaxis.title'], type: patch['yaxis.type'], showgrid: patch['yaxis.showgrid'] };
+                b.xaxis = { ...b.xaxis, title: { text: patch['xaxis.title.text'] }, type: patch['xaxis.type'], showgrid: patch['xaxis.showgrid'] };
+                b.yaxis = { ...b.yaxis, title: { text: patch['yaxis.title.text'] }, type: patch['yaxis.type'], showgrid: patch['yaxis.showgrid'] };
                 b.showlegend = patch['showlegend'];
                 b.margin = { ...b.margin, r: patch['margin.r'], l: patch['margin.l'] };
             }
@@ -277,6 +283,11 @@ rappture._registerRenderer('curve', {
         _whenVisible(outerWrap, () => {
             U.storeBaseLayout(plotDiv, layout);
             Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
+            // Disable log scale checkboxes if data contains non-positive values
+            const xlogChk = cp.querySelector(`#plt-xlog-${sid}`);
+            const ylogChk = cp.querySelector(`#plt-ylog-${sid}`);
+            if (xHasNonPos) { xlogChk.disabled = true; xlogChk.checked = false; xlogChk.title = 'Log scale unavailable: data contains zero or negative values'; xlogChk.parentElement.style.opacity = '0.45'; }
+            if (yHasNonPos) { ylogChk.disabled = true; ylogChk.checked = false; ylogChk.title = 'Log scale unavailable: data contains zero or negative values'; ylogChk.parentElement.style.opacity = '0.45'; }
             cp.querySelectorAll('input[type=text], input[type=checkbox]').forEach(el => {
                 el.addEventListener('input', applyLayout);
             });

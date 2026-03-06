@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ tool.title }} - Rappture</title>
-    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260305x">
+    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260305y">
     <script>window._rpBasePath = {{ base_path | tojson }};</script>
     <script src="{{ base_path }}/static/js/plotly-3.4.0.min.js"></script>
     <script>Plotly.setPlotConfig({ topojsonURL: '{{ base_path }}/static/js/' });</script>
@@ -29,8 +29,8 @@
                     <h1 class="rp-title">{{ tool.title }}</h1>
                 </div>
             </div>
+            <div class="rp-powered-by">Powered by <a href="https://pypi.org/project/rappture2web/" target="_blank" rel="noopener noreferrer">rappture2web</a></div>
         </div>
-        <div class="rp-powered-by">Powered by <a href="https://pypi.org/project/rappture2web/" target="_blank" rel="noopener noreferrer">rappture2web</a></div>
         {% if show_toolbar %}
         <nav class="rp-toolbar" aria-label="Session actions">
             <div class="rp-toolbar-inner">
@@ -88,9 +88,9 @@
     <script src="{{ base_path }}/static/js/rp-renderers-simple.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-input-drawing.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-input-structure.js?v=20260305c"></script>
-    <script src="{{ base_path }}/static/js/rp-renderer-curve.js?v=20260305a"></script>
+    <script src="{{ base_path }}/static/js/rp-renderer-curve.js?v=20260305i"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-table.js?v=20260305a"></script>
-    <script src="{{ base_path }}/static/js/rp-renderer-sequence.js?v=20260305a"></script>
+    <script src="{{ base_path }}/static/js/rp-renderer-sequence.js?v=20260305g"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-field.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-field-3d.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-field-vtk.js?v=20260305a"></script>
