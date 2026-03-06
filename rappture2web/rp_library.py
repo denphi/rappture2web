@@ -352,9 +352,10 @@ class _OutputStore:
 
             polydata = []
             for key, val in rec.items():
-                if not key.startswith("polydata(") or not isinstance(val, dict):
+                is_polydata = key.startswith("polydata(") or key.startswith("polygon(")
+                if not is_polydata or not isinstance(val, dict):
                     continue
-                pd_id = key[9:-1]  # strip polydata( ... )
+                pd_id = key[key.find("(") + 1:-1]  # strip component( ... )
                 pd_about = val.get("about", {}) if isinstance(val.get("about", {}), dict) else {}
                 polydata.append({
                     "id": pd_id,

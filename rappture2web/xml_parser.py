@@ -197,6 +197,94 @@ def parse_loader(elem, node):
     node.attrs["download_sources"] = download_sources
 
 
+def _parse_float_list(text):
+    """Parse a whitespace-delimited list of numbers (units allowed)."""
+    import re as _re
+    vals = []
+    for tok in (text or "").split():
+        m = _re.match(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", tok.strip())
+        if not m:
+            continue
+        try:
+            vals.append(float(m.group(0)))
+        except ValueError:
+            pass
+    return vals
+
+
+def parse_drawing_input(elem, node):
+    """Parse input <drawing> (2D canvas primitives/hotspots)."""
+    bg = elem.find("background")
+    node.attrs["background"] = {
+        "color": _get_text(bg, "color") if bg is not None else "",
+        "coordinates": _get_text(bg, "coordinates") if bg is not None else "",
+        "aspect": _get_text(bg, "aspect") if bg is not None else "",
+        "width": _get_text(bg, "width") if bg is not None else "",
+        "height": _get_text(bg, "height") if bg is not None else "",
+    }
+
+    subs = {}
+    subs_elem = elem.find("substitutions")
+    if subs_elem is not None:
+        for child in list(subs_elem):
+            subs[child.tag] = (child.text or "").strip()
+    node.attrs["substitutions"] = subs
+
+    components = []
+    comps_elem = elem.find("components")
+    if comps_elem is not None:
+        for c in list(comps_elem):
+            item = {
+                "type": c.tag,
+                "coords": _parse_float_list(_get_text(c, "coords")),
+                "xcoords": _parse_float_list(_get_text(c, "xcoords")),
+                "ycoords": _parse_float_list(_get_text(c, "ycoords")),
+                "outline": _get_text(c, "outline"),
+                "fill": _get_text(c, "fill"),
+                "color": _get_text(c, "color"),
+                "linewidth": _get_text(c, "linewidth"),
+                "arrow": _get_text(c, "arrow"),
+                "font": _get_text(c, "font"),
+                "anchor": _get_text(c, "anchor"),
+                "text": _get_text(c, "text"),
+                "hotspot": _get_text(c, "hotspot"),
+                "width": _get_text(c, "width"),
+                "height": _get_text(c, "height"),
+                "contents": _get_text(c, "contents"),
+                "dash": _get_text(c, "dash"),
+                "controls": [(_c.text or "").strip() for _c in c.findall("controls") if (_c.text or "").strip()],
+            }
+            components.append(item)
+    node.attrs["components"] = components
+
+
+def parse_structure_input(elem, node):
+    """Parse input <structure> enough to render default component layout preview."""
+    node.attrs["units"] = _get_text(elem, "units")
+    components = []
+    dflt = elem.find("default")
+    if dflt is not None:
+        comps = dflt.find("components")
+        if comps is not None:
+            for box in comps.findall("box"):
+                about = box.find("about")
+                corners = [_get_text(box, "corner")]
+                for c in box.findall("corner")[1:]:
+                    corners.append((c.text or "").strip())
+                if len(corners) < 2:
+                    continue
+                c0 = _parse_float_list(corners[0])
+                c1 = _parse_float_list(corners[1])
+                components.append({
+                    "type": "box",
+                    "label": _get_text(about, "label") if about is not None else "",
+                    "color": _get_text(about, "color") if about is not None else "",
+                    "corner0": c0[0] if c0 else 0.0,
+                    "corner1": c1[0] if c1 else 0.0,
+                })
+    node.attrs["components"] = components
+
+
 def parse_group(elem, node, parent_path):
     """Parse group and its children recursively."""
     about_info, layout = _get_about(elem)
@@ -243,6 +331,8 @@ TYPE_PARSERS = {
     "choice": parse_choice,
     "multichoice": parse_multichoice,
     "loader": parse_loader,
+    "drawing": parse_drawing_input,
+    "structure": parse_structure_input,
     "image": lambda e, n: None,
     "note": lambda e, n: n.attrs.update({"contents": _get_text(e, "contents")}),
     "periodicelement": lambda e, n: n.attrs.update({
@@ -386,15 +476,16 @@ def _parse_output_element(elem, parent_path):
         node.attrs["molecules"] = molecules
 
         polydata = []
-        for pd_elem in elem.findall("polydata"):
-            pd_id = pd_elem.get("id", "")
-            pd_about = pd_elem.find("about")
-            polydata.append({
-                "id": pd_id,
-                "label": _get_text(pd_about, "label") if pd_about is not None else "",
-                "style": _get_text(pd_about, "style") if pd_about is not None else "",
-                "vtk": (_get_text(pd_elem, "vtk") or "").strip(),
-            })
+        for pd_tag in ("polydata", "polygon"):
+            for pd_elem in elem.findall(pd_tag):
+                pd_id = pd_elem.get("id", "")
+                pd_about = pd_elem.find("about")
+                polydata.append({
+                    "id": pd_id,
+                    "label": _get_text(pd_about, "label") if pd_about is not None else "",
+                    "style": _get_text(pd_about, "style") if pd_about is not None else "",
+                    "vtk": (_get_text(pd_elem, "vtk") or "").strip(),
+                })
         node.attrs["polydata"] = polydata
 
         glyphs = []
@@ -1274,14 +1365,15 @@ def _parse_drawing_output(elem):
         })
 
     polydata = []
-    for pd in elem.findall("polydata"):
-        pd_about = pd.find("about")
-        polydata.append({
-            "id": pd.get("id", ""),
-            "label": _get_text(pd_about, "label") if pd_about is not None else "",
-            "style": _get_text(pd_about, "style") if pd_about is not None else "",
-            "vtk": _decode_payload(_get_text(pd, "vtk")),
-        })
+    for pd_tag in ("polydata", "polygon"):
+        for pd in elem.findall(pd_tag):
+            pd_about = pd.find("about")
+            polydata.append({
+                "id": pd.get("id", ""),
+                "label": _get_text(pd_about, "label") if pd_about is not None else "",
+                "style": _get_text(pd_about, "style") if pd_about is not None else "",
+                "vtk": _decode_payload(_get_text(pd, "vtk")),
+            })
 
     glyphs = []
     for gl in elem.findall("glyphs"):

@@ -78,6 +78,30 @@
         }
     }
 
+    function getTemplate(name) {
+        if (typeof _rpPlotlyTemplates === 'undefined') return {};
+        return _rpPlotlyTemplates[name] || _rpPlotlyTemplates.plotly || {};
+    }
+
+    function templateSceneBg(name) {
+        const t = getTemplate(name);
+        return t.layout?.scene?.xaxis?.backgroundcolor
+            || t.layout?.plot_bgcolor
+            || t.layout?.paper_bgcolor
+            || '#E5ECF6';
+    }
+
+    function templateFontColor(name) {
+        const t = getTemplate(name);
+        return t.layout?.font?.color || '#2a3f5f';
+    }
+
+    function isDarkColor(colorValue) {
+        const c = toColor(colorValue, '#E5ECF6');
+        const luma = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+        return luma < 0.45;
+    }
+
     function parseCameraSpec(text) {
         const spec = {};
         if (!text || typeof text !== 'string') return spec;
@@ -211,6 +235,73 @@
         return new THREE.Color().setHSL((1 - t) * 0.65, 0.8, 0.5);
     }
 
+    function _triNormal(a, b, c) {
+        const ab = new THREE.Vector3().subVectors(b, a);
+        const ac = new THREE.Vector3().subVectors(c, a);
+        const n = new THREE.Vector3().crossVectors(ab, ac);
+        const len = n.length();
+        return len > 1e-12 ? n.multiplyScalar(1 / len) : null;
+    }
+
+    function _isPlanarPointSet(pts, indices) {
+        if (!indices || indices.length < 3) return false;
+        let i0 = -1, i1 = -1, i2 = -1, n = null;
+        for (let i = 0; i < indices.length - 2 && !n; i++) {
+            const a = indices[i], b = indices[i + 1], c = indices[i + 2];
+            const pa = new THREE.Vector3(pts[a * 3], pts[a * 3 + 1], pts[a * 3 + 2]);
+            const pb = new THREE.Vector3(pts[b * 3], pts[b * 3 + 1], pts[b * 3 + 2]);
+            const pc = new THREE.Vector3(pts[c * 3], pts[c * 3 + 1], pts[c * 3 + 2]);
+            n = _triNormal(pa, pb, pc);
+            if (n) { i0 = a; i1 = b; i2 = c; }
+        }
+        if (!n || i0 < 0 || i1 < 0 || i2 < 0) return false;
+        const p0 = new THREE.Vector3(pts[i0 * 3], pts[i0 * 3 + 1], pts[i0 * 3 + 2]);
+        const tol = 1e-5;
+        for (const idx of indices) {
+            const p = new THREE.Vector3(pts[idx * 3], pts[idx * 3 + 1], pts[idx * 3 + 2]);
+            const d = Math.abs(new THREE.Vector3().subVectors(p, p0).dot(n));
+            if (d > tol) return false;
+        }
+        return true;
+    }
+
+    function _triangulatePlanarVertexLoop(pts, uniqueIdx) {
+        if (!uniqueIdx || uniqueIdx.length < 3) return [];
+        const p0 = new THREE.Vector3(pts[uniqueIdx[0] * 3], pts[uniqueIdx[0] * 3 + 1], pts[uniqueIdx[0] * 3 + 2]);
+        let normal = null;
+        for (let i = 1; i < uniqueIdx.length - 1 && !normal; i++) {
+            const p1 = new THREE.Vector3(pts[uniqueIdx[i] * 3], pts[uniqueIdx[i] * 3 + 1], pts[uniqueIdx[i] * 3 + 2]);
+            const p2 = new THREE.Vector3(pts[uniqueIdx[i + 1] * 3], pts[uniqueIdx[i + 1] * 3 + 1], pts[uniqueIdx[i + 1] * 3 + 2]);
+            normal = _triNormal(p0, p1, p2);
+        }
+        if (!normal) return [];
+
+        const absN = new THREE.Vector3(Math.abs(normal.x), Math.abs(normal.y), Math.abs(normal.z));
+        let ax0 = 0, ax1 = 1;
+        if (absN.x >= absN.y && absN.x >= absN.z) { ax0 = 1; ax1 = 2; }
+        else if (absN.y >= absN.x && absN.y >= absN.z) { ax0 = 0; ax1 = 2; }
+        else { ax0 = 0; ax1 = 1; }
+
+        let c0 = 0, c1 = 0;
+        const rec = uniqueIdx.map((idx) => {
+            const x = pts[idx * 3 + ax0];
+            const y = pts[idx * 3 + ax1];
+            c0 += x;
+            c1 += y;
+            return { idx, x, y };
+        });
+        c0 /= rec.length;
+        c1 /= rec.length;
+        rec.forEach(r => { r.ang = Math.atan2(r.y - c1, r.x - c0); });
+        rec.sort((a, b) => a.ang - b.ang);
+
+        const tri = [];
+        for (let i = 1; i < rec.length - 1; i++) {
+            tri.push(rec[0].idx, rec[i].idx, rec[i + 1].idx);
+        }
+        return tri;
+    }
+
     function markMaterial(mat, opacity) {
         if (!mat) return;
         mat.userData = mat.userData || {};
@@ -241,25 +332,32 @@
         return c0.lerp(c1, f);
     }
 
-    function makeTextSprite(text, color) {
+    function makeTextSprite(text, color, opts) {
+        opts = opts || {};
+        const fontPx = Math.max(10, toNum(opts.fontPx, 44));
+        const sx = toNum(opts.scaleX, 0.9);
+        const sy = toNum(opts.scaleY, 0.34);
+        const noBackground = !!opts.noBackground;
         const canvas = document.createElement('canvas');
         canvas.width = 256;
         canvas.height = 96;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.font = 'bold 44px sans-serif';
+        ctx.font = `bold ${fontPx}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'rgba(15,23,42,0.80)';
-        ctx.fillRect(22, 16, 212, 64);
-        ctx.strokeStyle = 'rgba(148,163,184,0.9)';
-        ctx.strokeRect(22, 16, 212, 64);
+        if (!noBackground) {
+            ctx.fillStyle = 'rgba(15,23,42,0.80)';
+            ctx.fillRect(22, 16, 212, 64);
+            ctx.strokeStyle = 'rgba(148,163,184,0.9)';
+            ctx.strokeRect(22, 16, 212, 64);
+        }
         ctx.fillStyle = color || '#f8fafc';
         ctx.fillText(text, 128, 49);
         const tex = new THREE.CanvasTexture(canvas);
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
         const spr = new THREE.Sprite(mat);
-        spr.scale.set(0.9, 0.34, 1);
+        spr.scale.set(sx, sy, 1);
         return spr;
     }
 
@@ -344,6 +442,7 @@
         }
 
         const atomsZ = atoms.map(a => a.z);
+        atoms.forEach(a => { a.color = moleculeColor(a.z, colorMode, atomsZ); });
 
         let showAtoms = true;
         let showBonds = true;
@@ -368,7 +467,7 @@
                 if (a.symbol === 'He') scaleFactor *= 0.5;
                 const r = Math.max(0.03, baseR * scaleFactor * atomScale);
 
-                const color = moleculeColor(a.z, colorMode, atomsZ);
+                const color = a.color || moleculeColor(a.z, colorMode, atomsZ);
                 const geo = new THREE.SphereGeometry(r, sphereSeg, Math.max(6, Math.round(sphereSeg * 0.75)));
                 const mat = new THREE.MeshPhongMaterial({ color, transparent: opacity < 1, opacity, wireframe: !!showEdges });
                 markMaterial(mat, opacity);
@@ -389,12 +488,25 @@
                 const a = atoms[ia];
                 const b = atoms[ib];
                 if (!a || !b) return;
-                const c = new THREE.Color('#9ca3af');
+                const ac = (a.color && a.color.clone) ? a.color.clone() : moleculeColor(a.z, colorMode, atomsZ);
+                const bc = (b.color && b.color.clone) ? b.color.clone() : moleculeColor(b.z, colorMode, atomsZ);
+                const sameColor = ac.getHex() === bc.getHex();
+                const mid = new THREE.Vector3().addVectors(a.pos, b.pos).multiplyScalar(0.5);
                 if (bondStyle === 'line') {
-                    _addBondLine(group, a.pos, b.pos, c, opacity);
+                    if (sameColor) {
+                        _addBondLine(group, a.pos, b.pos, ac, opacity);
+                    } else {
+                        _addBondLine(group, a.pos, mid, ac, opacity);
+                        _addBondLine(group, mid, b.pos, bc, opacity);
+                    }
                 } else {
                     const base = representation === 'rods' ? 0.18 : 0.10;
-                    _addBondCylinder(group, a.pos, b.pos, c, base * bondScale, opacity, quality);
+                    if (sameColor) {
+                        _addBondCylinder(group, a.pos, b.pos, ac, base * bondScale, opacity, quality);
+                    } else {
+                        _addBondCylinder(group, a.pos, mid, ac, base * bondScale, opacity, quality);
+                        _addBondCylinder(group, mid, b.pos, bc, base * bondScale, opacity, quality);
+                    }
                 }
             });
         }
@@ -408,50 +520,119 @@
         return group;
     }
 
-    function buildPolydataGroup(pd) {
+    function buildPolydataGroup(pd, opts) {
+        opts = opts || {};
         const style = parseStyle(pd.style);
         const vtk = parseVTKPolydata(pd.vtk);
         const group = new THREE.Group();
         group.userData.componentType = 'polydata';
         const pts = vtk.points;
         const polys = vtk.polygons;
+        const scalars = vtk.scalars;
 
-        const color = toColor(style.constcolor || style.edgecolor || 'blue', 'blue');
-        const opacity = Math.max(0, Math.min(1, toNum(style.opacity, 1.0)));
-        const wireframe = toBool(style.wireframe, false);
-        const edges = toBool(style.edges, false);
-        const visible = toBool(style.visible, true);
-        if (!visible) return group;
+        const showMesh = opts.showMesh !== undefined ? !!opts.showMesh : toBool(style.visible, true);
+        const showOutline = opts.showOutline !== undefined ? !!opts.showOutline : toBool(style.outline, false);
+        const wireframe = opts.wireframe !== undefined ? !!opts.wireframe : toBool(style.wireframe, false);
+        const lighting = opts.lighting !== undefined ? !!opts.lighting : toBool(style.lighting, true);
+        const edges = opts.edges !== undefined ? !!opts.edges : toBool(style.edges, false);
+        const opacity = Math.max(0, Math.min(1, toNum(opts.opacity, toNum(style.opacity, 1.0))));
+        const cmap = (opts.colormap || 'style');
+        if (!showMesh) return group;
+
+        const meshColorToken = style.constcolor || style.color || style.edgecolor || 'blue';
+        const edgeColor = toColor(style.edgecolor || meshColorToken, '#222222');
+        const cmapLookup = { bcgyr: 'BCGYR', bgyor: 'BGYOR', blue_to_brown: 'blue_to_brown', viridis: 'viridis' };
+        const cmapResolved = cmapLookup[String(cmap).toLowerCase()] || null;
+        const canMapByScalar = !!cmapResolved && scalars.length === (pts.length / 3);
+        const MatCtor = lighting ? THREE.MeshPhongMaterial : THREE.MeshBasicMaterial;
 
         if (polys.length > 0) {
             const pos = new Float32Array(pts);
-            const idx = [];
+            let idx = [];
             polys.forEach(t => { idx.push(t[0], t[1], t[2]); });
+            const uniq = Array.from(new Set(idx));
+            if (uniq.length >= 3 && _isPlanarPointSet(pts, uniq)) {
+                const cleanTri = _triangulatePlanarVertexLoop(pts, uniq);
+                if (cleanTri.length >= 3) idx = cleanTri;
+            }
             const geo = new THREE.BufferGeometry();
             geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
             geo.setIndex(idx);
             geo.computeVertexNormals();
-            const mat = new THREE.MeshPhongMaterial({ color, transparent: opacity < 1, opacity, wireframe, side: THREE.DoubleSide });
+            let mat;
+            if (canMapByScalar) {
+                let vmin = Infinity;
+                let vmax = -Infinity;
+                scalars.forEach(v => {
+                    if (!Number.isFinite(v)) return;
+                    if (v < vmin) vmin = v;
+                    if (v > vmax) vmax = v;
+                });
+                const cols = new Float32Array((pts.length / 3) * 3);
+                for (let i = 0; i < pts.length / 3; i++) {
+                    const v = scalars[i];
+                    const t = (Number.isFinite(v) && vmax > vmin) ? (v - vmin) / (vmax - vmin) : 0.5;
+                    const c = sampleColormap(cmapResolved, t);
+                    cols[i * 3] = c.r;
+                    cols[i * 3 + 1] = c.g;
+                    cols[i * 3 + 2] = c.b;
+                }
+                geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+                mat = new MatCtor({
+                    vertexColors: true,
+                    transparent: opacity < 1,
+                    opacity,
+                    wireframe,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                    depthTest: true,
+                });
+            } else {
+                const colorToken = cmapResolved ? sampleColormap(cmapResolved, 0.65).getStyle() : meshColorToken;
+                mat = new MatCtor({
+                    color: toColor(colorToken, 'blue'),
+                    transparent: opacity < 1,
+                    opacity,
+                    wireframe,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                    depthTest: true,
+                });
+            }
             markMaterial(mat, opacity);
             const mesh = new THREE.Mesh(geo, mat);
             mesh.userData.isPolyMesh = true;
             group.add(mesh);
             if (edges) {
                 const egeo = new THREE.EdgesGeometry(geo);
-                const emat = new THREE.LineBasicMaterial({ color: toColor(style.edgecolor || style.constcolor, '#222222') });
+                const emat = new THREE.LineBasicMaterial({ color: edgeColor, depthWrite: false, depthTest: true });
                 markMaterial(emat, 1);
-                group.add(new THREE.LineSegments(egeo, emat));
+                const emesh = new THREE.LineSegments(egeo, emat);
+                group.add(emesh);
             }
         }
 
         if (vtk.lines.length > 0) {
-            const lineMat = new THREE.LineBasicMaterial({ color: toColor(style.edgecolor || style.constcolor, '#1f2937'), transparent: opacity < 1, opacity });
+            const lineMat = new THREE.LineBasicMaterial({
+                color: edgeColor,
+                transparent: opacity < 1,
+                opacity,
+                depthWrite: false,
+                depthTest: true,
+            });
             markMaterial(lineMat, opacity);
             vtk.lines.forEach(([a, b]) => {
                 const pa = new THREE.Vector3(pts[a * 3], pts[a * 3 + 1], pts[a * 3 + 2]);
                 const pb = new THREE.Vector3(pts[b * 3], pts[b * 3 + 1], pts[b * 3 + 2]);
-                group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([pa, pb]), lineMat));
+                const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([pa, pb]), lineMat);
+                group.add(ln);
             });
+        }
+
+        if (showOutline) {
+            const helper = new THREE.BoxHelper(group, edgeColor.getHex());
+            helper.userData.componentType = 'mesh_outline';
+            group.add(helper);
         }
 
         return group;
@@ -599,15 +780,33 @@
         plotWrap.appendChild(canvasWrap);
 
         const info = document.createElement('div');
-        info.style.cssText = 'position:absolute;left:8px;bottom:8px;background:rgba(15,23,42,0.75);color:#cbd5e1;padding:3px 6px;border-radius:4px;font-size:11px;pointer-events:none';
+        info.id = `drw-info-${sid}`;
+        info.style.cssText = 'position:absolute;left:8px;bottom:8px;background:rgba(229,236,246,0.85);color:#2a3f5f;padding:3px 6px;border-radius:4px;font-size:11px;pointer-events:none;border:1px solid rgba(148,163,184,0.35)';
         info.textContent = `${formatAxis(data.xaxis, 'X')} | ${formatAxis(data.yaxis, 'Y')} | ${formatAxis(data.zaxis, 'Z')}`;
         canvasWrap.appendChild(info);
 
         const panelHtml = `
             <div class="rp-panel-section">
                 <div class="rp-panel-title">Components</div>
-                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-poly-${sid}" checked> Show Polydata</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mesh-show-${sid}" checked> Show Mesh</label>
                 <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-gly-${sid}" checked> Show Glyphs</label>
+            </div>
+            <div class="rp-panel-section">
+                <div class="rp-panel-title">Mesh</div>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mesh-outline-${sid}"> Show outline</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mesh-wire-${sid}"> Show wireframe</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mesh-light-${sid}" checked> Enable lighting</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mesh-edges-${sid}"> Show edges</label>
+                <label>Opacity<input type="range" id="drw-mesh-op-${sid}" min="0.05" max="1" step="0.05" value="0.85"></label>
+                <label>Color map
+                    <select id="drw-mesh-cmap-${sid}" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px">
+                        <option value="style" selected>style/default</option>
+                        <option value="BCGYR">BCGYR</option>
+                        <option value="BGYOR">BGYOR</option>
+                        <option value="blue_to_brown">blue to brown</option>
+                        <option value="viridis">viridis</option>
+                    </select>
+                </label>
             </div>
             <div class="rp-panel-section">
                 <div class="rp-panel-title">Molecule</div>
@@ -642,16 +841,39 @@
                         <option value="viridis">viridis</option>
                     </select>
                 </label>
-                <label>Atom Scale<input type="range" id="drw-mol-asc-${sid}" min="0.2" max="3" step="0.1" value="1"></label>
-                <label>Bond Scale<input type="range" id="drw-mol-bsc-${sid}" min="0.2" max="3" step="0.1" value="1"></label>
-                <label>Quality<input type="range" id="drw-mol-qual-${sid}" min="0.5" max="6" step="0.25" value="1.5"></label>
+                <label>Atom Scale<input type="range" id="drw-mol-asc-${sid}" min="0.05" max="3" step="0.05" value="1.5"></label>
+                <label>Bond Scale<input type="range" id="drw-mol-bsc-${sid}" min="0.01" max="3" step="0.005" value="1.5"></label>
+                <label>Quality<input type="range" id="drw-mol-qual-${sid}" min="0.5" max="6" step="0.1" value="1"></label>
             </div>
             <div class="rp-panel-section">
                 <div class="rp-panel-title">Render</div>
+                <label>Template
+                    <select id="drw-theme-${sid}" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px">
+                        <option value="plotly" selected>plotly</option>
+                        <option value="plotly_white">plotly_white</option>
+                        <option value="plotly_dark">plotly_dark</option>
+                    </select>
+                </label>
                 <label>Opacity<input type="range" id="drw-op-${sid}" min="0.05" max="1" step="0.05" value="1"></label>
                 <label>Glyph Scale<input type="range" id="drw-gs-${sid}" min="0.1" max="4" step="0.1" value="1"></label>
                 <label>Light<input type="range" id="drw-light-${sid}" min="0" max="2" step="0.05" value="0.85"></label>
-                <label>Background<input type="color" id="drw-bg-${sid}" value="#1a1a2e" style="width:100%;padding:0;height:28px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px"></label>
+            </div>
+            <div class="rp-panel-section">
+                <div class="rp-panel-title">Axes</div>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-ax-on-${sid}" checked> Axes</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-ax-labels-${sid}" checked> Axis labels</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-ax-minor-${sid}" checked> Minor Ticks</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-ax-gridx-${sid}"> Grid X</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-ax-gridy-${sid}"> Grid Y</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-ax-gridz-${sid}"> Grid Z</label>
+                <label>Mode
+                    <select id="drw-ax-mode-${sid}" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px">
+                        <option value="static" selected>static</option>
+                        <option value="closest">closest</option>
+                        <option value="farthest">farthest</option>
+                        <option value="outer">outer</option>
+                    </select>
+                </label>
             </div>
             <div class="rp-panel-section">
                 <div class="rp-panel-title">Camera</div>
@@ -666,8 +888,16 @@
             </div>
             <div class="rp-panel-section">
                 <div class="rp-panel-title">Download</div>
+                <label>PNG Scale
+                    <select id="drw-png-scale-${sid}" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:3px;padding:2px 4px;font-size:12px">
+                        <option value="1">1X</option>
+                        <option value="2" selected>2X</option>
+                        <option value="4">4X</option>
+                        <option value="10">10X</option>
+                    </select>
+                </label>
                 <div class="rp-panel-btns">
-                    <button class="rp-3d-btn" id="drw-png-${sid}">PNG</button>
+                    <button class="rp-3d-btn" id="drw-png-${sid}">PNG (Hi-Res)</button>
                     <button class="rp-3d-btn" id="drw-json-${sid}">JSON</button>
                 </div>
             </div>`;
@@ -707,7 +937,7 @@
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
         renderer.setPixelRatio(window.devicePixelRatio || 1);
         renderer.setSize(W, H, false);
-        renderer.setClearColor(0x1a1a2e);
+        renderer.setClearColor(toColor(templateSceneBg('plotly'), '#E5ECF6'));
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, W / H, 0.01, 5000);
@@ -723,7 +953,6 @@
 
         const polyRoot = new THREE.Group();
         polyRoot.userData.componentType = 'polydata';
-        (data.polydata || []).forEach(p => polyRoot.add(buildPolydataGroup(p)));
         root.add(polyRoot);
 
         const glyphRoot = new THREE.Group();
@@ -734,6 +963,9 @@
         const moleculeRoot = new THREE.Group();
         moleculeRoot.userData.componentType = 'molecule_root';
         root.add(moleculeRoot);
+        const axisRoot = new THREE.Group();
+        axisRoot.userData.componentType = 'axis_overlay';
+        scene.add(axisRoot);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
@@ -742,6 +974,19 @@
         controls.autoRotateSpeed = 1.5;
 
         const q = (sel) => cp.querySelector(sel);
+        const info = canvas.parentElement ? canvas.parentElement.querySelector(`#drw-info-${sid}`) : null;
+
+        const applyTemplate = (themeName) => {
+            const bg = templateSceneBg(themeName || 'plotly');
+            const fg = templateFontColor(themeName || 'plotly');
+            const dark = isDarkColor(bg);
+            renderer.setClearColor(toColor(bg, '#E5ECF6'));
+            if (info) {
+                info.style.color = fg;
+                info.style.background = dark ? 'rgba(15,23,42,0.72)' : 'rgba(229,236,246,0.85)';
+                info.style.borderColor = dark ? 'rgba(148,163,184,0.5)' : 'rgba(148,163,184,0.35)';
+            }
+        };
 
         const ui = {
             showMolecule: true,
@@ -751,10 +996,28 @@
             representation: 'ballandstick',
             atomRadii: 'covalent',
             colormap: 'elementDefault',
-            atomScale: 1,
-            bondScale: 1,
-            quality: 1.5,
+            atomScale: 1.5,
+            bondScale: 1.5,
+            quality: 1,
             opacity: 1,
+        };
+        const axisUi = {
+            enabled: true,
+            labels: true,
+            minorTicks: true,
+            gridX: false,
+            gridY: false,
+            gridZ: false,
+            mode: 'static',
+        };
+        const meshUi = {
+            showMesh: true,
+            showOutline: false,
+            wireframe: false,
+            lighting: true,
+            edges: false,
+            opacity: 0.85,
+            colormap: 'style',
         };
 
         const rebuildMolecules = () => {
@@ -776,6 +1039,183 @@
             controls.target.set(0, 0, 0);
             controls.update();
             return size;
+        };
+
+        const clearGroup = (g) => {
+            while (g.children.length) {
+                const ch = g.children[0];
+                g.remove(ch);
+                if (ch.geometry) ch.geometry.dispose();
+                if (ch.material) {
+                    const mats = Array.isArray(ch.material) ? ch.material : [ch.material];
+                    mats.forEach(m => m && m.dispose && m.dispose());
+                }
+            }
+        };
+
+        const rebuildPolydata = () => {
+            clearGroup(polyRoot);
+            (data.polydata || []).forEach(p => polyRoot.add(buildPolydataGroup(p, meshUi)));
+        };
+        rebuildPolydata();
+
+        const boxCorners = (box) => {
+            const { min, max } = box;
+            return [
+                new THREE.Vector3(min.x, min.y, min.z),
+                new THREE.Vector3(max.x, min.y, min.z),
+                new THREE.Vector3(min.x, max.y, min.z),
+                new THREE.Vector3(max.x, max.y, min.z),
+                new THREE.Vector3(min.x, min.y, max.z),
+                new THREE.Vector3(max.x, min.y, max.z),
+                new THREE.Vector3(min.x, max.y, max.z),
+                new THREE.Vector3(max.x, max.y, max.z),
+            ];
+        };
+
+        const chooseAxisOrigin = (box, mode) => {
+            const corners = boxCorners(box);
+            if (mode === 'static') return corners[0].clone();
+            let pick = corners[0];
+            let best = mode === 'closest' ? Infinity : -Infinity;
+            corners.forEach(c => {
+                const d = c.distanceTo(camera.position);
+                if ((mode === 'closest' && d < best) || ((mode === 'farthest' || mode === 'outer') && d > best)) {
+                    best = d;
+                    pick = c;
+                }
+            });
+            if (mode === 'outer') {
+                const size = box.getSize(new THREE.Vector3());
+                const n = new THREE.Vector3().subVectors(pick, box.getCenter(new THREE.Vector3())).normalize();
+                const off = Math.max(size.x, size.y, size.z) * 0.08;
+                return pick.clone().addScaledVector(n, off);
+            }
+            return pick.clone();
+        };
+
+        const axisBaseColor = { x: 0xef4444, y: 0x22c55e, z: 0x3b82f6 };
+
+        const axisLabelText = {
+            x: formatAxis(data.xaxis, 'X'),
+            y: formatAxis(data.yaxis, 'Y'),
+            z: formatAxis(data.zaxis, 'Z'),
+        };
+
+        const addAxisSegment = (a, b, color, width) => {
+            const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+            const mat = new THREE.LineBasicMaterial({ color, linewidth: width || 1 });
+            axisRoot.add(new THREE.Line(geo, mat));
+        };
+
+        const addAxisTicks = (origin, dir, len, tickDir, color, startVal, endVal) => {
+            const n = 10;
+            const tickLen = len * 0.015;
+            for (let i = 1; i < n; i++) {
+                const p = origin.clone().addScaledVector(dir, (len * i) / n);
+                const a = p.clone().addScaledVector(tickDir, -tickLen);
+                const b = p.clone().addScaledVector(tickDir, tickLen);
+                addAxisSegment(a, b, color, 1);
+                const val = startVal + ((endVal - startVal) * i) / n;
+                const label = Math.abs(val) >= 100 ? val.toFixed(0) : val.toFixed(2).replace(/\.?0+$/, '');
+                const tickColor = `#${new THREE.Color(color).getHexString()}`;
+                const s = makeTextSprite(label, tickColor, { fontPx: 34, scaleX: 1.2, scaleY: 0.48, noBackground: true });
+                s.position.copy(p).addScaledVector(tickDir, tickLen * 5.2);
+                axisRoot.add(s);
+            }
+        };
+
+        const addAxisGrid = (box, axisName, color) => {
+            const n = 10;
+            const c = toColor(color, '#64748b');
+            const mat = new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.32 });
+            const min = box.min;
+            const max = box.max;
+            const lines = [];
+            if (axisName === 'x') {
+                const x = min.x;
+                for (let i = 0; i <= n; i++) {
+                    const y = min.y + ((max.y - min.y) * i) / n;
+                    lines.push([new THREE.Vector3(x, y, min.z), new THREE.Vector3(x, y, max.z)]);
+                }
+                for (let i = 0; i <= n; i++) {
+                    const z = min.z + ((max.z - min.z) * i) / n;
+                    lines.push([new THREE.Vector3(x, min.y, z), new THREE.Vector3(x, max.y, z)]);
+                }
+            } else if (axisName === 'y') {
+                const y = min.y;
+                for (let i = 0; i <= n; i++) {
+                    const x = min.x + ((max.x - min.x) * i) / n;
+                    lines.push([new THREE.Vector3(x, y, min.z), new THREE.Vector3(x, y, max.z)]);
+                }
+                for (let i = 0; i <= n; i++) {
+                    const z = min.z + ((max.z - min.z) * i) / n;
+                    lines.push([new THREE.Vector3(min.x, y, z), new THREE.Vector3(max.x, y, z)]);
+                }
+            } else {
+                const z = min.z;
+                for (let i = 0; i <= n; i++) {
+                    const x = min.x + ((max.x - min.x) * i) / n;
+                    lines.push([new THREE.Vector3(x, min.y, z), new THREE.Vector3(x, max.y, z)]);
+                }
+                for (let i = 0; i <= n; i++) {
+                    const y = min.y + ((max.y - min.y) * i) / n;
+                    lines.push([new THREE.Vector3(min.x, y, z), new THREE.Vector3(max.x, y, z)]);
+                }
+            }
+            lines.forEach(([a, b]) => {
+                const g = new THREE.BufferGeometry().setFromPoints([a, b]);
+                axisRoot.add(new THREE.Line(g, mat));
+            });
+        };
+
+        const renderAxes = () => {
+            clearGroup(axisRoot);
+            if (!axisUi.enabled) return;
+            const box = new THREE.Box3().setFromObject(root);
+            if (box.isEmpty()) return;
+
+            const min = box.min;
+            const max = box.max;
+            const sx = Math.max(1e-6, max.x - min.x);
+            const sy = Math.max(1e-6, max.y - min.y);
+            const sz = Math.max(1e-6, max.z - min.z);
+            const origin = chooseAxisOrigin(box, axisUi.mode);
+
+            const dirX = new THREE.Vector3(Math.abs(origin.x - max.x) < 1e-6 ? -1 : 1, 0, 0);
+            const dirY = new THREE.Vector3(0, Math.abs(origin.y - max.y) < 1e-6 ? -1 : 1, 0);
+            const dirZ = new THREE.Vector3(0, 0, Math.abs(origin.z - max.z) < 1e-6 ? -1 : 1);
+
+            const xEnd = origin.clone().addScaledVector(dirX, sx);
+            const yEnd = origin.clone().addScaledVector(dirY, sy);
+            const zEnd = origin.clone().addScaledVector(dirZ, sz);
+
+            addAxisSegment(origin, xEnd, axisBaseColor.x, 2);
+            addAxisSegment(origin, yEnd, axisBaseColor.y, 2);
+            addAxisSegment(origin, zEnd, axisBaseColor.z, 2);
+
+            if (axisUi.minorTicks) {
+                addAxisTicks(origin, dirX, sx, dirY, axisBaseColor.x, origin.x, xEnd.x);
+                addAxisTicks(origin, dirY, sy, dirZ, axisBaseColor.y, origin.y, yEnd.y);
+                addAxisTicks(origin, dirZ, sz, dirX, axisBaseColor.z, origin.z, zEnd.z);
+            }
+
+            if (axisUi.labels) {
+                const off = Math.max(sx, sy, sz) * 0.04;
+                const lx = makeTextSprite(axisLabelText.x, '#fca5a5', { fontPx: 44, scaleX: 1.8, scaleY: 0.68 });
+                const ly = makeTextSprite(axisLabelText.y, '#86efac', { fontPx: 44, scaleX: 1.8, scaleY: 0.68 });
+                const lz = makeTextSprite(axisLabelText.z, '#93c5fd', { fontPx: 44, scaleX: 1.8, scaleY: 0.68 });
+                lx.position.copy(xEnd).addScaledVector(dirX, off);
+                ly.position.copy(yEnd).addScaledVector(dirY, off);
+                lz.position.copy(zEnd).addScaledVector(dirZ, off);
+                axisRoot.add(lx);
+                axisRoot.add(ly);
+                axisRoot.add(lz);
+            }
+
+            if (axisUi.gridX) addAxisGrid(box, 'x', '#64748b');
+            if (axisUi.gridY) addAxisGrid(box, 'y', '#64748b');
+            if (axisUi.gridZ) addAxisGrid(box, 'z', '#64748b');
         };
 
         let fitSize = fitBounds();
@@ -813,7 +1253,13 @@
             });
         };
 
-        const polyCb = q(`#drw-poly-${sid}`);
+        const meshShow = q(`#drw-mesh-show-${sid}`);
+        const meshOutline = q(`#drw-mesh-outline-${sid}`);
+        const meshWire = q(`#drw-mesh-wire-${sid}`);
+        const meshLight = q(`#drw-mesh-light-${sid}`);
+        const meshEdges = q(`#drw-mesh-edges-${sid}`);
+        const meshOp = q(`#drw-mesh-op-${sid}`);
+        const meshCmap = q(`#drw-mesh-cmap-${sid}`);
         const glyCb = q(`#drw-gly-${sid}`);
         const molShow = q(`#drw-mol-show-${sid}`);
         const molOutline = q(`#drw-mol-outline-${sid}`);
@@ -826,10 +1272,18 @@
         const molBsc = q(`#drw-mol-bsc-${sid}`);
         const molQual = q(`#drw-mol-qual-${sid}`);
 
+        const axOn = q(`#drw-ax-on-${sid}`);
+        const axLabels = q(`#drw-ax-labels-${sid}`);
+        const axMinor = q(`#drw-ax-minor-${sid}`);
+        const axGridX = q(`#drw-ax-gridx-${sid}`);
+        const axGridY = q(`#drw-ax-gridy-${sid}`);
+        const axGridZ = q(`#drw-ax-gridz-${sid}`);
+        const axMode = q(`#drw-ax-mode-${sid}`);
+
         const op = q(`#drw-op-${sid}`);
         const gs = q(`#drw-gs-${sid}`);
         const li = q(`#drw-light-${sid}`);
-        const bg = q(`#drw-bg-${sid}`);
+        const theme = q(`#drw-theme-${sid}`);
         const fitBtn = q(`#drw-fit-${sid}`);
         const xyBtn = q(`#drw-xy-${sid}`);
         const xzBtn = q(`#drw-xz-${sid}`);
@@ -837,6 +1291,7 @@
         const v3dBtn = q(`#drw-3d-${sid}`);
         const autoBtn = q(`#drw-auto-${sid}`);
         const pngBtn = q(`#drw-png-${sid}`);
+        const pngScale = q(`#drw-png-scale-${sid}`);
         const jsonBtn = q(`#drw-json-${sid}`);
 
         const pullMolUi = () => {
@@ -847,26 +1302,64 @@
             ui.representation = (molRepr && molRepr.value) || 'ballandstick';
             ui.atomRadii = (molRadii && molRadii.value) || 'covalent';
             ui.colormap = (molCmap && molCmap.value) || 'elementDefault';
-            ui.atomScale = toNum(molAsc && molAsc.value, 1);
-            ui.bondScale = toNum(molBsc && molBsc.value, 1);
-            ui.quality = toNum(molQual && molQual.value, 1.5);
+            ui.atomScale = toNum(molAsc && molAsc.value, 1.5);
+            ui.bondScale = toNum(molBsc && molBsc.value, 1.5);
+            ui.quality = toNum(molQual && molQual.value, 1);
             ui.opacity = toNum(op && op.value, 1);
+        };
+        const pullMeshUi = () => {
+            meshUi.showMesh = !!(meshShow && meshShow.checked);
+            meshUi.showOutline = !!(meshOutline && meshOutline.checked);
+            meshUi.wireframe = !!(meshWire && meshWire.checked);
+            meshUi.lighting = !!(meshLight && meshLight.checked);
+            meshUi.edges = !!(meshEdges && meshEdges.checked);
+            meshUi.opacity = toNum(meshOp && meshOp.value, 0.85);
+            meshUi.colormap = (meshCmap && meshCmap.value) || 'style';
+        };
+        const pullAxisUi = () => {
+            axisUi.enabled = !!(axOn && axOn.checked);
+            axisUi.labels = !!(axLabels && axLabels.checked);
+            axisUi.minorTicks = !!(axMinor && axMinor.checked);
+            axisUi.gridX = !!(axGridX && axGridX.checked);
+            axisUi.gridY = !!(axGridY && axGridY.checked);
+            axisUi.gridZ = !!(axGridZ && axGridZ.checked);
+            axisUi.mode = (axMode && axMode.value) || 'static';
         };
 
         const refreshMolecules = () => {
             pullMolUi();
             rebuildMolecules();
             applyGlobalOpacity(toNum(op && op.value, 1));
+            renderAxes();
+        };
+        const refreshMesh = () => {
+            pullMeshUi();
+            rebuildPolydata();
+            applyGlobalOpacity(toNum(op && op.value, 1));
+            renderAxes();
         };
 
-        if (polyCb) polyCb.addEventListener('change', () => { polyRoot.visible = polyCb.checked; });
-        if (glyCb) glyCb.addEventListener('change', () => { glyphRoot.visible = glyCb.checked; });
+        if (meshShow) meshShow.addEventListener('change', refreshMesh);
+        if (glyCb) glyCb.addEventListener('change', () => { glyphRoot.visible = glyCb.checked; renderAxes(); });
 
         [molShow, molOutline, molLabels, molEdges, molRepr, molRadii, molCmap].forEach(el => {
             if (el) el.addEventListener('change', refreshMolecules);
         });
         [molAsc, molBsc, molQual].forEach(el => {
             if (el) el.addEventListener('input', refreshMolecules);
+        });
+        [meshOutline, meshWire, meshLight, meshEdges, meshCmap].forEach(el => {
+            if (el) el.addEventListener('change', refreshMesh);
+        });
+        if (meshOp) meshOp.addEventListener('input', refreshMesh);
+
+        [axOn, axLabels, axMinor, axGridX, axGridY, axGridZ, axMode].forEach(el => {
+            if (!el) return;
+            const ev = (el.tagName === 'SELECT') ? 'change' : 'change';
+            el.addEventListener(ev, () => {
+                pullAxisUi();
+                renderAxes();
+            });
         });
 
         if (op) op.addEventListener('input', () => {
@@ -876,9 +1369,9 @@
 
         if (gs) gs.addEventListener('input', () => applyGlyphScale(toNum(gs.value, 1)));
         if (li) li.addEventListener('input', () => { dlight.intensity = toNum(li.value, 0.85); });
-        if (bg) bg.addEventListener('input', () => { renderer.setClearColor(toColor(bg.value, '#1a1a2e')); });
+        if (theme) theme.addEventListener('change', () => applyTemplate(theme.value || 'plotly'));
 
-        if (fitBtn) fitBtn.addEventListener('click', () => { fitSize = fitBounds(); });
+        if (fitBtn) fitBtn.addEventListener('click', () => { fitSize = fitBounds(); renderAxes(); });
         if (xyBtn) xyBtn.addEventListener('click', () => setView('xy'));
         if (xzBtn) xzBtn.addEventListener('click', () => setView('xz'));
         if (yzBtn) yzBtn.addEventListener('click', () => setView('yz'));
@@ -890,7 +1383,23 @@
 
         if (pngBtn) {
             pngBtn.addEventListener('click', () => {
+                const scale = Math.max(1, Math.min(12, toNum(pngScale && pngScale.value, 2)));
+                const cssW = Math.max(1, canvas.clientWidth || 1);
+                const cssH = Math.max(1, canvas.clientHeight || 1);
+                const baseDpr = window.devicePixelRatio || 1;
+
+                // Re-render at higher pixel ratio, capture PNG, then restore.
+                renderer.setPixelRatio(baseDpr * scale);
+                renderer.setSize(cssW, cssH, false);
+                camera.aspect = cssW / cssH;
+                camera.updateProjectionMatrix();
+                controls.update();
+                renderer.render(scene, camera);
                 const dataUrl = renderer.domElement.toDataURL('image/png');
+                renderer.setPixelRatio(baseDpr);
+                renderer.setSize(cssW, cssH, false);
+                camera.aspect = cssW / cssH;
+                camera.updateProjectionMatrix();
                 const a = document.createElement('a');
                 a.href = dataUrl;
                 a.download = ((data.label || sid || 'drawing').replace(/[^a-z0-9_-]/gi, '_')) + '.png';
@@ -908,12 +1417,18 @@
         }
 
         refreshMolecules();
+        pullMeshUi();
+        rebuildPolydata();
+        pullAxisUi();
+        applyTemplate((theme && theme.value) || 'plotly');
+        renderAxes();
         applyGlyphScale(toNum(gs && gs.value, 1));
 
         let animId = 0;
         function animate() {
             animId = requestAnimationFrame(animate);
             controls.update();
+            if (axisUi.enabled && axisUi.mode !== 'static') renderAxes();
             renderer.render(scene, camera);
         }
         animate();
