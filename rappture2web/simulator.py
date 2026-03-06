@@ -386,6 +386,19 @@ async def run_simulation(
         # the actual outputs — skip adding here to avoid duplicates.
         run_record = None
         if history is not None and not use_library_mode:
+            # Inject driver XML to outputs so it's visible to the user
+            if driver_path and os.path.exists(driver_path):
+                try:
+                    with open(driver_path, 'r', encoding='utf-8') as f:
+                        outputs["__driver_xml__"] = {
+                            "type": "string",
+                            "label": "Driver XML",
+                            "current": f.read(),
+                            "about": {"label": "Driver XML"}
+                        }
+                except Exception:
+                    pass
+            
             run_record = history.add(
                 input_values=input_values,
                 outputs=outputs,

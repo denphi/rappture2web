@@ -76,10 +76,33 @@ rappture._registerRenderer('string', {
     render(id, data) {
         const label = (data.about && data.about.label) || data.label || id;
         const item = rappture.createOutputItem(label, 'string');
+        const body = item.querySelector('.rp-output-body');
+
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'font-size:11px;padding:4px 8px;cursor:pointer;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;display:flex;align-items:center;gap:4px;color:var(--rp-text, #334155)';
+        btn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M8 12l-4-4h2.5V2h3v6H12L8 12zM2 14v-2h12v2H2z"/></svg> Download';
+        btn.onclick = () => {
+            const blob = new Blob([data.current || ''], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (id === '__driver_xml__' ? 'driver.xml' : `${label}.txt`);
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+        hdr.appendChild(btn);
+        body.appendChild(hdr);
+
         const pre = document.createElement('pre');
-        pre.style.cssText = 'font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:6px 8px;margin:0';
+        pre.style.cssText = 'font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:6px 8px;margin:0;max-height:400px;overflow:auto';
         pre.textContent = data.current || '';
-        item.querySelector('.rp-output-body').appendChild(pre);
+        body.appendChild(pre);
+
         return item;
     },
     compare(sources, id) {
