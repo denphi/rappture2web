@@ -48,7 +48,7 @@ function _patchPlotlyResizeGuard() {
     if (!window.Plotly || !Plotly.Plots || typeof Plotly.Plots.resize !== 'function') return;
     if (Plotly.Plots._rpResizePatched) return;
     const origResize = Plotly.Plots.resize.bind(Plotly.Plots);
-    Plotly.Plots.resize = function(plotDiv) {
+    Plotly.Plots.resize = function (plotDiv) {
         if (!plotDiv || !plotDiv.isConnected) return Promise.resolve();
         const rect = plotDiv.getBoundingClientRect ? plotDiv.getBoundingClientRect() : { width: 0, height: 0 };
         const style = window.getComputedStyle ? window.getComputedStyle(plotDiv) : null;
@@ -57,7 +57,7 @@ function _patchPlotlyResizeGuard() {
         }
         try {
             const out = origResize(plotDiv);
-            if (out && typeof out.then === 'function') return out.catch(() => {});
+            if (out && typeof out.then === 'function') return out.catch(() => { });
             return Promise.resolve(out);
         } catch {
             return Promise.resolve();
@@ -89,7 +89,7 @@ const rappture = {
      */
     _registerRenderer(type, def) {
         this._rendererRegistry[type] = def;
-        this.outputRenderers[type] = function(id, data) {
+        this.outputRenderers[type] = function (id, data) {
             return def.render.call(rappture, id, data);
         };
     },
@@ -330,13 +330,126 @@ const rappture = {
         try { doc = new DOMParser().parseFromString(xmlText, 'text/xml'); } catch { return; }
 
         const valueMap = {};
+
+        const extractStructure = (elem, xmlPath) => {
+            const w = document.querySelector(`.rp-widget[data-path="${xmlPath}"]`);
+            if (!w || !w.classList.contains('rp-structure-input')) return;
+            const components = [];
+            const parameters = [];
+
+            ['default', 'current'].forEach(section => {
+                const secElem = elem.querySelector(`:scope > ${section}`);
+                if (!secElem) return;
+
+                // Extract parameters
+                const paramsElem = secElem.querySelector(':scope > parameters');
+                if (paramsElem) {
+                    parameters.length = 0; // Clear earlier section
+                    for (const p of paramsElem.children) {
+                        const tag = p.tagName;
+                        const id = p.getAttribute('id') || '';
+                        const about = p.querySelector(':scope > about');
+                        const label = about ? (about.querySelector('label') ? about.querySelector('label').textContent : '') : '';
+                        const units = p.querySelector(':scope > units') ? p.querySelector(':scope > units').textContent : '';
+                        const currentElem = p.querySelector(':scope > current');
+                        const defaultElem = p.querySelector(':scope > default');
+
+                        parameters.push({
+                            tag, id,
+                            label: label.trim(),
+                            units: units.trim(),
+                            current: currentElem ? currentElem.textContent : null,
+                            default: defaultElem ? defaultElem.textContent : null
+                        });
+                    }
+                }
+
+                // Extract components
+                const compsElem = secElem.querySelector(':scope > components');
+                if (!compsElem) return;
+
+                components.length = 0; // Clear earlier section (current overrides default)
+                compsElem.querySelectorAll(':scope > box').forEach(box => {
+                    const about = box.querySelector(':scope > about');
+                    const corners = [];
+                    box.querySelectorAll(':scope > corner').forEach(c => corners.push(c.textContent.trim()));
+                    const lbl = about ? (about.querySelector('label') ? about.querySelector('label').textContent : '') : '';
+                    const col = about ? (about.querySelector('color') ? about.querySelector('color').textContent : '') : '';
+                    const mtl = box.querySelector(':scope > material') ? box.querySelector(':scope > material').textContent : '';
+                    // Extract icon (base64 or URL) from <about><icon>
+                    const iconEl = about ? about.querySelector('icon') : null;
+                    const icon = iconEl ? iconEl.textContent.trim() : '';
+
+                    components.push({
+                        type: 'box',
+                        label: lbl.trim(),
+                        color: col.trim(),
+                        material: mtl.trim(),
+                        icon,
+                        corner0: corners[0] || '0',
+                        corner1: corners[1] || '0'
+                    });
+                });
+            });
+
+            // Extract <fields> — use last section found (current overrides default)
+            const fields = [];
+            ['default', 'current'].forEach(section => {
+                const secElem = elem.querySelector(`:scope > ${section}`);
+                if (!secElem) return;
+                const fieldsElem = secElem.querySelector(':scope > fields');
+                if (!fieldsElem) return;
+                fields.length = 0;
+                fieldsElem.querySelectorAll(':scope > field').forEach(f => {
+                    const about = f.querySelector(':scope > about');
+                    const comp = f.querySelector(':scope > component');
+                    fields.push({
+                        label: about?.querySelector('label')?.textContent?.trim() || '',
+                        color: about?.querySelector('color')?.textContent?.trim() || '',
+                        scale: about?.querySelector('scale')?.textContent?.trim() || '',
+                        units: f.querySelector(':scope > units')?.textContent?.trim() || '',
+                        constant: comp?.querySelector('constant')?.textContent?.trim() || '',
+                        domain: comp?.querySelector('domain')?.textContent?.trim() || '',
+                    });
+                });
+            });
+
+            if (components.length > 0 || parameters.length > 0 || fields.length > 0) {
+                const structData = { components, parameters, fields, xmlPath };
+                w.setAttribute('data-structure', JSON.stringify(structData));
+                w.dispatchEvent(new CustomEvent('rp-structure:update', { detail: structData }));
+            }
+        };
+
         const extractValues = (elem, pathParts) => {
             for (const child of elem.children) {
+                if (child.tagName === 'structure') {
+                    const id = child.getAttribute('id');
+                    const seg = id ? `${child.tagName}(${id})` : child.tagName;
+                    const childPath = [...pathParts, seg].join('.');
+                    extractStructure(child, childPath);
+                }
+
+                // Skip adding path segments for these wrapper elements
+                if (child.tagName === 'about') continue;
+                if (child.tagName === 'default' || child.tagName === 'current' || child.tagName === 'parameters') {
+                    extractValues(child, pathParts);
+                    continue;
+                }
+
                 const id = child.getAttribute('id');
                 const seg = id ? `${child.tagName}(${id})` : child.tagName;
                 const childPath = [...pathParts, seg].join('.');
+
                 const cur = child.querySelector(':scope > current');
-                if (cur) valueMap[childPath] = cur.textContent;
+                if (cur && cur.children.length === 0) {
+                    valueMap[childPath] = cur.textContent.trim();
+                } else if (!cur && child.children.length === 0) {
+                    // If it's just a text node without <current> and it's not a container
+                    // Rappture fallback
+                    // valueMap[childPath] = child.textContent.trim();
+                }
+
                 extractValues(child, [...pathParts, seg]);
             }
         };
@@ -350,7 +463,7 @@ const rappture = {
             const t = w.dataset.type;
             if (t === 'boolean') {
                 const cb = w.querySelector('input[type="checkbox"]');
-                if (cb) { cb.checked = ['yes','on','true','1'].includes(value.toLowerCase()); cb.dispatchEvent(new Event('change', {bubbles:true})); }
+                if (cb) { cb.checked = ['yes', 'on', 'true', '1'].includes(value.toLowerCase()); cb.dispatchEvent(new Event('change', { bubbles: true })); }
             } else if (t === 'image') {
                 const hidden = w.querySelector('.rp-image-data');
                 if (hidden) {
@@ -366,7 +479,7 @@ const rappture = {
                 }
             } else {
                 const inp = w.querySelector('input:not([type="file"]), select, textarea');
-                if (inp) { inp.value = value; inp.dispatchEvent(new Event('change', {bubbles:true})); }
+                if (inp) { inp.value = value; inp.dispatchEvent(new Event('change', { bubbles: true })); }
             }
         }
     },
@@ -382,7 +495,7 @@ const rappture = {
         fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(filename) + '?pattern=' + encodeURIComponent(pattern))
             .then(r => r.json())
             .then(data => { if (data.content) this._applyExampleXml(data.content, targets); })
-            .catch(() => {});
+            .catch(() => { });
     },
 
     initLoaders() {
@@ -404,7 +517,7 @@ const rappture = {
                     });
                     if (sel.value) this.loadExampleByName(sel);
                 })
-                .catch(() => {});
+                .catch(() => { });
         });
     },
 
@@ -939,7 +1052,7 @@ const rappture = {
                 state[r.run_id] = { color: r._color, checked: !!r._checked };
             });
             localStorage.setItem(this._lsKey(), JSON.stringify(state));
-        } catch {}
+        } catch { }
     },
 
     _loadUIState() {
@@ -950,8 +1063,8 @@ const rappture = {
     },
 
     _runColorPalette: [
-        '#2563eb','#dc2626','#16a34a','#d97706','#7c3aed',
-        '#0891b2','#db2777','#65a30d','#ea580c','#4f46e5',
+        '#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
+        '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5',
     ],
     _colorIdx: 0,
 
@@ -986,7 +1099,7 @@ const rappture = {
             this._saveUIState();
             const anyChecked = this._runs.some(r => r._checked);
             if (anyChecked) this._renderCheckedRuns();
-        } catch {}
+        } catch { }
     },
 
     _renderRunHistory() {
@@ -1131,7 +1244,7 @@ const rappture = {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ label: newLabel }),
                 });
-            } catch {}
+            } catch { }
             if (run._checked) this._renderCheckedRuns();
         };
         input.addEventListener('blur', commit);
@@ -1170,15 +1283,15 @@ const rappture = {
                 // Send newest-first list; server stores as-is
                 body: JSON.stringify({ run_ids: this._runs.map(r => r.run_id) }),
             });
-        } catch {}
+        } catch { }
     },
 
     /** Build a small color-swatch button with a custom inline popup picker. */
     _makeColorSwatch(run, onChange) {
         const PALETTE = [
-            '#2563eb','#dc2626','#16a34a','#d97706','#7c3aed',
-            '#0891b2','#db2777','#65a30d','#ea580c','#4f46e5',
-            '#0f172a','#475569','#9ca3af','#fbbf24','#34d399',
+            '#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
+            '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5',
+            '#0f172a', '#475569', '#9ca3af', '#fbbf24', '#34d399',
         ];
 
         const wrap = document.createElement('div');
@@ -1302,7 +1415,7 @@ const rappture = {
                     const resp = await fetch(`${this._bp}/api/runs/${run.run_id}`);
                     const full = await resp.json();
                     Object.assign(run, full);
-                } catch {}
+                } catch { }
             }
         }
         if (checked.length === 1) {
@@ -1418,14 +1531,14 @@ const rappture = {
     _wavelengthToHex(nm) {
         let r, g, b;
         if (nm >= 380 && nm < 440) { r = -(nm - 440) / 60; g = 0; b = 1; }
-        else if (nm < 490)         { r = 0; g = (nm - 440) / 50; b = 1; }
-        else if (nm < 510)         { r = 0; g = 1; b = -(nm - 510) / 20; }
-        else if (nm < 580)         { r = (nm - 510) / 70; g = 1; b = 0; }
-        else if (nm < 645)         { r = 1; g = -(nm - 645) / 65; b = 0; }
-        else if (nm <= 780)        { r = 1; g = 0; b = 0; }
-        else                       { r = 0; g = 0; b = 0; }
+        else if (nm < 490) { r = 0; g = (nm - 440) / 50; b = 1; }
+        else if (nm < 510) { r = 0; g = 1; b = -(nm - 510) / 20; }
+        else if (nm < 580) { r = (nm - 510) / 70; g = 1; b = 0; }
+        else if (nm < 645) { r = 1; g = -(nm - 645) / 65; b = 0; }
+        else if (nm <= 780) { r = 1; g = 0; b = 0; }
+        else { r = 0; g = 0; b = 0; }
         const factor = (nm < 420) ? 0.3 + 0.7 * (nm - 380) / 40 :
-                       (nm > 700) ? 0.3 + 0.7 * (780 - nm) / 80 : 1.0;
+            (nm > 700) ? 0.3 + 0.7 * (780 - nm) / 80 : 1.0;
         const toHex = v => Math.round(Math.pow(Math.max(0, v) * factor, 0.8) * 255).toString(16).padStart(2, '0');
         return '#' + toHex(r) + toHex(g) + toHex(b);
     },
@@ -1450,12 +1563,12 @@ const rappture = {
                 const rgb = getComputedStyle(tmp).color;
                 document.body.removeChild(tmp);
                 const m = rgb.match(/\d+/g);
-                if (m) hex = '#' + m.slice(0,3).map(v => parseInt(v).toString(16).padStart(2,'0')).join('');
+                if (m) hex = '#' + m.slice(0, 3).map(v => parseInt(v).toString(16).padStart(2, '0')).join('');
                 else hex = '#888888';
             }
-            const r = parseInt(hex.slice(1,3), 16);
-            const g = parseInt(hex.slice(3,5), 16);
-            const b = parseInt(hex.slice(5,7), 16);
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
             stops.push({ val, r, g, b });
         }
         return stops;
@@ -1465,12 +1578,12 @@ const rappture = {
     _interpolateColor(stops, val) {
         if (!stops.length) return null;
         if (val <= stops[0].val) return `rgb(${stops[0].r},${stops[0].g},${stops[0].b})`;
-        if (val >= stops[stops.length-1].val) { const s = stops[stops.length-1]; return `rgb(${s.r},${s.g},${s.b})`; }
+        if (val >= stops[stops.length - 1].val) { const s = stops[stops.length - 1]; return `rgb(${s.r},${s.g},${s.b})`; }
         for (let i = 0; i < stops.length - 1; i++) {
-            const a = stops[i], b = stops[i+1];
+            const a = stops[i], b = stops[i + 1];
             if (val >= a.val && val <= b.val) {
                 const t = (val - a.val) / (b.val - a.val);
-                return `rgb(${Math.round(a.r + t*(b.r-a.r))},${Math.round(a.g + t*(b.g-a.g))},${Math.round(a.b + t*(b.b-a.b))})`;
+                return `rgb(${Math.round(a.r + t * (b.r - a.r))},${Math.round(a.g + t * (b.g - a.g))},${Math.round(a.b + t * (b.b - a.b))})`;
             }
         }
         return null;
@@ -1496,7 +1609,7 @@ const rappture = {
         const bar = widget.querySelector('.rp-color-bar');
         if (bar) {
             const min = parseFloat(input.min ?? stops[0].val);
-            const max = parseFloat(input.max ?? stops[stops.length-1].val);
+            const max = parseFloat(input.max ?? stops[stops.length - 1].val);
             const range = max - min || 1;
             const gradientStops = stops.map(s => {
                 const pct = ((s.val - min) / range * 100).toFixed(1);
@@ -1530,160 +1643,160 @@ const rappture = {
     // ── Periodic Element ─────────────────────────────────────────────────────
 
     _ELEMENTS: [
-      // symbol, name, number, weight, category, period, group
-      ['H','Hydrogen',1,1.008,'other-non-metal',1,1],
-      ['He','Helium',2,4.003,'noble-gas',1,18],
-      ['Li','Lithium',3,6.941,'alkali-metal',2,1],
-      ['Be','Beryllium',4,9.012,'alkaline-earth-metal',2,2],
-      ['B','Boron',5,10.811,'metalloid',2,13],
-      ['C','Carbon',6,12.011,'other-non-metal',2,14],
-      ['N','Nitrogen',7,14.007,'other-non-metal',2,15],
-      ['O','Oxygen',8,15.999,'other-non-metal',2,16],
-      ['F','Fluorine',9,18.998,'halogen',2,17],
-      ['Ne','Neon',10,20.180,'noble-gas',2,18],
-      ['Na','Sodium',11,22.990,'alkali-metal',3,1],
-      ['Mg','Magnesium',12,24.305,'alkaline-earth-metal',3,2],
-      ['Al','Aluminum',13,26.982,'post-transition-metal',3,13],
-      ['Si','Silicon',14,28.086,'metalloid',3,14],
-      ['P','Phosphorus',15,30.974,'other-non-metal',3,15],
-      ['S','Sulfur',16,32.065,'other-non-metal',3,16],
-      ['Cl','Chlorine',17,35.453,'halogen',3,17],
-      ['Ar','Argon',18,39.948,'noble-gas',3,18],
-      ['K','Potassium',19,39.098,'alkali-metal',4,1],
-      ['Ca','Calcium',20,40.078,'alkaline-earth-metal',4,2],
-      ['Sc','Scandium',21,44.956,'transition-metal',4,3],
-      ['Ti','Titanium',22,47.867,'transition-metal',4,4],
-      ['V','Vanadium',23,50.942,'transition-metal',4,5],
-      ['Cr','Chromium',24,51.996,'transition-metal',4,6],
-      ['Mn','Manganese',25,54.938,'transition-metal',4,7],
-      ['Fe','Iron',26,55.845,'transition-metal',4,8],
-      ['Co','Cobalt',27,58.933,'transition-metal',4,9],
-      ['Ni','Nickel',28,58.693,'transition-metal',4,10],
-      ['Cu','Copper',29,63.546,'transition-metal',4,11],
-      ['Zn','Zinc',30,65.38,'transition-metal',4,12],
-      ['Ga','Gallium',31,69.723,'post-transition-metal',4,13],
-      ['Ge','Germanium',32,72.640,'metalloid',4,14],
-      ['As','Arsenic',33,74.922,'metalloid',4,15],
-      ['Se','Selenium',34,78.960,'other-non-metal',4,16],
-      ['Br','Bromine',35,79.904,'halogen',4,17],
-      ['Kr','Krypton',36,83.798,'noble-gas',4,18],
-      ['Rb','Rubidium',37,85.468,'alkali-metal',5,1],
-      ['Sr','Strontium',38,87.620,'alkaline-earth-metal',5,2],
-      ['Y','Yttrium',39,88.906,'transition-metal',5,3],
-      ['Zr','Zirconium',40,91.224,'transition-metal',5,4],
-      ['Nb','Niobium',41,92.906,'transition-metal',5,5],
-      ['Mo','Molybdenum',42,95.960,'transition-metal',5,6],
-      ['Tc','Technetium',43,98,'transition-metal',5,7],
-      ['Ru','Ruthenium',44,101.07,'transition-metal',5,8],
-      ['Rh','Rhodium',45,102.906,'transition-metal',5,9],
-      ['Pd','Palladium',46,106.42,'transition-metal',5,10],
-      ['Ag','Silver',47,107.868,'transition-metal',5,11],
-      ['Cd','Cadmium',48,112.411,'transition-metal',5,12],
-      ['In','Indium',49,114.818,'post-transition-metal',5,13],
-      ['Sn','Tin',50,118.710,'post-transition-metal',5,14],
-      ['Sb','Antimony',51,121.760,'metalloid',5,15],
-      ['Te','Tellurium',52,127.600,'metalloid',5,16],
-      ['I','Iodine',53,126.904,'halogen',5,17],
-      ['Xe','Xenon',54,131.293,'noble-gas',5,18],
-      ['Cs','Cesium',55,132.905,'alkali-metal',6,1],
-      ['Ba','Barium',56,137.327,'alkaline-earth-metal',6,2],
-      ['La','Lanthanum',57,138.905,'lanthanide',6,3],
-      ['Ce','Cerium',58,140.116,'lanthanide',8,4],
-      ['Pr','Praseodymium',59,140.908,'lanthanide',8,5],
-      ['Nd','Neodymium',60,144.242,'lanthanide',8,6],
-      ['Pm','Promethium',61,145,'lanthanide',8,7],
-      ['Sm','Samarium',62,150.360,'lanthanide',8,8],
-      ['Eu','Europium',63,151.964,'lanthanide',8,9],
-      ['Gd','Gadolinium',64,157.250,'lanthanide',8,10],
-      ['Tb','Terbium',65,158.925,'lanthanide',8,11],
-      ['Dy','Dysprosium',66,162.500,'lanthanide',8,12],
-      ['Ho','Holmium',67,164.930,'lanthanide',8,13],
-      ['Er','Erbium',68,167.259,'lanthanide',8,14],
-      ['Tm','Thulium',69,168.934,'lanthanide',8,15],
-      ['Yb','Ytterbium',70,173.045,'lanthanide',8,16],
-      ['Lu','Lutetium',71,174.967,'lanthanide',8,17],
-      ['Hf','Hafnium',72,178.490,'transition-metal',6,4],
-      ['Ta','Tantalum',73,180.948,'transition-metal',6,5],
-      ['W','Tungsten',74,183.840,'transition-metal',6,6],
-      ['Re','Rhenium',75,186.207,'transition-metal',6,7],
-      ['Os','Osmium',76,190.230,'transition-metal',6,8],
-      ['Ir','Iridium',77,192.217,'transition-metal',6,9],
-      ['Pt','Platinum',78,195.084,'transition-metal',6,10],
-      ['Au','Gold',79,196.967,'transition-metal',6,11],
-      ['Hg','Mercury',80,200.592,'transition-metal',6,12],
-      ['Tl','Thallium',81,204.383,'post-transition-metal',6,13],
-      ['Pb','Lead',82,207.200,'post-transition-metal',6,14],
-      ['Bi','Bismuth',83,208.980,'post-transition-metal',6,15],
-      ['Po','Polonium',84,209,'metalloid',6,16],
-      ['At','Astatine',85,210,'halogen',6,17],
-      ['Rn','Radon',86,222,'noble-gas',6,18],
-      ['Fr','Francium',87,223,'alkali-metal',7,1],
-      ['Ra','Radium',88,226,'alkaline-earth-metal',7,2],
-      ['Ac','Actinium',89,227,'actinide',7,3],
-      ['Th','Thorium',90,232.038,'actinide',9,4],
-      ['Pa','Protactinium',91,231.036,'actinide',9,5],
-      ['U','Uranium',92,238.029,'actinide',9,6],
-      ['Np','Neptunium',93,237,'actinide',9,7],
-      ['Pu','Plutonium',94,244,'actinide',9,8],
-      ['Am','Americium',95,243,'actinide',9,9],
-      ['Cm','Curium',96,247,'actinide',9,10],
-      ['Bk','Berkelium',97,247,'actinide',9,11],
-      ['Cf','Californium',98,251,'actinide',9,12],
-      ['Es','Einsteinium',99,252,'actinide',9,13],
-      ['Fm','Fermium',100,257,'actinide',9,14],
-      ['Md','Mendelevium',101,258,'actinide',9,15],
-      ['No','Nobelium',102,259,'actinide',9,16],
-      ['Lr','Lawrencium',103,262,'actinide',9,17],
-      ['Rf','Rutherfordium',104,267,'transition-metal',7,4],
-      ['Db','Dubnium',105,270,'transition-metal',7,5],
-      ['Sg','Seaborgium',106,271,'transition-metal',7,6],
-      ['Bh','Bohrium',107,270,'transition-metal',7,7],
-      ['Hs','Hassium',108,277,'transition-metal',7,8],
-      ['Mt','Meitnerium',109,278,'transition-metal',7,9],
-      ['Ds','Darmstadtium',110,281,'transition-metal',7,10],
-      ['Rg','Roentgenium',111,282,'transition-metal',7,11],
-      ['Cn','Copernicium',112,285,'transition-metal',7,12],
-      ['Nh','Nihonium',113,286,'post-transition-metal',7,13],
-      ['Fl','Flerovium',114,289,'post-transition-metal',7,14],
-      ['Mc','Moscovium',115,290,'post-transition-metal',7,15],
-      ['Lv','Livermorium',116,293,'post-transition-metal',7,16],
-      ['Ts','Tennessine',117,294,'halogen',7,17],
-      ['Og','Oganesson',118,294,'noble-gas',7,18],
+        // symbol, name, number, weight, category, period, group
+        ['H', 'Hydrogen', 1, 1.008, 'other-non-metal', 1, 1],
+        ['He', 'Helium', 2, 4.003, 'noble-gas', 1, 18],
+        ['Li', 'Lithium', 3, 6.941, 'alkali-metal', 2, 1],
+        ['Be', 'Beryllium', 4, 9.012, 'alkaline-earth-metal', 2, 2],
+        ['B', 'Boron', 5, 10.811, 'metalloid', 2, 13],
+        ['C', 'Carbon', 6, 12.011, 'other-non-metal', 2, 14],
+        ['N', 'Nitrogen', 7, 14.007, 'other-non-metal', 2, 15],
+        ['O', 'Oxygen', 8, 15.999, 'other-non-metal', 2, 16],
+        ['F', 'Fluorine', 9, 18.998, 'halogen', 2, 17],
+        ['Ne', 'Neon', 10, 20.180, 'noble-gas', 2, 18],
+        ['Na', 'Sodium', 11, 22.990, 'alkali-metal', 3, 1],
+        ['Mg', 'Magnesium', 12, 24.305, 'alkaline-earth-metal', 3, 2],
+        ['Al', 'Aluminum', 13, 26.982, 'post-transition-metal', 3, 13],
+        ['Si', 'Silicon', 14, 28.086, 'metalloid', 3, 14],
+        ['P', 'Phosphorus', 15, 30.974, 'other-non-metal', 3, 15],
+        ['S', 'Sulfur', 16, 32.065, 'other-non-metal', 3, 16],
+        ['Cl', 'Chlorine', 17, 35.453, 'halogen', 3, 17],
+        ['Ar', 'Argon', 18, 39.948, 'noble-gas', 3, 18],
+        ['K', 'Potassium', 19, 39.098, 'alkali-metal', 4, 1],
+        ['Ca', 'Calcium', 20, 40.078, 'alkaline-earth-metal', 4, 2],
+        ['Sc', 'Scandium', 21, 44.956, 'transition-metal', 4, 3],
+        ['Ti', 'Titanium', 22, 47.867, 'transition-metal', 4, 4],
+        ['V', 'Vanadium', 23, 50.942, 'transition-metal', 4, 5],
+        ['Cr', 'Chromium', 24, 51.996, 'transition-metal', 4, 6],
+        ['Mn', 'Manganese', 25, 54.938, 'transition-metal', 4, 7],
+        ['Fe', 'Iron', 26, 55.845, 'transition-metal', 4, 8],
+        ['Co', 'Cobalt', 27, 58.933, 'transition-metal', 4, 9],
+        ['Ni', 'Nickel', 28, 58.693, 'transition-metal', 4, 10],
+        ['Cu', 'Copper', 29, 63.546, 'transition-metal', 4, 11],
+        ['Zn', 'Zinc', 30, 65.38, 'transition-metal', 4, 12],
+        ['Ga', 'Gallium', 31, 69.723, 'post-transition-metal', 4, 13],
+        ['Ge', 'Germanium', 32, 72.640, 'metalloid', 4, 14],
+        ['As', 'Arsenic', 33, 74.922, 'metalloid', 4, 15],
+        ['Se', 'Selenium', 34, 78.960, 'other-non-metal', 4, 16],
+        ['Br', 'Bromine', 35, 79.904, 'halogen', 4, 17],
+        ['Kr', 'Krypton', 36, 83.798, 'noble-gas', 4, 18],
+        ['Rb', 'Rubidium', 37, 85.468, 'alkali-metal', 5, 1],
+        ['Sr', 'Strontium', 38, 87.620, 'alkaline-earth-metal', 5, 2],
+        ['Y', 'Yttrium', 39, 88.906, 'transition-metal', 5, 3],
+        ['Zr', 'Zirconium', 40, 91.224, 'transition-metal', 5, 4],
+        ['Nb', 'Niobium', 41, 92.906, 'transition-metal', 5, 5],
+        ['Mo', 'Molybdenum', 42, 95.960, 'transition-metal', 5, 6],
+        ['Tc', 'Technetium', 43, 98, 'transition-metal', 5, 7],
+        ['Ru', 'Ruthenium', 44, 101.07, 'transition-metal', 5, 8],
+        ['Rh', 'Rhodium', 45, 102.906, 'transition-metal', 5, 9],
+        ['Pd', 'Palladium', 46, 106.42, 'transition-metal', 5, 10],
+        ['Ag', 'Silver', 47, 107.868, 'transition-metal', 5, 11],
+        ['Cd', 'Cadmium', 48, 112.411, 'transition-metal', 5, 12],
+        ['In', 'Indium', 49, 114.818, 'post-transition-metal', 5, 13],
+        ['Sn', 'Tin', 50, 118.710, 'post-transition-metal', 5, 14],
+        ['Sb', 'Antimony', 51, 121.760, 'metalloid', 5, 15],
+        ['Te', 'Tellurium', 52, 127.600, 'metalloid', 5, 16],
+        ['I', 'Iodine', 53, 126.904, 'halogen', 5, 17],
+        ['Xe', 'Xenon', 54, 131.293, 'noble-gas', 5, 18],
+        ['Cs', 'Cesium', 55, 132.905, 'alkali-metal', 6, 1],
+        ['Ba', 'Barium', 56, 137.327, 'alkaline-earth-metal', 6, 2],
+        ['La', 'Lanthanum', 57, 138.905, 'lanthanide', 6, 3],
+        ['Ce', 'Cerium', 58, 140.116, 'lanthanide', 8, 4],
+        ['Pr', 'Praseodymium', 59, 140.908, 'lanthanide', 8, 5],
+        ['Nd', 'Neodymium', 60, 144.242, 'lanthanide', 8, 6],
+        ['Pm', 'Promethium', 61, 145, 'lanthanide', 8, 7],
+        ['Sm', 'Samarium', 62, 150.360, 'lanthanide', 8, 8],
+        ['Eu', 'Europium', 63, 151.964, 'lanthanide', 8, 9],
+        ['Gd', 'Gadolinium', 64, 157.250, 'lanthanide', 8, 10],
+        ['Tb', 'Terbium', 65, 158.925, 'lanthanide', 8, 11],
+        ['Dy', 'Dysprosium', 66, 162.500, 'lanthanide', 8, 12],
+        ['Ho', 'Holmium', 67, 164.930, 'lanthanide', 8, 13],
+        ['Er', 'Erbium', 68, 167.259, 'lanthanide', 8, 14],
+        ['Tm', 'Thulium', 69, 168.934, 'lanthanide', 8, 15],
+        ['Yb', 'Ytterbium', 70, 173.045, 'lanthanide', 8, 16],
+        ['Lu', 'Lutetium', 71, 174.967, 'lanthanide', 8, 17],
+        ['Hf', 'Hafnium', 72, 178.490, 'transition-metal', 6, 4],
+        ['Ta', 'Tantalum', 73, 180.948, 'transition-metal', 6, 5],
+        ['W', 'Tungsten', 74, 183.840, 'transition-metal', 6, 6],
+        ['Re', 'Rhenium', 75, 186.207, 'transition-metal', 6, 7],
+        ['Os', 'Osmium', 76, 190.230, 'transition-metal', 6, 8],
+        ['Ir', 'Iridium', 77, 192.217, 'transition-metal', 6, 9],
+        ['Pt', 'Platinum', 78, 195.084, 'transition-metal', 6, 10],
+        ['Au', 'Gold', 79, 196.967, 'transition-metal', 6, 11],
+        ['Hg', 'Mercury', 80, 200.592, 'transition-metal', 6, 12],
+        ['Tl', 'Thallium', 81, 204.383, 'post-transition-metal', 6, 13],
+        ['Pb', 'Lead', 82, 207.200, 'post-transition-metal', 6, 14],
+        ['Bi', 'Bismuth', 83, 208.980, 'post-transition-metal', 6, 15],
+        ['Po', 'Polonium', 84, 209, 'metalloid', 6, 16],
+        ['At', 'Astatine', 85, 210, 'halogen', 6, 17],
+        ['Rn', 'Radon', 86, 222, 'noble-gas', 6, 18],
+        ['Fr', 'Francium', 87, 223, 'alkali-metal', 7, 1],
+        ['Ra', 'Radium', 88, 226, 'alkaline-earth-metal', 7, 2],
+        ['Ac', 'Actinium', 89, 227, 'actinide', 7, 3],
+        ['Th', 'Thorium', 90, 232.038, 'actinide', 9, 4],
+        ['Pa', 'Protactinium', 91, 231.036, 'actinide', 9, 5],
+        ['U', 'Uranium', 92, 238.029, 'actinide', 9, 6],
+        ['Np', 'Neptunium', 93, 237, 'actinide', 9, 7],
+        ['Pu', 'Plutonium', 94, 244, 'actinide', 9, 8],
+        ['Am', 'Americium', 95, 243, 'actinide', 9, 9],
+        ['Cm', 'Curium', 96, 247, 'actinide', 9, 10],
+        ['Bk', 'Berkelium', 97, 247, 'actinide', 9, 11],
+        ['Cf', 'Californium', 98, 251, 'actinide', 9, 12],
+        ['Es', 'Einsteinium', 99, 252, 'actinide', 9, 13],
+        ['Fm', 'Fermium', 100, 257, 'actinide', 9, 14],
+        ['Md', 'Mendelevium', 101, 258, 'actinide', 9, 15],
+        ['No', 'Nobelium', 102, 259, 'actinide', 9, 16],
+        ['Lr', 'Lawrencium', 103, 262, 'actinide', 9, 17],
+        ['Rf', 'Rutherfordium', 104, 267, 'transition-metal', 7, 4],
+        ['Db', 'Dubnium', 105, 270, 'transition-metal', 7, 5],
+        ['Sg', 'Seaborgium', 106, 271, 'transition-metal', 7, 6],
+        ['Bh', 'Bohrium', 107, 270, 'transition-metal', 7, 7],
+        ['Hs', 'Hassium', 108, 277, 'transition-metal', 7, 8],
+        ['Mt', 'Meitnerium', 109, 278, 'transition-metal', 7, 9],
+        ['Ds', 'Darmstadtium', 110, 281, 'transition-metal', 7, 10],
+        ['Rg', 'Roentgenium', 111, 282, 'transition-metal', 7, 11],
+        ['Cn', 'Copernicium', 112, 285, 'transition-metal', 7, 12],
+        ['Nh', 'Nihonium', 113, 286, 'post-transition-metal', 7, 13],
+        ['Fl', 'Flerovium', 114, 289, 'post-transition-metal', 7, 14],
+        ['Mc', 'Moscovium', 115, 290, 'post-transition-metal', 7, 15],
+        ['Lv', 'Livermorium', 116, 293, 'post-transition-metal', 7, 16],
+        ['Ts', 'Tennessine', 117, 294, 'halogen', 7, 17],
+        ['Og', 'Oganesson', 118, 294, 'noble-gas', 7, 18],
     ],
 
     _PE_COLORS: {
-      'alkali-metal':          '#ff6666',
-      'alkaline-earth-metal':  '#ffdead',
-      'transition-metal':      '#ffc0c0',
-      'post-transition-metal': '#cccccc',
-      'metalloid':             '#cccc99',
-      'other-non-metal':       '#a0ffa0',
-      'halogen':               '#ffff99',
-      'noble-gas':             '#c0ffff',
-      'lanthanide':            '#ffbfff',
-      'actinide':              '#ff99cc',
+        'alkali-metal': '#ff6666',
+        'alkaline-earth-metal': '#ffdead',
+        'transition-metal': '#ffc0c0',
+        'post-transition-metal': '#cccccc',
+        'metalloid': '#cccc99',
+        'other-non-metal': '#a0ffa0',
+        'halogen': '#ffff99',
+        'noble-gas': '#c0ffff',
+        'lanthanide': '#ffbfff',
+        'actinide': '#ff99cc',
     },
 
     _peFormatValue(el, returnvalue) {
         const parts = returnvalue.trim().split(/\s+/);
         if (parts.length === 1) {
             switch (parts[0]) {
-                case 'symbol':  return el[0];
-                case 'name':    return el[1];
-                case 'number':  return String(el[2]);
-                case 'weight':  return String(el[3]);
-                case 'all':     return `${el[0]} ${el[1]} ${el[2]} ${el[3]}`;
-                default:        return el[0];
+                case 'symbol': return el[0];
+                case 'name': return el[1];
+                case 'number': return String(el[2]);
+                case 'weight': return String(el[3]);
+                case 'all': return `${el[0]} ${el[1]} ${el[2]} ${el[3]}`;
+                default: return el[0];
             }
         }
         // multiple keywords: space-separated list of values
         return parts.map(p => {
             switch (p) {
-                case 'symbol':  return el[0];
-                case 'name':    return el[1];
-                case 'number':  return String(el[2]);
-                case 'weight':  return String(el[3]);
-                default:        return '';
+                case 'symbol': return el[0];
+                case 'name': return el[1];
+                case 'number': return String(el[2]);
+                case 'weight': return String(el[3]);
+                default: return '';
             }
         }).filter(Boolean).join(' ');
     },
@@ -1699,15 +1812,15 @@ const rappture = {
 
     initPeriodicElement(widget) {
         const returnvalue = widget.dataset.returnvalue || 'symbol';
-        const activeStr   = (widget.dataset.active   || '').trim();
+        const activeStr = (widget.dataset.active || '').trim();
         const inactiveStr = (widget.dataset.inactive || '').trim();
-        const activeSet   = activeStr   ? new Set(activeStr.split(/\s+/))   : null;
+        const activeSet = activeStr ? new Set(activeStr.split(/\s+/)) : null;
         const inactiveSet = inactiveStr ? new Set(inactiveStr.split(/\s+/)) : null;
 
-        const table    = widget.querySelector('.rp-pe-table');
+        const table = widget.querySelector('.rp-pe-table');
         const hiddenIn = widget.querySelector('.rp-pe-value');
         const swatchEl = widget.querySelector('.rp-pe-swatch');
-        const nameEl   = widget.querySelector('.rp-pe-selected-name');
+        const nameEl = widget.querySelector('.rp-pe-selected-name');
 
         // Build grid: period rows 1-7 + gap row + lanthanides(8) + actinides(9)
         const grid = {};
@@ -1717,7 +1830,7 @@ const rappture = {
             grid[period][grp] = el;
         });
 
-        const rows = [1,2,3,4,5,6,7,null,8,9];
+        const rows = [1, 2, 3, 4, 5, 6, 7, null, 8, 9];
         const tbody = document.createElement('tbody');
         rows.forEach(period => {
             const tr = document.createElement('tr');
@@ -1737,7 +1850,7 @@ const rappture = {
                     const [sym, name, num, wt, cat] = el;
                     const color = this._PE_COLORS[cat] || '#eee';
                     let disabled = false;
-                    if (activeSet   && !activeSet.has(cat)   && !activeSet.has(sym))   disabled = true;
+                    if (activeSet && !activeSet.has(cat) && !activeSet.has(sym)) disabled = true;
                     if (inactiveSet && (inactiveSet.has(cat) || inactiveSet.has(sym))) disabled = true;
                     td.className = 'rp-pe-cell' + (disabled ? ' rp-pe-disabled' : '');
                     td.style.background = disabled ? '#333' : color;
@@ -1829,8 +1942,8 @@ const rappture = {
     _peSelect(widget, el, returnvalue, silent) {
         const hiddenIn = widget.querySelector('.rp-pe-value');
         const swatchEl = widget.querySelector('.rp-pe-swatch');
-        const nameEl   = widget.querySelector('.rp-pe-selected-name');
-        const color    = this._PE_COLORS[el[4]] || '#eee';
+        const nameEl = widget.querySelector('.rp-pe-selected-name');
+        const color = this._PE_COLORS[el[4]] || '#eee';
 
         // Highlight selected cell
         widget.querySelectorAll('.rp-pe-cell.rp-pe-selected').forEach(c => c.classList.remove('rp-pe-selected'));
@@ -1951,7 +2064,7 @@ const rappture = {
         btn.setAttribute('aria-selected', 'true');
         btn.setAttribute('tabindex', '0');
         // panelId may contain raw path chars; normalize to match element id
-        const safeId = panelId.replace(/\./g,'_').replace(/\(/g,'_').replace(/\)/g,'_').replace(/:/g,'_');
+        const safeId = panelId.replace(/\./g, '_').replace(/\(/g, '_').replace(/\)/g, '_').replace(/:/g, '_');
         const panel = document.getElementById(safeId);
         if (panel) {
             panel.classList.add('active');
@@ -2039,8 +2152,8 @@ const rappture = {
                 case '!=': return actual !== expected;
                 case '>=': return parseFloat(actual) >= parseFloat(expected);
                 case '<=': return parseFloat(actual) <= parseFloat(expected);
-                case '>':  return parseFloat(actual) > parseFloat(expected);
-                case '<':  return parseFloat(actual) < parseFloat(expected);
+                case '>': return parseFloat(actual) > parseFloat(expected);
+                case '<': return parseFloat(actual) < parseFloat(expected);
             }
         }
 

@@ -9,12 +9,12 @@ from xml.etree import ElementTree as ET
 
 
 # Input widget types that contain child widgets
-CONTAINER_TYPES = {"group", "phase"}
+CONTAINER_TYPES = {"group", "phase", "structure"}
 
 # Input widget types that are leaf inputs
 INPUT_TYPES = {
     "number", "integer", "boolean", "string", "choice", "multichoice",
-    "image", "note", "periodicelement", "loader", "drawing", "structure",
+    "image", "note", "periodicelement", "loader", "drawing",
 }
 
 # Output element types
@@ -104,9 +104,11 @@ def _get_about(elem):
     about = elem.find("about")
     if about is None:
         return {}, ""
+    # Description may be inside <about> or as a sibling of <about>
+    description = _get_text(about, "description") or _get_text(elem, "description")
     result = {
         "label": _get_text(about, "label"),
-        "description": _get_text(about, "description"),
+        "description": description,
         "hints": _get_text(about, "hints"),
         "icon": _get_text(about, "icon"),
         "enable": _get_text(about, "enable"),
@@ -258,31 +260,120 @@ def parse_drawing_input(elem, node):
     node.attrs["components"] = components
 
 
-def parse_structure_input(elem, node):
-    """Parse input <structure> enough to render default component layout preview."""
+def parse_structure_input(elem, node, parent_path):
+    """Parse input <structure> to extract nested parameters, components, and fields."""
     node.attrs["units"] = _get_text(elem, "units")
+    
     components = []
+    fields = []
+    has_parameters = False
+
     dflt = elem.find("default")
     if dflt is not None:
+        node.attrs["units"] = _get_text(dflt, "units") or node.attrs.get("units", "")
+
+        # Parse <parameters>
+        params_elem = dflt.find("parameters")
+        if params_elem is not None:
+            has_parameters = True
+            node.children = _parse_input_children(params_elem, node.path)
+
+        # Parse <components>
         comps = dflt.find("components")
         if comps is not None:
-            for box in comps.findall("box"):
-                about = box.find("about")
-                corners = [_get_text(box, "corner")]
-                for c in box.findall("corner")[1:]:
-                    corners.append((c.text or "").strip())
-                if len(corners) < 2:
-                    continue
-                c0 = _parse_float_list(corners[0])
-                c1 = _parse_float_list(corners[1])
-                components.append({
-                    "type": "box",
+            for child in list(comps):
+                if child.tag == "box":
+                    about = child.find("about")
+                    corners = [_get_text(child, "corner")]
+                    for c in child.findall("corner")[1:]:
+                        corners.append((c.text or "").strip())
+                    
+                    c0 = _parse_float_list(corners[0]) if len(corners) > 0 else []
+                    c1 = _parse_float_list(corners[1]) if len(corners) > 1 else []
+                    
+                    box_data = {
+                        "type": "box",
+                        "label": _get_text(about, "label") if about is not None else "",
+                        "color": _get_text(about, "color") if about is not None else "",
+                        "icon": _get_text(about, "icon") if about is not None else "",
+                        "material": _get_text(child, "material"),
+                        "corner0": c0[0] if c0 else 0.0,
+                        "corner1": c1[0] if c1 else 0.0,
+                        "c0_raw": corners[0] if len(corners) > 0 else "",
+                        "c1_raw": corners[1] if len(corners) > 1 else "",
+                    }
+                    components.append(box_data)
+                elif child.tag == "molecule":
+                    about = child.find("about")
+                    atoms = []
+                    for atom in child.findall("atom"):
+                        atoms.append({
+                            "id": atom.get("id", ""),
+                            "symbol": _get_text(atom, "symbol"),
+                            "xyz": _parse_float_list(_get_text(atom, "xyz"))
+                        })
+                    mol_data = {
+                        "type": "molecule",
+                        "label": _get_text(about, "label") if about is not None else "",
+                        "emblems": _get_text(about, "emblems") if about is not None else "",
+                        "formula": _get_text(child, "formula"),
+                        "atoms": atoms
+                    }
+                    components.append(mol_data)
+
+        # Parse <fields>
+        fields_elem = dflt.find("fields")
+        if fields_elem is not None:
+            for field in fields_elem.findall("field"):
+                about = field.find("about")
+                comp = field.find("component")
+                
+                fields.append({
+                    "id": field.get("id", ""),
                     "label": _get_text(about, "label") if about is not None else "",
                     "color": _get_text(about, "color") if about is not None else "",
-                    "corner0": c0[0] if c0 else 0.0,
-                    "corner1": c1[0] if c1 else 0.0,
+                    "scale": _get_text(about, "scale") if about is not None else "",
+                    "units": _get_text(field, "units"),
+                    "constant": _get_text(comp, "constant") if comp is not None else "",
+                    "domain": _get_text(comp, "domain") if comp is not None else ""
                 })
+
+    # Override with <current> parameters if they exist
+    curr = elem.find("current")
+    if curr is not None:
+        curr_params = curr.find("parameters")
+        if curr_params is not None and has_parameters:
+            for curr_child in list(curr_params):
+                child_id = curr_child.get("id", "")
+                if child_id:
+                    # Find matching child in node.children
+                    for child_node in node.children:
+                        if child_node.id == child_id:
+                            # Update current value
+                            current_val = _get_text(curr_child, "current")
+                            if current_val:
+                                child_node.current = current_val
+                            break
+
     node.attrs["components"] = components
+    node.attrs["fields"] = fields
+    # Expose parameters in attrs so JS can read current values directly
+    # from data-structure JSON without relying on DOM input fallback.
+    node.attrs["parameters"] = [
+        {
+            "id": child.id,
+            "tag": child.type,
+            "label": child.label,
+            "units": child.attrs.get("units", ""),
+            "min": child.attrs.get("min", ""),
+            "max": child.attrs.get("max", ""),
+            "current": child.current,
+            "default": child.default,
+        }
+        for child in node.children
+        if child.type in ("number", "integer", "string")
+    ]
+
 
 
 def parse_group(elem, node, parent_path):
@@ -332,7 +423,7 @@ TYPE_PARSERS = {
     "multichoice": parse_multichoice,
     "loader": parse_loader,
     "drawing": parse_drawing_input,
-    "structure": parse_structure_input,
+    "structure": None,  # Handled specially to pass parent_path
     "image": lambda e, n: None,
     "note": lambda e, n: n.attrs.update({"contents": _get_text(e, "contents")}),
     "periodicelement": lambda e, n: n.attrs.update({
@@ -374,7 +465,10 @@ def _parse_input_element(elem, parent_path):
 
     # Parse type-specific attributes
     if tag in TYPE_PARSERS:
-        TYPE_PARSERS[tag](elem, node)
+        if tag == "structure":
+            parse_structure_input(elem, node, parent_path)
+        else:
+            TYPE_PARSERS[tag](elem, node)
     elif tag == "group":
         parse_group(elem, node, parent_path)
     elif tag == "phase":

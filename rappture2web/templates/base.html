@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ tool.title }} - Rappture</title>
-    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260305n">
+    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260305r">
     <script>window._rpBasePath = {{ base_path | tojson }};</script>
     <script src="{{ base_path }}/static/js/plotly-3.4.0.min.js"></script>
     <script>Plotly.setPlotConfig({ topojsonURL: '{{ base_path }}/static/js/' });</script>
@@ -12,18 +13,17 @@
     <script src="{{ base_path }}/static/js/OrbitControls.0.128.0.js"></script>
     {% block head %}{% endblock %}
 </head>
+
 <body>
-    {% set has_nanohub_links = nanohub_about_url or nanohub_questions_url or nanohub_support_url or nanohub_terminate_url %}
+    {% set has_nanohub_links = nanohub_about_url or nanohub_questions_url or nanohub_support_url or
+    nanohub_terminate_url %}
     {% set show_upload_menu = not is_nanohub %}
     {% set show_toolbar = has_nanohub_links or show_upload_menu %}
     <a href="#rp-main-content" class="rp-skip-link">Skip to main content</a>
     <header class="rp-header{% if show_toolbar %} rp-header-has-toolbar{% endif %}" role="banner">
         <div class="rp-brand-bar">
             <div class="rp-brand">
-                <img
-                    src="{{ base_path }}/static/img/nanohub_logo_color.jpg"
-                    alt="nanoHUB"
-                    class="rp-nanohub-logo">
+                <img src="{{ base_path }}/static/img/nanohub_logo_color.jpg" alt="nanoHUB" class="rp-nanohub-logo">
                 <div class="rp-brand-text">
                     <span class="rp-brand-platform">nanoHUB</span>
                     <h1 class="rp-title">{{ tool.title }}</h1>
@@ -37,21 +37,24 @@
                     {% if is_nanohub %}
                     {% if nanohub_about_url %}
                     <li>
-                        <a class="rp-toolbar-link" href="{{ nanohub_about_url }}" target="_blank" rel="noopener noreferrer">
+                        <a class="rp-toolbar-link" href="{{ nanohub_about_url }}" target="_blank"
+                            rel="noopener noreferrer">
                             About This Tool
                         </a>
                     </li>
                     {% endif %}
                     {% if nanohub_questions_url %}
                     <li>
-                        <a class="rp-toolbar-link" href="{{ nanohub_questions_url }}" target="_blank" rel="noopener noreferrer">
+                        <a class="rp-toolbar-link" href="{{ nanohub_questions_url }}" target="_blank"
+                            rel="noopener noreferrer">
                             Questions
                         </a>
                     </li>
                     {% endif %}
                     {% if nanohub_support_url %}
                     <li>
-                        <a class="rp-toolbar-link" href="{{ nanohub_support_url }}" target="_blank" rel="noopener noreferrer">
+                        <a class="rp-toolbar-link" href="{{ nanohub_support_url }}" target="_blank"
+                            rel="noopener noreferrer">
                             Support
                         </a>
                     </li>
@@ -78,10 +81,12 @@
     <main id="rp-main-content" class="rp-main" role="main">
         {% block content %}{% endblock %}
     </main>
+    <div id="rp-tooltip" role="tooltip" aria-hidden="true"></div>
     <script src="{{ base_path }}/static/js/rappture.js?v=20260305f"></script>
-    <script src="{{ base_path }}/static/js/rp-utils.js?v=20260305a"></script>
+    <script src="{{ base_path }}/static/js/rp-utils.js?v=20260305b"></script>
     <script src="{{ base_path }}/static/js/rp-renderers-simple.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-input-drawing.js?v=20260305a"></script>
+    <script src="{{ base_path }}/static/js/rp-input-structure.js?v=20260305b"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-curve.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-table.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-renderer-sequence.js?v=20260305a"></script>
@@ -94,4 +99,5 @@
     <script src="{{ base_path }}/static/js/rp-renderer-drawing.js?v=20260305s"></script>
     {% block scripts %}{% endblock %}
 </body>
+
 </html>

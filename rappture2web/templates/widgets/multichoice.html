@@ -2,7 +2,7 @@
 <div class="rp-widget rp-multichoice" data-path="{{ widget.path }}" data-type="multichoice"
      {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}>
     <fieldset class="rp-multichoice-fieldset">
-        <legend class="rp-label" title="{{ widget.description }}">{{ widget.label or widget.id }}</legend>
+        <legend class="rp-label" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">{{ widget.label or widget.id }}</legend>
         {% if widget.description %}
         <span id="{{ group_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
         {% endif %}

@@ -1,13 +1,19 @@
-<div class="rp-widget rp-structure-input"
-     data-path="{{ widget.path }}"
-     data-type="structure"
-     data-structure='{{ widget.attrs | tojson }}'>
+<div class="rp-widget rp-structure-input" data-path="{{ widget.path }}" data-type="structure"
+    data-structure='{{ widget.attrs | tojson }}'>
     {% if widget.label %}
     <label class="rp-label">{{ widget.label }}</label>
     {% endif %}
     {% if widget.description %}
     <div class="rp-description">{{ widget.description }}</div>
     {% endif %}
+    <div class="rp-structure-parameters">
+        {% if widget.children %}
+        {% for child in widget.children %}
+        {% set widget = child %}
+        {% include "widgets/" + child.type + ".html" ignore missing %}
+        {% endfor %}
+        {% endif %}
+    </div>
     <div class="rp-drawing-preview"
-         style="border:1px solid #cbd5e1;border-radius:4px;background:#fff;min-height:180px;height:220px"></div>
+        style="min-height:180px;height:220px;margin-top:12px;display:flex;justify-content:center;"></div>
 </div>

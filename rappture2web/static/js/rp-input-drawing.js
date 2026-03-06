@@ -166,53 +166,9 @@
         host.appendChild(svg);
     }
 
-    function renderStructurePreview(rootEl, data) {
-        const host = rootEl.querySelector(".rp-drawing-preview");
-        if (!host) return;
-        host.innerHTML = "";
-        const comps = (data && data.components) || [];
-        if (!comps.length) {
-            host.textContent = "(no structure components)";
-            return;
-        }
-        let minX = Infinity, maxX = -Infinity;
-        comps.forEach((c) => {
-            const a = num(c.corner0, 0);
-            const b = num(c.corner1, 0);
-            minX = Math.min(minX, a, b);
-            maxX = Math.max(maxX, a, b);
-        });
-        if (!Number.isFinite(minX) || !Number.isFinite(maxX) || minX === maxX) {
-            minX = 0;
-            maxX = 1;
-        }
-        const pad = (maxX - minX) * 0.04;
-        const x0 = minX - pad;
-        const w = (maxX - minX) + 2 * pad;
-        const svg = mk("svg", { viewBox: `${x0} 0 ${w} 1`, width: "100%", height: "100%", preserveAspectRatio: "xMidYMid meet" });
-        svg.appendChild(mk("rect", { x: x0, y: 0, width: w, height: 1, fill: "#ffffff" }));
-        comps.forEach((c) => {
-            const a = num(c.corner0, 0);
-            const b = num(c.corner1, 0);
-            const x = Math.min(a, b);
-            const ww = Math.abs(b - a);
-            const color = c.color || "#e2e8f0";
-            svg.appendChild(mk("rect", { x, y: 0.2, width: ww, height: 0.6, fill: color, stroke: "#0f172a", "stroke-width": 0.003 }));
-            if (c.label) {
-                const t = mk("text", { x: x + ww / 2, y: 0.5, fill: "#0f172a", "font-size": "0.08", "text-anchor": "middle", "dominant-baseline": "middle" });
-                t.textContent = c.label;
-                svg.appendChild(t);
-            }
-        });
-        host.appendChild(svg);
-    }
-
     function boot() {
         document.querySelectorAll(".rp-drawing-input").forEach((el) => {
-            try { renderDrawingPreview(el, JSON.parse(el.getAttribute("data-drawing") || "{}")); } catch (_) {}
-        });
-        document.querySelectorAll(".rp-structure-input").forEach((el) => {
-            try { renderStructurePreview(el, JSON.parse(el.getAttribute("data-structure") || "{}")); } catch (_) {}
+            try { renderDrawingPreview(el, JSON.parse(el.getAttribute("data-drawing") || "{}")); } catch (_) { }
         });
     }
 

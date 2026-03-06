@@ -6,6 +6,8 @@
 
 {% block content %}
 {% set has_phases = inputs | selectattr('type', 'equalto', 'phase') | list | length == inputs | length and inputs | length > 0 %}
+{% set top_groups = inputs | selectattr('type', 'equalto', 'group') | list %}
+{% set has_top_groups = not has_phases and top_groups | length > 1 %}
 <div class="rp-layout">
     <aside class="rp-sidebar" role="complementary" aria-label="Tool inputs and controls">
 
@@ -40,6 +42,49 @@
                 {% include "widgets/phase.html" ignore missing %}
             </div>
             {% endfor %}
+            {% elif has_top_groups %}
+            {# Top-level groups rendered as phase-style tabs, visually grouped with non-group inputs #}
+            <fieldset class="rp-top-groups-container">
+            <div class="rp-phase-tabs" role="tablist" aria-label="Input sections" aria-orientation="horizontal">
+                {% for widget in top_groups %}
+                {% set panel_id = "phase-panel-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+                {% set tab_id = "phase-tab-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+                <button type="button"
+                        id="{{ tab_id }}"
+                        class="rp-phase-tab{% if loop.first %} rp-phase-tab-active{% endif %}"
+                        role="tab"
+                        aria-selected="{{ 'true' if loop.first else 'false' }}"
+                        aria-controls="{{ panel_id }}"
+                        tabindex="{{ '0' if loop.first else '-1' }}"
+                        data-phase="{{ widget.path }}"
+                        onclick="rappture.switchPhase('{{ widget.path }}')">
+                    {{ widget.label or widget.id }}
+                </button>
+                {% endfor %}
+            </div>
+            {% for widget in top_groups %}
+            {% set panel_id = "phase-panel-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+            {% set tab_id = "phase-tab-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
+            <div class="rp-phase-panel"
+                 id="{{ panel_id }}"
+                 role="tabpanel"
+                 aria-labelledby="{{ tab_id }}"
+                 {% if not loop.first %}hidden{% endif %}>
+                <div class="rp-phase-content">
+                    {% for child in widget.children %}
+                        {% set widget = child %}
+                        {% include "widgets/" + child.type + ".html" ignore missing %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            </fieldset>
+            {# Non-group inputs rendered outside the tab container, in their XML order #}
+            {% for widget in inputs %}
+                {% if widget.type != 'group' %}
+                    {% include "widgets/" + widget.type + ".html" ignore missing %}
+                {% endif %}
+            {% endfor %}
             {% else %}
             {% for widget in inputs %}
                 {% include "widgets/" + widget.type + ".html" ignore missing %}
@@ -72,6 +117,9 @@
     <section class="rp-content" aria-label="Simulation results">
         <div id="rp-results" class="rp-results" aria-live="polite" aria-label="Output results">
             <div class="rp-results-placeholder">
+                {% if tool.about %}
+                <div class="rp-results-about">{{ tool.about }}</div>
+                {% endif %}
                 <p>Click <strong>Simulate</strong> to run the tool and see results here.</p>
             </div>
         </div>

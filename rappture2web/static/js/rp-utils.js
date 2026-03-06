@@ -497,3 +497,81 @@ rappture._rpUtils = {
         };
     },
 };
+
+// ── Custom tooltip ────────────────────────────────────────────────────────────
+(function () {
+    const tip = document.getElementById('rp-tooltip');
+    if (!tip) return;
+
+    let hideTimer = null;
+
+    function show(target) {
+        const data = target.dataset.rpTooltip;
+        if (!data) return;
+        let parsed;
+        try { parsed = JSON.parse(data); } catch (e) { parsed = { desc: data }; }
+
+        const desc = (parsed.desc || '').trim();
+        const units = (parsed.units || '').trim();
+        const min = (parsed.min || '').trim();
+        const max = (parsed.max || '').trim();
+        if (!desc && !units && !min && !max) return;
+
+        let html = '';
+        if (desc) html += `<div class="rp-tooltip-desc">${desc}</div>`;
+        const metas = [];
+        if (units) metas.push(`<span><b>Units:</b> ${units}</span>`);
+        if (min !== '' && max !== '') metas.push(`<span><b>Range:</b> ${min} – ${max}</span>`);
+        else if (min !== '') metas.push(`<span><b>Min:</b> ${min}</span>`);
+        else if (max !== '') metas.push(`<span><b>Max:</b> ${max}</span>`);
+        if (metas.length) html += `<div class="rp-tooltip-meta">${metas.join('')}</div>`;
+
+        tip.innerHTML = html;
+        tip.classList.add('rp-tooltip-visible');
+        tip.setAttribute('aria-hidden', 'false');
+        // Delay positioning until tooltip has rendered dimensions
+        requestAnimationFrame(() => position(target));
+    }
+
+    function position(target) {
+        const rect = target.getBoundingClientRect();
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const gap = 8;
+        let left = rect.left;
+        let top = rect.bottom + gap;
+        if (top + th > vh - gap) top = rect.top - th - gap;
+        if (left + tw > vw - gap) left = vw - tw - gap;
+        if (left < gap) left = gap;
+        tip.style.left = left + 'px';
+        tip.style.top = top + 'px';
+    }
+
+    function hide() {
+        tip.classList.remove('rp-tooltip-visible');
+        tip.setAttribute('aria-hidden', 'true');
+    }
+
+    document.addEventListener('mouseover', e => {
+        const target = e.target.closest('[data-rp-tooltip]');
+        if (!target) return;
+        clearTimeout(hideTimer);
+        show(target);
+    });
+
+    document.addEventListener('mouseout', e => {
+        const target = e.target.closest('[data-rp-tooltip]');
+        if (!target) return;
+        hideTimer = setTimeout(hide, 100);
+    });
+
+    document.addEventListener('focusin', e => {
+        const target = e.target.closest('[data-rp-tooltip]');
+        if (target) show(target);
+    });
+
+    document.addEventListener('focusout', e => {
+        const target = e.target.closest('[data-rp-tooltip]');
+        if (target) hide();
+    });
+})();

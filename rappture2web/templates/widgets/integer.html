@@ -2,7 +2,8 @@
 <div class="rp-widget rp-integer" data-path="{{ widget.path }}" data-type="integer"
      {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}
      {% if widget.color %}data-color="{{ widget.color }}"{% elif widget.attrs.color %}data-color="{{ widget.attrs.color }}"{% endif %}>
-    <label class="rp-label" for="{{ input_id }}" title="{{ widget.description }}">
+    {% set _tt = {'desc': widget.description, 'min': widget.attrs.min | strip_units if widget.attrs.min else '', 'max': widget.attrs.max | strip_units if widget.attrs.max else ''} %}
+    <label class="rp-label" for="{{ input_id }}" data-rp-tooltip='{{ _tt | tojson }}' title="{{ widget.description }}">
         {{ widget.label or widget.id }}
     </label>
     <input type="number"

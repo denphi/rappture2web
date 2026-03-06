@@ -1,34 +1,36 @@
 {% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
-<div class="rp-widget rp-number" data-path="{{ widget.path }}" data-type="number"
-     {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}
-     {% if widget.color %}data-color="{{ widget.color }}"{% elif widget.attrs.color %}data-color="{{ widget.attrs.color }}"{% endif %}>
-    <label class="rp-label" for="{{ input_id }}" title="{{ widget.description }}">
+<div class="rp-widget rp-number" data-path="{{ widget.path }}" data-type="number" {% if widget.enable
+    %}data-enable='{{ widget.enable }}' {% endif %} {% if widget.color %}data-color="{{ widget.color }}" {% elif
+    widget.attrs.color %}data-color="{{ widget.attrs.color }}" {% endif %}>
+    {% set _tt = {'desc': widget.description, 'units': widget.attrs.units, 'min': widget.attrs.min | strip_units if widget.attrs.min else '', 'max': widget.attrs.max | strip_units if widget.attrs.max else ''} %}
+    <label class="rp-label" for="{{ input_id }}" data-rp-tooltip='{{ _tt | tojson }}' title="{{ widget.description }}">
         {% if widget.icon and widget.icon.strip() %}
-        <img class="rp-widget-icon" src="data:image/gif;base64,{{ widget.icon | replace('\n','') | replace(' ','') }}" alt="" aria-hidden="true">
-        {% elif widget.attrs.units and widget.attrs.units | lower in ['k','c','f','r','°c','°f','degc','degf','celsius','fahrenheit','kelvin','rankine'] %}
-        <svg class="rp-widget-icon rp-therm-icon" viewBox="0 0 16 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-          <rect x="6" y="2" width="4" height="18" rx="2" fill="none" stroke="#aaa" stroke-width="1.5"/>
-          <rect x="7" y="12" width="2" height="10" rx="1" fill="#e44"/>
-          <circle cx="8" cy="26" r="4" fill="#e44" stroke="#aaa" stroke-width="1.5"/>
-          <line x1="10" y1="6"  x2="13" y2="6"  stroke="#aaa" stroke-width="1"/>
-          <line x1="10" y1="9"  x2="13" y2="9"  stroke="#aaa" stroke-width="1"/>
-          <line x1="10" y1="12" x2="13" y2="12" stroke="#aaa" stroke-width="1"/>
+        <img class="rp-widget-icon" src="data:image/gif;base64,{{ widget.icon | replace('\n','') | replace(' ','') }}"
+            alt="" aria-hidden="true">
+        {% elif widget.attrs.units and widget.attrs.units | lower in
+        ['k','c','f','r','°c','°f','degc','degf','celsius','fahrenheit','kelvin','rankine'] %}
+        <svg class="rp-widget-icon rp-therm-icon" viewBox="0 0 16 32" xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true" focusable="false">
+            <rect x="6" y="2" width="4" height="18" rx="2" fill="none" stroke="#aaa" stroke-width="1.5" />
+            <rect x="7" y="12" width="2" height="10" rx="1" fill="#e44" />
+            <circle cx="8" cy="26" r="4" fill="#e44" stroke="#aaa" stroke-width="1.5" />
+            <line x1="10" y1="6" x2="13" y2="6" stroke="#aaa" stroke-width="1" />
+            <line x1="10" y1="9" x2="13" y2="9" stroke="#aaa" stroke-width="1" />
+            <line x1="10" y1="12" x2="13" y2="12" stroke="#aaa" stroke-width="1" />
         </svg>
         {% endif %}
         {{ widget.label or widget.id }}
-        {% if widget.attrs.units %}<span class="rp-units" aria-label="units: {{ widget.attrs.units }}">[{{ widget.attrs.units }}]</span>{% endif %}
+        {% if widget.attrs.units %}<span class="rp-units" aria-label="units: {{ widget.attrs.units }}">[{{
+            widget.attrs.units }}]</span>{% endif %}
     </label>
     <div class="rp-number-controls">
-        <input type="number"
-               id="{{ input_id }}"
-               class="rp-input rp-input-number"
-               name="{{ widget.path }}"
-               value="{{ widget.default | strip_units }}"
-               {% if widget.attrs.min %}min="{{ widget.attrs.min | strip_units }}"{% endif %}
-               {% if widget.attrs.max %}max="{{ widget.attrs.max | strip_units }}"{% endif %}
-               step="any"
-               aria-describedby="{% if widget.description %}{{ input_id }}-desc{% endif %}{% if widget.hints %} {{ input_id }}-hint{% endif %}"
-               {% if widget.color or widget.attrs.color %}oninput="rappture.updateInputColor(this)" onchange="rappture.updateInputColor(this)"{% endif %}>
+        <input type="number" id="{{ input_id }}" class="rp-input rp-input-number" name="{{ widget.path }}"
+            value="{{ (widget.current if widget.current else widget.default) | strip_units }}" {% if widget.attrs.min
+            %}min="{{ widget.attrs.min | strip_units }}" {% endif %} {% if widget.attrs.max
+            %}max="{{ widget.attrs.max | strip_units }}" {% endif %} step="any"
+            aria-describedby="{% if widget.description %}{{ input_id }}-desc{% endif %}{% if widget.hints %} {{ input_id }}-hint{% endif %}"
+            {% if widget.color or widget.attrs.color %}oninput="rappture.updateInputColor(this)"
+            onchange="rappture.updateInputColor(this)" {% endif %}>
         {% if widget.description %}
         <span id="{{ input_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
         {% endif %}
@@ -37,7 +39,9 @@
         {% endif %}
         {% if widget.attrs.presets %}
         <label for="{{ input_id }}-preset" class="rp-sr-only">Presets for {{ widget.label or widget.id }}</label>
-        <select id="{{ input_id }}-preset" class="rp-preset-select" aria-label="Presets for {{ widget.label or widget.id }}" onchange="rappture.applyPreset(this, '{{ widget.path }}')">
+        <select id="{{ input_id }}-preset" class="rp-preset-select"
+            aria-label="Presets for {{ widget.label or widget.id }}"
+            onchange="rappture.applyPreset(this, '{{ widget.path }}')">
             <option value="">-- presets --</option>
             {% for preset in widget.attrs.presets %}
             <option value="{{ preset.value | strip_units }}">{{ preset.label or preset.value }}</option>

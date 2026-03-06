@@ -1,7 +1,7 @@
 {% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
-<div class="rp-widget rp-string" data-path="{{ widget.path }}" data-type="string"
+<div class="rp-widget rp-string{% if widget.attrs.multiline %} rp-string-multiline{% endif %}" data-path="{{ widget.path }}" data-type="string"
      {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}>
-    <label class="rp-label" for="{{ input_id }}" title="{{ widget.description }}">
+    <label class="rp-label" for="{{ input_id }}" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">
         {{ widget.label or widget.id }}
     </label>
     {% if widget.description %}

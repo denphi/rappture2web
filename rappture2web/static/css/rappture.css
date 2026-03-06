@@ -22,6 +22,41 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 
+/* ── Custom tooltip ──────────────────────────────────────────────────────── */
+#rp-tooltip {
+    position: fixed;
+    z-index: 9999;
+    max-width: 280px;
+    background: #1e293b;
+    color: #f1f5f9;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    display: none;
+}
+#rp-tooltip.rp-tooltip-visible {
+    display: block;
+}
+#rp-tooltip .rp-tooltip-desc {
+    margin-bottom: 4px;
+}
+#rp-tooltip .rp-tooltip-meta {
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    font-size: 12px;
+    color: #94a3b8;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+#rp-tooltip .rp-tooltip-meta span b {
+    color: #cbd5e1;
+}
+
 /* Accessibility utilities */
 .rp-sr-only {
     position: absolute; width: 1px; height: 1px;
@@ -206,13 +241,63 @@ body {
 }
 
 /* Form */
-.rp-form { display: flex; flex-direction: column; gap: 12px; }
+.rp-form { display: flex; flex-direction: column; gap: 6px; }
 
-/* Widgets */
+/* Widgets — inline label + input row layout */
 .rp-widget {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    gap: 4px 8px;
+    padding: 6px 0;
+}
+/* Label in first column */
+.rp-widget > .rp-label {
+    grid-column: 1;
+    white-space: normal;
+    word-break: break-word;
+    align-self: center;
+}
+/* Input / controls in second column, full width */
+.rp-widget > .rp-input,
+.rp-widget > .rp-number-controls {
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+}
+/* Hints and color bar span both columns, indented under input */
+.rp-widget > .rp-hints,
+.rp-widget > .rp-color-bar {
+    grid-column: 2;
+}
+/* sr-only desc spans both without affecting layout */
+.rp-widget > .rp-sr-only {
+    display: none;
+}
+/* Widgets that need column layout (textarea, multichoice, image, loader) */
+.rp-string-multiline,
+.rp-multichoice,
+.rp-image,
+.rp-loader {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 4px;
+}
+.rp-string-multiline > .rp-label,
+.rp-multichoice > .rp-label,
+.rp-image > .rp-label,
+.rp-loader > .rp-label {
+    width: auto;
+}
+/* Boolean: label wraps checkbox inline — keep as single spanning element */
+.rp-boolean {
+    display: flex;
+    align-items: center;
+}
+.rp-boolean > .rp-label {
+    grid-column: unset;
+    width: auto;
 }
 .rp-widget.rp-disabled {
     opacity: 0.4;
@@ -226,8 +311,14 @@ body {
     color: var(--rp-text);
     cursor: help;
     display: flex;
-    align-items: center;
-    gap: 5px;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 4px;
+    line-height: 1.4;
+}
+.rp-label > .rp-units {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 .rp-widget-icon {
     width: 16px;
@@ -252,10 +343,10 @@ body {
 
 /* Inputs */
 .rp-input {
-    padding: 8px 10px;
+    padding: 4px 8px;
     border: 1px solid var(--rp-border);
     border-radius: var(--rp-radius);
-    font-size: 14px;
+    font-size: 13px;
     font-family: inherit;
     background: white;
     transition: border-color 0.15s;
@@ -310,8 +401,9 @@ body {
     cursor: pointer;
 }
 
-/* Group */
+/* Group — container widget, always column layout */
 .rp-group {
+    display: block !important;
     border: 1px solid var(--rp-border);
     border-radius: var(--rp-radius);
     padding: 12px;
@@ -438,6 +530,30 @@ body {
     animation: fadeIn 0.15s ease;
 }
 
+/* Top-level groups container (tab strip + panels + non-group siblings) */
+.rp-top-groups-container {
+    border: 1px solid var(--rp-border, #cbd5e1);
+    border-radius: 8px;
+    padding: 0;
+    margin: 0 0 8px 0;
+    min-width: 0;
+}
+.rp-top-groups-container .rp-phase-tabs {
+    border-bottom: 2px solid var(--rp-border, #cbd5e1);
+    border-radius: 8px 8px 0 0;
+    margin-bottom: 0;
+    padding: 6px 6px 0 6px;
+    background: var(--rp-surface, #f8fafc);
+}
+.rp-top-groups-container .rp-phase-panel,
+.rp-top-groups-container .rp-phase-content {
+    padding: 8px 10px;
+}
+.rp-top-groups-container > .rp-widget {
+    padding: 6px 10px 8px 10px;
+    border-top: 1px solid var(--rp-border, #cbd5e1);
+}
+
 /* Separator */
 .rp-separator {
     border: none;
@@ -495,11 +611,28 @@ body {
 .rp-results { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .rp-results-placeholder {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 300px;
     color: var(--rp-text-muted);
     font-size: 15px;
+    gap: 16px;
+    padding: 32px;
+    text-align: center;
+}
+.rp-results-about {
+    max-width: 100%;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--rp-text);
+    background: var(--rp-surface, #f8fafc);
+    border: 1px solid var(--rp-border, #cbd5e1);
+    border-radius: 8px;
+    padding: 16px 20px;
+    white-space: pre-wrap;
+    text-align: left;
+    overflow: auto;
 }
 .rp-results-warn {
     flex-direction: column;
@@ -1141,4 +1274,55 @@ body {
     height: 6px;
     cursor: pointer;
     accent-color: var(--rp-primary, #2563eb);
+}
+
+/* ── Structure input widget ──────────────────────────────────────────────── */
+.rp-structure-input {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    border: 1px solid var(--rp-border, #cbd5e1);
+    border-radius: 8px;
+    width: 100%;
+    max-width: 500px;
+    box-sizing: border-box;
+    background: var(--rp-surface, #f8fafc);
+}
+.rp-structure-input > .rp-label {
+    font-weight: 600;
+    width: auto !important;
+    max-width: none !important;
+    flex: none !important;
+    grid-column: unset;
+}
+.rp-structure-parameters {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+}
+.rp-structure-parameters .rp-widget {
+    grid-template-columns: 130px 1fr;
+    width: 100%;
+    padding: 3px 0;
+}
+.rp-structure-parameters .rp-widget > .rp-label {
+    flex: 0 0 130px;
+    width: 130px;
+}
+.rp-structure-parameters .rp-input-number,
+.rp-structure-parameters .rp-input-string {
+    width: 100%;
+    box-sizing: border-box;
+}
+.rp-drawing-preview {
+    width: 100%;
+    overflow: visible;
+}
+.rp-drawing-preview svg {
+    width: 100%;
+    max-width: 100%;
+    display: block;
 }
