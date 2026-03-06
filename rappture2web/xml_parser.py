@@ -385,6 +385,7 @@ def parse_group(elem, node, parent_path):
     #   1. layout is not explicitly "vertical"
     #   2. ALL direct element children (ignoring <about>) are <group> elements
     #   3. Every child group has a label
+    #   4. There are at least 2 child groups (single group = no need for tabs)
     # If the group contains anything besides groups (number, choice, etc.) it
     # falls back to vertical layout per the Rappture spec.
     is_vertical = (layout.lower() == "vertical") if layout else False
@@ -394,7 +395,10 @@ def parse_group(elem, node, parent_path):
         bool(_get_text(c.find("about"), "label")) if c.find("about") is not None else False
         for c in non_about_children
     )
-    node.attrs["is_tabbed"] = (not is_vertical and all_children_are_groups and all_have_labels)
+    node.attrs["is_tabbed"] = (
+        not is_vertical and all_children_are_groups and all_have_labels
+        and len(non_about_children) > 1
+    )
 
     # Parse children
     node.children = _parse_input_children(elem, node.path)
@@ -410,7 +414,7 @@ def parse_phase(elem, node, parent_path):
         bool(_get_text(c.find("about"), "label")) if c.find("about") is not None else False
         for c in non_about
     )
-    node.attrs["is_tabbed"] = all_groups and all_labeled
+    node.attrs["is_tabbed"] = all_groups and all_labeled and len(non_about) > 1
 
 
 # Map of type to parser function

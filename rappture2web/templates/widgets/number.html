@@ -23,6 +23,9 @@
         {% if widget.attrs.units %}<span class="rp-units" aria-label="units: {{ widget.attrs.units }}">[{{
             widget.attrs.units }}]</span>{% endif %}
     </label>
+    {% if widget.description %}
+    <span id="{{ input_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
+    {% endif %}
     <div class="rp-number-controls">
         <input type="number" id="{{ input_id }}" class="rp-input rp-input-number" name="{{ widget.path }}"
             value="{{ (widget.current if widget.current else widget.default) | strip_units }}" {% if widget.attrs.min
@@ -31,12 +34,6 @@
             aria-describedby="{% if widget.description %}{{ input_id }}-desc{% endif %}{% if widget.hints %} {{ input_id }}-hint{% endif %}"
             {% if widget.color or widget.attrs.color %}oninput="rappture.updateInputColor(this)"
             onchange="rappture.updateInputColor(this)" {% endif %}>
-        {% if widget.description %}
-        <span id="{{ input_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
-        {% endif %}
-        {% if widget.color or widget.attrs.color %}
-        <div class="rp-color-bar" aria-hidden="true" style="height:6px;border-radius:3px;margin-top:3px"></div>
-        {% endif %}
         {% if widget.attrs.presets %}
         <label for="{{ input_id }}-preset" class="rp-sr-only">Presets for {{ widget.label or widget.id }}</label>
         <select id="{{ input_id }}-preset" class="rp-preset-select"
@@ -49,6 +46,9 @@
         </select>
         {% endif %}
     </div>
+    {% if widget.color or widget.attrs.color %}
+    <div class="rp-color-bar" aria-hidden="true" style="height:6px;border-radius:3px"></div>
+    {% endif %}
     {% if widget.hints %}
     <small id="{{ input_id }}-hint" class="rp-hints">{{ widget.hints }}</small>
     {% endif %}

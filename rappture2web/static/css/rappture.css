@@ -243,38 +243,76 @@ body {
 /* Form */
 .rp-form { display: flex; flex-direction: column; gap: 6px; }
 
-/* Widgets — inline label + input row layout */
+/* Widgets — base */
 .rp-widget {
+    padding: 6px 0;
+}
+.rp-widget.rp-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+.rp-widget[hidden] { display: none !important; }
+
+/* Leaf input widgets: grid with label left, input right */
+.rp-number,
+.rp-integer,
+.rp-string:not(.rp-string-multiline),
+.rp-choice,
+.rp-boolean {
     display: grid;
     grid-template-columns: 160px 1fr;
     align-items: center;
     gap: 4px 8px;
-    padding: 6px 0;
 }
-/* Label in first column */
-.rp-widget > .rp-label {
+/* Label in column 1 */
+.rp-number > .rp-label,
+.rp-integer > .rp-label,
+.rp-string:not(.rp-string-multiline) > .rp-label,
+.rp-choice > .rp-label {
     grid-column: 1;
     white-space: normal;
     word-break: break-word;
     align-self: center;
 }
-/* Input / controls in second column, full width */
-.rp-widget > .rp-input,
-.rp-widget > .rp-number-controls {
+/* Input / controls in column 2 */
+.rp-number > .rp-input,
+.rp-number > .rp-number-controls,
+.rp-integer > .rp-input,
+.rp-string:not(.rp-string-multiline) > .rp-input,
+.rp-choice > .rp-input {
     grid-column: 2;
     width: 100%;
     min-width: 0;
 }
-/* Hints and color bar span both columns, indented under input */
-.rp-widget > .rp-hints,
-.rp-widget > .rp-color-bar {
+/* Hints and color bar in column 2 */
+.rp-number > .rp-hints,
+.rp-number > .rp-color-bar,
+.rp-integer > .rp-hints,
+.rp-integer > .rp-color-bar,
+.rp-string:not(.rp-string-multiline) > .rp-hints,
+.rp-choice > .rp-hints {
     grid-column: 2;
 }
-/* sr-only desc spans both without affecting layout */
-.rp-widget > .rp-sr-only {
+/* sr-only hidden from layout */
+.rp-number > .rp-sr-only,
+.rp-integer > .rp-sr-only,
+.rp-string > .rp-sr-only,
+.rp-choice > .rp-sr-only {
     display: none;
 }
-/* Widgets that need column layout (textarea, multichoice, image, loader) */
+
+/* Boolean: label wraps the checkbox — single flex row */
+.rp-boolean {
+    display: flex;
+    align-items: center;
+    grid-template-columns: unset;
+}
+.rp-boolean > .rp-label {
+    width: auto;
+    flex: none;
+}
+
+/* Column-layout widgets */
 .rp-string-multiline,
 .rp-multichoice,
 .rp-image,
@@ -284,26 +322,14 @@ body {
     align-items: stretch;
     gap: 4px;
 }
-.rp-string-multiline > .rp-label,
-.rp-multichoice > .rp-label,
-.rp-image > .rp-label,
-.rp-loader > .rp-label {
-    width: auto;
+
+/* Container widgets: block layout, no grid */
+.rp-group,
+.rp-group-tabbed,
+.rp-structure-input {
+    display: block !important;
+    padding: 0;
 }
-/* Boolean: label wraps checkbox inline — keep as single spanning element */
-.rp-boolean {
-    display: flex;
-    align-items: center;
-}
-.rp-boolean > .rp-label {
-    grid-column: unset;
-    width: auto;
-}
-.rp-widget.rp-disabled {
-    opacity: 0.4;
-    pointer-events: none;
-}
-.rp-widget[hidden] { display: none; }
 
 .rp-label {
     font-weight: 500;
@@ -376,8 +402,14 @@ body {
 .rp-number-controls {
     display: flex;
     gap: 6px;
+    width: 100%;
+    min-width: 0;
 }
-.rp-number-controls .rp-input-number { flex: 1; }
+.rp-number-controls .rp-input-number {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+}
 .rp-preset-select {
     padding: 6px 8px;
     border: 1px solid var(--rp-border);
@@ -401,12 +433,11 @@ body {
     cursor: pointer;
 }
 
-/* Group — container widget, always column layout */
+/* Group visual styles */
 .rp-group {
-    display: block !important;
     border: 1px solid var(--rp-border);
     border-radius: var(--rp-radius);
-    padding: 12px;
+    padding: 12px !important;
     background: #fbfdff;
 }
 .rp-group-legend {
@@ -1278,10 +1309,10 @@ body {
 
 /* ── Structure input widget ──────────────────────────────────────────────── */
 .rp-structure-input {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 8px !important;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
     padding: 10px 12px !important;
     border: 1px solid var(--rp-border, #cbd5e1);
     border-radius: 8px;
@@ -1292,10 +1323,6 @@ body {
 }
 .rp-structure-input > .rp-label {
     font-weight: 600;
-    width: auto !important;
-    max-width: none !important;
-    flex: none !important;
-    grid-column: unset;
 }
 .rp-structure-parameters {
     display: flex;
@@ -1303,13 +1330,13 @@ body {
     gap: 2px;
     width: 100%;
 }
-.rp-structure-parameters .rp-widget {
+.rp-structure-parameters .rp-number,
+.rp-structure-parameters .rp-integer,
+.rp-structure-parameters .rp-string {
     grid-template-columns: 130px 1fr;
-    width: 100%;
     padding: 3px 0;
 }
 .rp-structure-parameters .rp-widget > .rp-label {
-    flex: 0 0 130px;
     width: 130px;
 }
 .rp-structure-parameters .rp-input-number,
