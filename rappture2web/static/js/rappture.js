@@ -2209,10 +2209,25 @@ const rappture = {
 
     _setRunning(running) {
         document.querySelectorAll('.rp-btn-simulate').forEach(btn => {
-            btn.disabled = running;
             btn.classList.toggle('running', running);
-            btn.textContent = running ? 'Running...' : 'Simulate';
+            if (running) {
+                btn.textContent = 'Stop';
+                btn.onclick = () => rappture.stop();
+            } else {
+                btn.textContent = 'Simulate';
+                btn.onclick = () => rappture.simulate();
+            }
         });
+    },
+
+    async stop() {
+        try {
+            await fetch(this._bp + '/stop', { method: 'POST' });
+        } catch (e) {
+            console.warn('[rp] stop request failed', e);
+        }
+        this._setRunning(false);
+        this._setStatus('Stopped');
     },
 
     _setStatus(text, cls = '') {

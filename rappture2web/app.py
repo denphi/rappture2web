@@ -44,6 +44,9 @@ _session: dict = {
 # Active WebSocket connections for live streaming
 _ws_clients: list[WebSocket] = []
 
+# Currently running subprocess (set by simulator, used by /stop)
+_running_process: asyncio.subprocess.Process | None = None
+
 # Server's own URL (set by CLI for library mode)
 _server_url: str = ""
 _use_library_mode: bool = False
@@ -207,7 +210,7 @@ async def index(request: Request):
 @app.post("/simulate")
 async def simulate(request: Request):
     """Trigger a simulation from the browser Simulate button."""
-    global _session
+    global _session, _running_process
 
     if _tool_def is None:
         return JSONResponse({"status": "error", "log": "No tool loaded"}, status_code=400)
@@ -227,12 +230,17 @@ async def simulate(request: Request):
         "run_num": None,
         "cached": False,
     }
+    _running_process = None
     await _broadcast({"type": "status", "status": "running", "job_id": job_id})
     await _broadcast({"type": "progress", "percent": 0, "message": "Simulation started"})
 
     async def _stream_log(text: str):
         _session["log"] += text
         await _broadcast({"type": "log", "text": text})
+
+    def _on_process(proc):
+        global _running_process
+        _running_process = proc
 
     result = await run_simulation(
         tool_xml_path=_tool_xml_path,
@@ -242,7 +250,9 @@ async def simulate(request: Request):
         history=_history,
         use_cache=_use_cache,
         log_callback=_stream_log,
+        process_callback=_on_process,
     )
+    _running_process = None
 
     # In library mode, api_simulate_done already recorded the run with real
     # outputs. Pull run_id/run_num from _session (set by api_simulate_done).
@@ -277,6 +287,27 @@ async def simulate(request: Request):
         })
 
     return JSONResponse(result)
+
+
+# ─── Stop (browser → server) ──────────────────────────────────────────────────
+
+@app.post("/stop")
+async def stop_simulation():
+    """Kill the currently running simulation process."""
+    global _running_process, _session
+    proc = _running_process
+    if proc is not None:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        _running_process = None
+    if _session.get("status") == "running":
+        _session["status"] = "stopped"
+        await _broadcast({"type": "status", "status": "stopped"})
+        await _broadcast({"type": "done", "status": "stopped", "outputs": {}, "log": _session.get("log", ""),
+                          "run_id": None, "run_num": None, "cached": False})
+    return JSONResponse({"status": "stopped"})
 
 
 # ─── Library mode API (used by rp_library in the tool script) ─────────────────

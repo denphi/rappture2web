@@ -228,6 +228,7 @@ async def run_simulation(
     use_cache: bool = True,
     timeout: int = 300,
     log_callback=None,
+    process_callback=None,
 ) -> dict:
     """Run a Rappture simulation.
 
@@ -300,6 +301,8 @@ async def run_simulation(
             stderr=asyncio.subprocess.PIPE,
             cwd=tool_dir,
         )
+        if process_callback is not None:
+            process_callback(process)
 
         stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []

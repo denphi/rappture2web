@@ -128,10 +128,10 @@
 
         const comps = (data && data.components) || [];
         if (!comps.length) {
-            host.textContent = "(no structure components)";
-            host.style.color = "#94a3b8";
+            host.style.display = "none";
             return;
         }
+        host.style.display = "";
         host.style.color = "";
 
         let minX = Infinity, maxX = -Infinity;
