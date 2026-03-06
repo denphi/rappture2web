@@ -225,7 +225,7 @@ rappture._registerRenderer('curve', {
             const lp = _legendPos[posKey] || _legendPos['inside-tr'];
             const isOutside = _outsideKeys.has(posKey);
             const isOutsideLeft = posKey.startsWith('outside-l');
-            Plotly.relayout(plotDiv, {
+            const patch = {
                 'title.text':         cp.querySelector(`#plt-title-${sid}`).value,
                 'xaxis.title':        U.axTitle(xl, xu),
                 'xaxis.type':         cp.querySelector(`#plt-xlog-${sid}`).checked ? 'log' : 'linear',
@@ -241,7 +241,16 @@ rappture._registerRenderer('curve', {
                 'legend.bgcolor':     isOutside ? 'rgba(255,255,255,0)' : 'rgba(255,255,255,0.7)',
                 'margin.r':           isOutside && !isOutsideLeft ? 120 : 16,
                 'margin.l':           isOutsideLeft ? 120 : 70,
-            });
+            };
+            Plotly.relayout(plotDiv, patch);
+            // Sync structural changes into _rpBaseLayout so theme changes don't revert them
+            if (plotDiv._rpBaseLayout) {
+                const b = plotDiv._rpBaseLayout;
+                b.xaxis = { ...b.xaxis, title: patch['xaxis.title'], type: patch['xaxis.type'], showgrid: patch['xaxis.showgrid'] };
+                b.yaxis = { ...b.yaxis, title: patch['yaxis.title'], type: patch['yaxis.type'], showgrid: patch['yaxis.showgrid'] };
+                b.showlegend = patch['showlegend'];
+                b.margin = { ...b.margin, r: patch['margin.r'], l: patch['margin.l'] };
+            }
         };
 
         const applyTraces = () => {

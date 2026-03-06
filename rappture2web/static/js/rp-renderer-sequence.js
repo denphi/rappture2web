@@ -64,7 +64,7 @@ rappture._registerRenderer('sequence', {
         const lockYLbl = document.createElement('label');
         lockYLbl.htmlFor = lockYChk.id;
         lockYLbl.textContent = 'Lock Y axis';
-        lockYLbl.style.cssText = 'font-size:0.8em;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;';
+        lockYLbl.className = 'rp-seq-locky-label';
         lockYLbl.prepend(lockYChk);
 
         const topRow = document.createElement('div');
