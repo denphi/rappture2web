@@ -461,12 +461,19 @@ async def run_simulation(
 
     exec_command = command
 
+    # Build subprocess environment: inherit current env but unset DISPLAY so
+    # that any internal Rappture/Tk calls cannot open a GUI window and are
+    # forced into headless/batch mode.
+    proc_env = {k: v for k, v in os.environ.items() if k != "DISPLAY"}
+    proc_env["DISPLAY"] = ""
+
     try:
         process = await asyncio.create_subprocess_shell(
             exec_command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=tool_dir,
+            env=proc_env,
         )
         if process_callback is not None:
             process_callback(process)
