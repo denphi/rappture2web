@@ -459,7 +459,15 @@ async def run_simulation(
         driver_path = create_driver_xml(tool_xml_path, input_values)
         command = command.replace("@driver", driver_path)
 
-    exec_command = command
+    # On NanoHub, wrap with `submit --local` so that invoke_app/Rappture::exec
+    # get the proper session context (SESSION, SESSIONDIR, HUBNAME, etc.).
+    # Without this wrapper, sub-tools called via invoke_app fail because the
+    # NanoHub middleware environment is not set up.
+    submit_bin = shutil.which("submit")
+    if submit_bin and not use_library_mode:
+        exec_command = f"{submit_bin} --local {command}"
+    else:
+        exec_command = command
 
     # Build subprocess environment: inherit current env.
     # Keep DISPLAY as-is so that internal Rappture/Tk calls can connect if a
