@@ -281,7 +281,7 @@ const rappture = {
         document.querySelectorAll('.rp-widget[data-path]').forEach(widget => {
             const path = widget.dataset.path;
             const type = widget.dataset.type;
-            if (!type || type === 'group' || type === 'note' || type === 'separator') return;
+            if (!type || type === 'group' || type === 'note' || type === 'separator' || type === 'structure') return;
 
             let value = null;
             if (type === 'boolean') {

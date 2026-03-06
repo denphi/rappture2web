@@ -200,17 +200,29 @@ def _set_structure_param(struct_elem, param_tag: str, param_id: str, value: str)
         if param_id:
             param_elem.set("id", param_id)
 
-        # Copy metadata (about/label/units/min/max/default) from the flat
-        # sibling definition that may exist as a direct child of <structure>.
-        flat_sibling = None
+        # Copy metadata (about/label/units/min/max/default) from either:
+        #  a) flat sibling definition (direct child of <structure>), or
+        #  b) <default><parameters> definition (pntoy-style)
+        source_elem = None
         if param_id:
+            # a) flat sibling
             for child in struct_elem:
                 if child.tag == param_tag and child.get("id") == param_id:
-                    flat_sibling = child
+                    source_elem = child
                     break
-        if flat_sibling is not None:
+            # b) <default><parameters>
+            if source_elem is None:
+                dflt = struct_elem.find("default")
+                if dflt is not None:
+                    dflt_params = dflt.find("parameters")
+                    if dflt_params is not None:
+                        for child in dflt_params:
+                            if child.tag == param_tag and child.get("id") == param_id:
+                                source_elem = child
+                                break
+        if source_elem is not None:
             for meta_tag in ("about", "units", "min", "max", "default", "color"):
-                meta = flat_sibling.find(meta_tag)
+                meta = source_elem.find(meta_tag)
                 if meta is not None:
                     import copy
                     param_elem.append(copy.deepcopy(meta))
