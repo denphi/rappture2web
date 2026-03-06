@@ -99,16 +99,17 @@ body {
     min-height: 76px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 12px 24px;
     background: linear-gradient(90deg, #ffffff 0%, #f4f8fc 100%);
     border-bottom: 1px solid #d6e0eb;
 }
 .rp-powered-by {
+    position: absolute;
+    bottom: 4px;
+    right: 16px;
     font-size: 11px;
     color: #8fa3b5;
     white-space: nowrap;
-    flex-shrink: 0;
 }
 .rp-powered-by a {
     color: #8fa3b5;

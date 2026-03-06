@@ -142,16 +142,23 @@ rappture._registerRenderer('sequence', {
                             rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
                             plotDiv.appendChild(rendered);
                             _frameCache[oid] = { rendered, type: odata.type };
-                            // Apply locked y-range to first frame once Plotly has initialized
-                            if (lockYChk.checked && _globalYRange[oid]) {
+                            // Apply locked y-range once Plotly has initialized (poll since _whenVisible
+                            // inside the renderer delays Plotly.newPlot until the element is visible).
+                            if (_globalYRange[oid]) {
                                 const yr = _globalYRange[oid];
-                                requestAnimationFrame(() => {
+                                let _pollCount = 0;
+                                const _poll = () => {
                                     const pd = rendered.querySelector('.js-plotly-plot');
                                     if (pd && pd._fullLayout) {
-                                        Plotly.relayout(pd, { 'yaxis.range': yr, 'yaxis.autorange': false });
                                         _frameCache[oid].plotlyDiv = pd;
+                                        if (lockYChk.checked) {
+                                            Plotly.relayout(pd, { 'yaxis.range': yr, 'yaxis.autorange': false });
+                                        }
+                                    } else if (_pollCount++ < 40) {
+                                        setTimeout(_poll, 50);
                                     }
-                                });
+                                };
+                                setTimeout(_poll, 50);
                             }
                         }
                     }
@@ -196,10 +203,24 @@ rappture._registerRenderer('sequence', {
             if (idx === n - 1) _seqStop();
         };
 
-        // Re-render current frame when lock-Y is toggled (only affects cached/subsequent frames)
+        // Re-render current frame when lock-Y is toggled.
+        // For frame 0 (first frame), directly relayout cached plotly divs.
+        // For subsequent frames, renderFrame handles it via Plotly.react.
         lockYChk.addEventListener('change', () => {
             const cur = parseInt(slider.value);
-            if (cur > 0) renderFrame(cur);
+            if (cur === 0) {
+                // First frame: apply/remove lock directly on cached plotly divs
+                for (const [oid, cached] of Object.entries(_frameCache)) {
+                    if (!cached.plotlyDiv || !cached.plotlyDiv._fullLayout) continue;
+                    if (lockYChk.checked && _globalYRange[oid]) {
+                        Plotly.relayout(cached.plotlyDiv, { 'yaxis.range': _globalYRange[oid], 'yaxis.autorange': false });
+                    } else {
+                        Plotly.relayout(cached.plotlyDiv, { 'yaxis.autorange': true });
+                    }
+                }
+            } else {
+                renderFrame(cur);
+            }
         });
 
         slider.addEventListener('input', () => { _seqStop(); renderFrame(parseInt(slider.value)); });
