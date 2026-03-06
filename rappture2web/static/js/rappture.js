@@ -497,7 +497,8 @@ const rappture = {
 
     /** Load a bundled example XML by filename from the server. */
     loadExampleByName(selectElem) {
-        const filename = selectElem.value;
+        const option = selectElem.options[selectElem.selectedIndex];
+        const filename = option ? option.dataset.filename : null;
         if (!filename) return;
         const widget = selectElem.closest('.rp-widget');
         const targetsAttr = widget && widget.dataset.uploadTargets;
@@ -519,14 +520,20 @@ const rappture = {
             fetch(this._bp + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
                 .then(r => r.json())
                 .then(examples => {
+                    let hasSelection = false;
                     examples.forEach(ex => {
                         const opt = document.createElement('option');
-                        opt.value = ex.filename;
+                        // Rappture Tcl scripts expect the label (e.g. "MOSFET n-type"), not the filename, in <current>
+                        opt.value = ex.label;
                         opt.textContent = ex.label;
-                        if (ex.filename === defaultFile) opt.selected = true;
+                        opt.dataset.filename = ex.filename;
+                        if (ex.filename === defaultFile) {
+                            opt.selected = true;
+                            hasSelection = true;
+                        }
                         sel.appendChild(opt);
                     });
-                    if (sel.value) this.loadExampleByName(sel);
+                    if (hasSelection) this.loadExampleByName(sel);
                 })
                 .catch(() => { });
         });

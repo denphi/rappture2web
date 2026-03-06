@@ -98,16 +98,30 @@ def _walk_path(root, parts, create_missing=False):
 
 
 def _append_units_if_needed(elem, value: str) -> str:
-    """Append <units> to a bare numeric value for a <number> element."""
+    """Append units to a bare numeric value for a <number> element.
+
+    If the value already contains units (non-numeric characters after the
+    number, e.g. '50nm', '2 nm', '1e+18 /cm3'), return it unchanged.
+    """
     if elem.tag != "number":
         return value
+    v = value.strip()
+    if not v:
+        return value
+    # If the value already has any non-numeric, non-scientific characters
+    # after the leading number, assume units are already embedded.
+    import re
+    # Match a pure number (int, float, scientific notation)
+    if not re.fullmatch(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?', v):
+        # Value already has units or non-numeric chars — leave it alone
+        return v
+    # It's a bare number — append units from sibling <units> element if present
     units_elem = elem.find("units")
     if units_elem is not None and units_elem.text:
         units = units_elem.text.strip()
-        v = value.strip()
-        if v and (v[-1].isdigit() or v[-1] == "."):
-            return f"{v} {units}"
-    return value
+        if units:
+            return f"{v}{units}"
+    return v
 
 
 def _set_structure_param(struct_elem, param_tag: str, param_id: str, value: str):
