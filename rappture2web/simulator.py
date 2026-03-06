@@ -461,11 +461,12 @@ async def run_simulation(
 
     exec_command = command
 
-    # Build subprocess environment: inherit current env but unset DISPLAY so
-    # that any internal Rappture/Tk calls cannot open a GUI window and are
-    # forced into headless/batch mode.
-    proc_env = {k: v for k, v in os.environ.items() if k != "DISPLAY"}
-    proc_env["DISPLAY"] = ""
+    # Build subprocess environment: inherit current env.
+    # Keep DISPLAY as-is so that internal Rappture/Tk calls can connect if a
+    # display is available (e.g. Xvfb on NanoHub).  If DISPLAY is not set in
+    # the parent, leave it unset rather than forcing it to empty string (which
+    # causes "couldn't connect to display" errors in Tk-based sub-tools).
+    proc_env = dict(os.environ)
 
     try:
         process = await asyncio.create_subprocess_shell(
