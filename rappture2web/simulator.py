@@ -454,12 +454,19 @@ async def run_simulation(
     if use_library_mode and server_url:
         # Pass server URL as argv[1]
         command = command.replace("@driver", server_url)
+        exec_command = command
     else:
-        # Classic mode: create driver.xml, run tool script directly
+        # Classic mode: create driver.xml.
+        # If rappture is available, use "rappture -execute driver.xml" so that
+        # NanoHub middleware (invoke_app etc.) is invoked correctly.
+        # Fall back to running the tool command directly otherwise.
         driver_path = create_driver_xml(tool_xml_path, input_values)
-        command = command.replace("@driver", driver_path)
-
-    exec_command = command
+        rappture_bin = shutil.which("rappture")
+        if rappture_bin:
+            exec_command = f"{rappture_bin} -execute {driver_path}"
+        else:
+            command = command.replace("@driver", driver_path)
+            exec_command = command
 
     try:
         process = await asyncio.create_subprocess_shell(
