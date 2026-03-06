@@ -46,7 +46,7 @@
                     const inputClass = isNumeric ? 'rp-input rp-input-number' : 'rp-input rp-input-string';
                     const inputType = 'text';
 
-                    const widgetDiv = mkHtml("div", { class: `rp-widget ${typeClass}`, "data-type": p.tag, "data-path": rawPath });
+                    const widgetDiv = mkHtml("div", { class: `rp-widget ${typeClass}`, "data-type": p.tag, "data-path": rawPath, "data-units": p.units || '' });
 
                     const isInteger = p.tag === 'integer';
                     const minVal = p.min ? (p.min.match(/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/) || [''])[0] : undefined;
@@ -351,14 +351,14 @@
 
         // ── In-SVG positional fields chart ──────────────────────────────────────
         if (fields.length > 0 && groupKeys.length > 0) {
-            const namedColors = { green:"#00cc44", white:"#ccc", red:"#dd2222", purple:"#9966cc", blue:"#3366cc", black:"#000" };
+            const namedColors = { green: "#00cc44", white: "#ccc", red: "#dd2222", purple: "#9966cc", blue: "#3366cc", black: "#000" };
             const cPadT = svgHeight * 0.1;
             const cPadB = svgHeight * 0.15;
             // Chart plot area spans minX→maxX; Y-axis labels use the existing padX strip
-            const chartTop    = svgHeight + cPadT;
+            const chartTop = svgHeight + cPadT;
             const chartBottom = totalSvgH - cPadB;
-            const chartH_svg  = chartBottom - chartTop;
-            const chartPlotW  = maxX - minX;
+            const chartH_svg = chartBottom - chartTop;
+            const chartPlotW = maxX - minX;
 
             svg.appendChild(mk("rect", { x: minX, y: chartTop, width: chartPlotW, height: chartH_svg, fill: "#fff", stroke: "#ccc", "stroke-width": w * 0.002 }));
 
@@ -366,7 +366,7 @@
                 if (c.type !== 'box') return;
                 const bx = num(c.corner0, minX);
                 if (bx > minX) {
-                    svg.appendChild(mk("line", { x1: bx, y1: chartTop, x2: bx, y2: chartBottom, stroke: "#ccc", "stroke-width": w * 0.002, "stroke-dasharray": `${w*0.01},${w*0.01}` }));
+                    svg.appendChild(mk("line", { x1: bx, y1: chartTop, x2: bx, y2: chartBottom, stroke: "#ccc", "stroke-width": w * 0.002, "stroke-dasharray": `${w * 0.01},${w * 0.01}` }));
                 }
             });
 

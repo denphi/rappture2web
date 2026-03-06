@@ -297,7 +297,18 @@ const rappture = {
                 return;
             } else {
                 const input = widget.querySelector('input:not([type="file"]), select, textarea');
-                if (input) value = input.value;
+                if (input) {
+                    value = input.value;
+                    // For number/integer widgets that carry known units (e.g. structure
+                    // sub-params like oxide_thickness), append the unit string so the
+                    // backend can write "2 nm" rather than bare "2" into the driver XML.
+                    if ((type === 'number' || type === 'integer') && value !== null) {
+                        const units = (widget.dataset.units || '').trim();
+                        if (units && /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(value.trim())) {
+                            value = value.trim() + ' ' + units;
+                        }
+                    }
+                }
             }
 
             if (value !== null) inputs[path] = value;

@@ -125,8 +125,10 @@ def _set_structure_param(struct_elem, param_tag: str, param_id: str, value: str)
     current_elem = struct_elem.find("current")
     if current_elem is None:
         current_elem = ET.SubElement(struct_elem, "current")
-    # If <current> has only text (legacy flat value), that is fine — we add
-    # a <parameters> child alongside it.
+    # Clear legacy flat text from <current> — Rappture reads params from
+    # <current><parameters>, not from the text node.
+    current_elem.text = None
+
     params_elem = current_elem.find("parameters")
     if params_elem is None:
         params_elem = ET.SubElement(current_elem, "parameters")
@@ -158,11 +160,14 @@ def _set_structure_param(struct_elem, param_tag: str, param_id: str, value: str)
                     import copy
                     param_elem.append(copy.deepcopy(meta))
 
-    # --- Write the <current> value, appending units if bare numeric ---
+    # --- Write the <current> value ---
+    # If the value already contains units (e.g. "2 nm" from the frontend),
+    # use it as-is; otherwise try to append units from the <units> child.
     cur = param_elem.find("current")
     if cur is None:
         cur = ET.SubElement(param_elem, "current")
-    cur.text = _append_units_if_needed(param_elem, value.strip())
+    v = value.strip()
+    cur.text = _append_units_if_needed(param_elem, v)
 
 
 def _parse_path(path: str) -> list[tuple[str, str]]:
