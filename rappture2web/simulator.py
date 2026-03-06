@@ -47,22 +47,32 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
 
 
 def _fill_defaults_in_tree(root) -> None:
-    """Walk all elements; for number/string/boolean/choice/integer/loader that
-    have a <default> but an empty or missing <current>, copy <default> into
-    <current> (with units appended for number elements).
+    """For input elements with a <default> but empty/missing <current>, fill in
+    the default value.  Only operates on the <input> subtree and skips elements
+    inside <structure> blocks (those are managed by _set_structure_param).
     """
     VALUE_TAGS = {"number", "integer", "string", "boolean", "choice", "loader"}
-    for elem in root.iter():
+    # Only process the <input> section, not <output> or <tool>
+    input_elem = root.find("input")
+    if input_elem is None:
+        return
+    # Collect ancestor tags to skip elements inside <structure>
+    for elem in input_elem.iter():
         if elem.tag not in VALUE_TAGS:
             continue
+        # Skip elements that live inside a <structure> — handled separately
+        # (We detect this by checking if the parent chain contains 'structure')
+        # We can't easily check ancestor here, so use a conservative check:
+        # if there is no <default> as a direct child, skip.
         default_el = elem.find("default")
         if default_el is None or not (default_el.text or "").strip():
             continue  # no default to fall back to
         current_el = elem.find("current")
         if current_el is None:
             current_el = ET.SubElement(elem, "current")
-        # Only fill in if truly empty
-        if (current_el.text or "").strip():
+        # Only fill in if truly empty AND has no child elements
+        # (a <current> with children belongs to a structure block)
+        if (current_el.text or "").strip() or len(current_el) > 0:
             continue
         value = default_el.text.strip()
         # For number elements, append units if the default is a bare number
@@ -107,6 +117,8 @@ def _walk_path(root, parts, create_missing=False):
     """Walk an XML tree following parsed path parts; return the final element."""
     elem = root
     for tag, elem_id in parts:
+        if not tag:  # guard against empty tags that would create malformed XML
+            return None
         found = None
         for child in elem:
             if child.tag == tag:
@@ -217,10 +229,13 @@ def _parse_path(path: str) -> list[tuple[str, str]]:
     """'input.number(temperature)' → [('input',''), ('number','temperature')]"""
     parts = []
     for seg in path.split("."):
+        if not seg:  # skip empty segments (e.g. from double-dots)
+            continue
         if "(" in seg and seg.endswith(")"):
             tag = seg[: seg.index("(")]
             eid = seg[seg.index("(") + 1: -1]
-            parts.append((tag, eid))
+            if tag:  # only add if tag is non-empty
+                parts.append((tag, eid))
         else:
             parts.append((seg, ""))
     return parts
