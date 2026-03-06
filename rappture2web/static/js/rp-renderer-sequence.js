@@ -57,6 +57,16 @@ rappture._registerRenderer('sequence', {
         const resetBtn = document.createElement('button');
         resetBtn.type = 'button'; resetBtn.className = 'rp-seq-btn rp-seq-reset'; resetBtn.innerHTML = icons.reset; resetBtn.title = 'Reset';
 
+        // Lock Y-axis checkbox — compute global y-range across all frames once
+        const lockYChk = document.createElement('input');
+        lockYChk.type = 'checkbox'; lockYChk.id = 'rp-seq-locky-' + id.replace(/[^a-z0-9]/gi, '_');
+        lockYChk.checked = true; lockYChk.style.cursor = 'pointer';
+        const lockYLbl = document.createElement('label');
+        lockYLbl.htmlFor = lockYChk.id;
+        lockYLbl.textContent = 'Lock Y axis';
+        lockYLbl.style.cssText = 'font-size:0.8em;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;';
+        lockYLbl.prepend(lockYChk);
+
         const topRow = document.createElement('div');
         topRow.className = 'rp-seq-top-row';
         topRow.appendChild(resetBtn);
@@ -65,6 +75,7 @@ rappture._registerRenderer('sequence', {
         topRow.appendChild(nextBtn);
         topRow.appendChild(playBtn);
         topRow.appendChild(pauseBtn);
+        topRow.appendChild(lockYLbl);
         controls.appendChild(topRow);
         controls.appendChild(sliderWrap);
 
@@ -83,6 +94,27 @@ rappture._registerRenderer('sequence', {
         // Cache of rendered output items keyed by output id, so we reuse DOM across frames
         // and only update data. Map: oid -> { item, plotlyDiv }
         const _frameCache = {};
+
+        // Compute global y-range across all frames for each output id (for lock-Y feature).
+        // Map: oid -> [globalYMin, globalYMax]
+        const _globalYRange = {};
+        for (const el of data.elements) {
+            const entries = rappture._mergeGroupedOutputs(Object.entries(el.outputs || {}));
+            for (const [oid, odata] of entries) {
+                const reg = rappture._rendererRegistry[odata.type];
+                if (!reg || !reg.getTraces) continue;
+                const traces = reg.getTraces(odata);
+                for (const t of traces) {
+                    if (!t.y) continue;
+                    for (const v of t.y) {
+                        if (typeof v !== 'number' || !isFinite(v)) continue;
+                        if (!_globalYRange[oid]) _globalYRange[oid] = [v, v];
+                        if (v < _globalYRange[oid][0]) _globalYRange[oid][0] = v;
+                        if (v > _globalYRange[oid][1]) _globalYRange[oid][1] = v;
+                    }
+                }
+            }
+        }
 
         const renderFrame = (idx) => {
             slider.value = idx;
@@ -110,6 +142,17 @@ rappture._registerRenderer('sequence', {
                             rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
                             plotDiv.appendChild(rendered);
                             _frameCache[oid] = { rendered, type: odata.type };
+                            // Apply locked y-range to first frame once Plotly has initialized
+                            if (lockYChk.checked && _globalYRange[oid]) {
+                                const yr = _globalYRange[oid];
+                                requestAnimationFrame(() => {
+                                    const pd = rendered.querySelector('.js-plotly-plot');
+                                    if (pd && pd._fullLayout) {
+                                        Plotly.relayout(pd, { 'yaxis.range': yr, 'yaxis.autorange': false });
+                                        _frameCache[oid].plotlyDiv = pd;
+                                    }
+                                });
+                            }
                         }
                     }
                 }
@@ -125,7 +168,13 @@ rappture._registerRenderer('sequence', {
                             cached.plotlyDiv = cached.rendered.querySelector('.js-plotly-plot');
                         }
                         if (cached.plotlyDiv && cached.plotlyDiv._fullLayout) {
-                            Plotly.react(cached.plotlyDiv, reg.getTraces(odata), cached.plotlyDiv.layout);
+                            const newLayout = { ...cached.plotlyDiv.layout };
+                            if (lockYChk.checked && _globalYRange[oid]) {
+                                newLayout.yaxis = { ...newLayout.yaxis, range: _globalYRange[oid], autorange: false };
+                            } else {
+                                newLayout.yaxis = { ...newLayout.yaxis, autorange: true };
+                            }
+                            Plotly.react(cached.plotlyDiv, reg.getTraces(odata), newLayout);
                         }
                     } else {
                         // Non-Plotly output: replace content
@@ -146,6 +195,12 @@ rappture._registerRenderer('sequence', {
 
             if (idx === n - 1) _seqStop();
         };
+
+        // Re-render current frame when lock-Y is toggled (only affects cached/subsequent frames)
+        lockYChk.addEventListener('change', () => {
+            const cur = parseInt(slider.value);
+            if (cur > 0) renderFrame(cur);
+        });
 
         slider.addEventListener('input', () => { _seqStop(); renderFrame(parseInt(slider.value)); });
         prevBtn.addEventListener('click', () => { _seqStop(); const v = Math.max(0, parseInt(slider.value) - 1); renderFrame(v); });

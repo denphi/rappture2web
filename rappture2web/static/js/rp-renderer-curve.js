@@ -6,6 +6,30 @@
  * Uses rappture._rpUtils for sidecar panels, theme, and downloads.
  */
 
+// ── helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Clamp an array of numbers for log-scale axes: replace any value <= 0
+ * with a small positive epsilon so Plotly's log axis doesn't break.
+ */
+function _clampForLog(arr) {
+    if (!arr) return arr;
+    const eps = 1e-300;
+    return arr.map(v => (typeof v === 'number' && v <= 0) ? eps : v);
+}
+
+/**
+ * Apply log-scale clamping to trace x/y arrays based on axis scale flags.
+ */
+function _sanitizeTracesForLog(traces, xIsLog, yIsLog) {
+    if (!xIsLog && !yIsLog) return traces;
+    return traces.map(t => ({
+        ...t,
+        ...(xIsLog ? { x: _clampForLog(t.x) } : {}),
+        ...(yIsLog ? { y: _clampForLog(t.y) } : {}),
+    }));
+}
+
 // ── curve ──────────────────────────────────────────────────────────────────
 
 rappture._registerRenderer('curve', {
@@ -76,16 +100,19 @@ rappture._registerRenderer('curve', {
         const _curveType = (data.curve_type || (data.about && data.about.type) || 'line').toLowerCase();
         const _isMixed = _curveType === 'mixed';
 
-        // Build traces using shared getTraces method
-        const traces = rappture._rendererRegistry['curve'].getTraces(data, label);
-
-        // Axis range limits
+        // Axis range limits and scale flags
         const xMin = data.xaxis && data.xaxis.min ? parseFloat(data.xaxis.min) : undefined;
         const xMax = data.xaxis && data.xaxis.max ? parseFloat(data.xaxis.max) : undefined;
         const yMin = data.yaxis && data.yaxis.min ? parseFloat(data.yaxis.min) : undefined;
         const yMax = data.yaxis && data.yaxis.max ? parseFloat(data.yaxis.max) : undefined;
         const xIsLog = data.xaxis && (data.xaxis.scale === 'log');
         const yIsLog = data.yaxis && (data.yaxis.log === 'log' || data.yaxis.scale === 'log');
+
+        // Build traces and clamp zeros/negatives for log axes
+        const traces = _sanitizeTracesForLog(
+            rappture._rendererRegistry['curve'].getTraces(data, label),
+            xIsLog, yIsLog
+        );
 
         const layout = {
             title: { text: '', font: { size: 14 } },
@@ -320,7 +347,9 @@ rappture._registerRenderer('curve', {
         const cXmax = firstData.xaxis && firstData.xaxis.max ? parseFloat(firstData.xaxis.max) : undefined;
         const cYmin = firstData.yaxis && firstData.yaxis.min ? parseFloat(firstData.yaxis.min) : undefined;
         const cYmax = firstData.yaxis && firstData.yaxis.max ? parseFloat(firstData.yaxis.max) : undefined;
+        const cXlog = firstData.xaxis && (firstData.xaxis.scale === 'log');
         const cYlog = firstData.yaxis && (firstData.yaxis.log === 'log' || firstData.yaxis.scale === 'log');
+        const safeTraces = _sanitizeTracesForLog(traces, cXlog, cYlog);
         const layout = {
             xaxis: {
                 title: xLabel + (xUnits ? ` [${xUnits}]` : ''), showgrid: true,
@@ -336,7 +365,7 @@ rappture._registerRenderer('curve', {
             template: _rpPlotlyTemplates['plotly'],
             autosize: true,
         };
-        _whenVisible(plotDiv, () => Plotly.newPlot(plotDiv, traces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv))));
+        _whenVisible(plotDiv, () => Plotly.newPlot(plotDiv, safeTraces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv))));
         return { elem: item, label };
     },
 });
