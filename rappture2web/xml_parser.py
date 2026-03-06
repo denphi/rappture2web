@@ -261,9 +261,15 @@ def parse_drawing_input(elem, node):
 
 
 def parse_structure_input(elem, node, parent_path):
-    """Parse input <structure> to extract nested parameters, components, and fields."""
+    """Parse input <structure> to extract nested parameters, components, and fields.
+
+    Handles three XML layouts that occur in real Rappture tools:
+      1. <structure><default><parameters>  — fully-defined parameters in default
+      2. <structure><number id="...">...   — flat direct children (mosfet.xml style)
+      3. <structure><current><parameters>  — loader-initialized canonical form
+    """
     node.attrs["units"] = _get_text(elem, "units")
-    
+
     components = []
     fields = []
     has_parameters = False
@@ -338,21 +344,86 @@ def parse_structure_input(elem, node, parent_path):
                     "domain": _get_text(comp, "domain") if comp is not None else ""
                 })
 
-    # Override with <current> parameters if they exist
+    # ── Flat direct-child pattern (mosfet.xml style) ─────────────────────────
+    # <structure> may have number/integer elements as direct children that carry
+    # full metadata (units, min, max, about) — use them when no <default><parameters>.
+    if not has_parameters:
+        flat_params = [
+            c for c in elem
+            if c.tag in ("number", "integer", "string") and c.get("id")
+        ]
+        if flat_params:
+            has_parameters = True
+            node.children = _parse_input_children(elem, node.path)
+
+    # ── <current><parameters> pattern (nmos.xml / loader style) ─────────────
+    # This is the canonical Rappture location; it overrides current values and
+    # can also supply components/fields if not already populated.
     curr = elem.find("current")
     if curr is not None:
+        # Extract components/fields from <current> if not yet set
+        if not components:
+            comps = curr.find("components")
+            if comps is not None:
+                for child in list(comps):
+                    if child.tag == "box":
+                        about = child.find("about")
+                        corners = [_get_text(child, "corner")]
+                        for c in child.findall("corner")[1:]:
+                            corners.append((c.text or "").strip())
+                        c0 = _parse_float_list(corners[0]) if len(corners) > 0 else []
+                        c1 = _parse_float_list(corners[1]) if len(corners) > 1 else []
+                        box_data = {
+                            "type": "box",
+                            "label": _get_text(about, "label") if about is not None else "",
+                            "color": _get_text(about, "color") if about is not None else "",
+                            "icon": _get_text(about, "icon") if about is not None else "",
+                            "material": _get_text(child, "material"),
+                            "corner0": c0[0] if c0 else 0.0,
+                            "corner1": c1[0] if c1 else 0.0,
+                            "c0_raw": corners[0] if len(corners) > 0 else "",
+                            "c1_raw": corners[1] if len(corners) > 1 else "",
+                        }
+                        components.append(box_data)
+
+        if not fields:
+            fields_elem = curr.find("fields")
+            if fields_elem is not None:
+                for field in fields_elem.findall("field"):
+                    about = field.find("about")
+                    comp = field.find("component")
+                    fields.append({
+                        "id": field.get("id", ""),
+                        "label": _get_text(about, "label") if about is not None else "",
+                        "color": _get_text(about, "color") if about is not None else "",
+                        "scale": _get_text(about, "scale") if about is not None else "",
+                        "units": _get_text(field, "units"),
+                        "constant": _get_text(comp, "constant") if comp is not None else "",
+                        "domain": _get_text(comp, "domain") if comp is not None else ""
+                    })
+
         curr_params = curr.find("parameters")
-        if curr_params is not None and has_parameters:
-            for curr_child in list(curr_params):
-                child_id = curr_child.get("id", "")
-                if child_id:
-                    # Find matching child in node.children
+        if curr_params is not None:
+            if not has_parameters:
+                # Fully defined under <current><parameters> (loader-initialized)
+                has_parameters = True
+                node.children = _parse_input_children(curr_params, node.path)
+            else:
+                # Merge: update current values from <current><parameters>
+                for curr_child in list(curr_params):
+                    child_id = curr_child.get("id", "")
+                    if not child_id:
+                        continue
                     for child_node in node.children:
                         if child_node.id == child_id:
-                            # Update current value
                             current_val = _get_text(curr_child, "current")
                             if current_val:
                                 child_node.current = current_val
+                            # Pick up units if not already set from flat sibling
+                            if not child_node.attrs.get("units"):
+                                u = _get_text(curr_child, "units")
+                                if u:
+                                    child_node.attrs["units"] = u
                             break
 
     node.attrs["components"] = components

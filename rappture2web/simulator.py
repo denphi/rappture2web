@@ -43,8 +43,39 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
 
 
 def _set_xml_value(root, rappture_path: str, value: str):
-    """Navigate the XML tree by Rappture path and set a <current> value."""
+    """Navigate the XML tree by Rappture path and set a <current> value.
+
+    Special handling for structure sub-parameters: Rappture reads them from
+    <structure><current><parameters><number id="..."><current>...</current>.
+    When the path ends in a number/integer inside a <structure>, this function
+    writes the value into the canonical Rappture location (current.parameters)
+    and copies unit/label metadata from any flat sibling definition so that
+    Rappture::Units::convert receives a properly unit-tagged value.
+    """
     parts = _parse_path(rappture_path)
+
+    # Detect if this path targets a sub-parameter inside a structure.
+    # Pattern: [..., ('structure', sid), ('number'|'integer', pid)]
+    if len(parts) >= 2 and parts[-1][0] in ("number", "integer"):
+        # Walk to the structure element
+        struct_elem = _walk_path(root, parts[:-1])
+        if struct_elem is not None and struct_elem.tag == "structure":
+            _set_structure_param(struct_elem, parts[-1][0], parts[-1][1], value)
+            return
+
+    # Default: navigate directly and set <current>
+    elem = _walk_path(root, parts, create_missing=True)
+    if elem is None:
+        return
+    current = elem.find("current")
+    if current is None:
+        current = ET.SubElement(elem, "current")
+    value = _append_units_if_needed(elem, value)
+    current.text = value
+
+
+def _walk_path(root, parts, create_missing=False):
+    """Walk an XML tree following parsed path parts; return the final element."""
     elem = root
     for tag, elem_id in parts:
         found = None
@@ -57,24 +88,81 @@ def _set_xml_value(root, rappture_path: str, value: str):
                     found = child
                     break
         if found is None:
+            if not create_missing:
+                return None
             found = ET.SubElement(elem, tag)
             if elem_id:
                 found.set("id", elem_id)
         elem = found
-    current = elem.find("current")
-    if current is None:
-        current = ET.SubElement(elem, "current")
-    # For number elements, ensure units are appended so Rappture::Units::convert works.
-    # The web UI strips units from the display value; we restore them here.
-    if elem.tag == "number":
-        units_elem = elem.find("units")
-        if units_elem is not None and units_elem.text:
-            units = units_elem.text.strip()
-            v = value.strip()
-            # Append units only if the value is a bare number (ends with digit or '.')
-            if v and (v[-1].isdigit() or v[-1] == '.'):
-                value = f"{v} {units}"
-    current.text = value
+    return elem
+
+
+def _append_units_if_needed(elem, value: str) -> str:
+    """Append <units> to a bare numeric value for a <number> element."""
+    if elem.tag != "number":
+        return value
+    units_elem = elem.find("units")
+    if units_elem is not None and units_elem.text:
+        units = units_elem.text.strip()
+        v = value.strip()
+        if v and (v[-1].isdigit() or v[-1] == "."):
+            return f"{v} {units}"
+    return value
+
+
+def _set_structure_param(struct_elem, param_tag: str, param_id: str, value: str):
+    """Write a parameter value into <structure><current><parameters>.
+
+    The Rappture TCL library reads structure sub-parameters from:
+      structure.current.parameters.(param_id).current
+
+    This function ensures that path exists and writes the value there,
+    copying units/label/min/max/about from the flat sibling definition
+    (which may exist as a direct child of <structure> from a prior loader)
+    so that Rappture::Units::convert receives a unit-tagged value.
+    """
+    # --- Locate or build <current><parameters> inside the structure ---
+    current_elem = struct_elem.find("current")
+    if current_elem is None:
+        current_elem = ET.SubElement(struct_elem, "current")
+    # If <current> has only text (legacy flat value), that is fine — we add
+    # a <parameters> child alongside it.
+    params_elem = current_elem.find("parameters")
+    if params_elem is None:
+        params_elem = ET.SubElement(current_elem, "parameters")
+
+    # --- Locate or create the param element inside <parameters> ---
+    param_elem = None
+    if param_id:
+        for child in params_elem:
+            if child.tag == param_tag and child.get("id") == param_id:
+                param_elem = child
+                break
+    if param_elem is None:
+        param_elem = ET.SubElement(params_elem, param_tag)
+        if param_id:
+            param_elem.set("id", param_id)
+
+        # Copy metadata (about/label/units/min/max/default) from the flat
+        # sibling definition that may exist as a direct child of <structure>.
+        flat_sibling = None
+        if param_id:
+            for child in struct_elem:
+                if child.tag == param_tag and child.get("id") == param_id:
+                    flat_sibling = child
+                    break
+        if flat_sibling is not None:
+            for meta_tag in ("about", "units", "min", "max", "default", "color"):
+                meta = flat_sibling.find(meta_tag)
+                if meta is not None:
+                    import copy
+                    param_elem.append(copy.deepcopy(meta))
+
+    # --- Write the <current> value, appending units if bare numeric ---
+    cur = param_elem.find("current")
+    if cur is None:
+        cur = ET.SubElement(param_elem, "current")
+    cur.text = _append_units_if_needed(param_elem, value.strip())
 
 
 def _parse_path(path: str) -> list[tuple[str, str]]:
