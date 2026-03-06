@@ -155,7 +155,7 @@
         const padX = containsBox ? (maxX - minX) * 0.18 : 0;
         const x0 = minX - padX;
         const w = (maxX - minX) + 2 * padX;
-        const svgHeight = w * 0.4;
+        const svgHeight = w * 0.2;
 
         // Check if this is an icon-only layout (all boxes have icons, no colored boxes)
         const iconBoxes = comps.filter(c => c.type === 'box' && c.icon);

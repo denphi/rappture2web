@@ -13,7 +13,8 @@
 
         <form id="rp-form" class="rp-form" aria-label="Simulation inputs">
             {% if has_phases %}
-            {# Phase tab strip #}
+            {# Phase tab strip with simulate button on the right #}
+            <div class="rp-phase-tabs-row">
             <div class="rp-phase-tabs" role="tablist" aria-label="Simulation phases" aria-orientation="horizontal">
                 {% for widget in inputs %}
                 {% set panel_id = "phase-panel-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}
@@ -30,6 +31,10 @@
                     {{ widget.label or widget.id }}
                 </button>
                 {% endfor %}
+            </div>
+            <button type="button" class="rp-btn rp-btn-simulate" onclick="rappture.simulate()">
+                Simulate
+            </button>
             </div>
             {% for widget in inputs %}
             {% set panel_id = "phase-panel-" ~ (widget.path | replace('.','_') | replace('(','_') | replace(')','_')) %}

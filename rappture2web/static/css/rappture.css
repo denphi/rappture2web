@@ -469,12 +469,25 @@ body {
 
 /* Tabs */
 .rp-group-tabbed {
-    border: none;
+    border: 1px solid var(--rp-border, #cbd5e1);
+    border-radius: 8px;
     padding: 0;
+    margin-bottom: 4px;
 }
-.rp-group-header {
+.rp-group-tabbed > .rp-group-header {
     font-weight: 600;
-    margin-bottom: 8px;
+    font-size: 13px;
+    padding: 8px 10px 4px;
+    color: var(--rp-text);
+}
+.rp-group-tabbed > .rp-tabs > .rp-tab-buttons {
+    padding: 6px 6px 0 6px;
+    background: var(--rp-surface, #f8fafc);
+    border-radius: 8px 8px 0 0;
+    border-bottom: 2px solid var(--rp-border);
+}
+.rp-group-tabbed > .rp-tabs > .rp-tab-panel.active {
+    padding: 8px 10px 10px;
 }
 .rp-tab-buttons {
     display: flex;
@@ -483,15 +496,15 @@ body {
     flex-wrap: wrap;
 }
 .rp-tab-btn {
-    min-height: 36px;
-    padding: 8px 14px;
+    min-height: 32px;
+    padding: 6px 14px;
     border: 1px solid transparent;
     border-radius: 6px 6px 0 0;
-    background: #f1f6fb;
+    background: transparent;
     cursor: pointer;
     font-size: 13px;
-    font-weight: 600;
-    color: #40566c;
+    font-weight: 500;
+    color: var(--rp-text-muted);
     border-bottom: 2px solid transparent;
     margin-bottom: -2px;
     transition: all 0.15s;
@@ -506,7 +519,6 @@ body {
 .rp-tab-btn:focus-visible { outline-offset: 1px; }
 .rp-tab-panel {
     display: none;
-    padding: 12px 0;
 }
 .rp-tab-panel.active { display: flex; flex-direction: column; gap: 10px; }
 
@@ -522,6 +534,23 @@ body {
     font-weight: 600;
     color: var(--rp-primary);
     margin-bottom: 8px;
+}
+
+/* Phase tab strip row (tabs + inline simulate button) */
+.rp-phase-tabs-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.rp-phase-tabs-row .rp-phase-tabs {
+    flex: 1 1 auto;
+    margin-bottom: 0;
+}
+.rp-phase-tabs-row > .rp-btn-simulate {
+    flex-shrink: 0;
+    margin-bottom: 0;
+    align-self: flex-end;
 }
 
 /* Phase tab strip (top-level phases) */
@@ -1317,7 +1346,6 @@ body {
     border: 1px solid var(--rp-border, #cbd5e1);
     border-radius: 8px;
     width: 100%;
-    max-width: 500px;
     box-sizing: border-box;
     background: var(--rp-surface, #f8fafc);
 }

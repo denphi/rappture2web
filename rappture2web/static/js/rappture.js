@@ -2089,6 +2089,31 @@ const rappture = {
                 cond.element.hidden = !enabled;
                 cond.element.classList.toggle('rp-disabled', !enabled);
             });
+            // After enable/disable, fix any tabbed containers where the active tab
+            // button became hidden — activate the first visible tab instead.
+            document.querySelectorAll('.rp-group-tabbed, .rp-phase').forEach(container => {
+                const buttons = Array.from(container.querySelectorAll(':scope > .rp-tabs > .rp-tab-buttons > .rp-tab-btn'));
+                if (!buttons.length) return;
+                const activeBtn = buttons.find(b => b.classList.contains('active'));
+                if (activeBtn && !activeBtn.hidden) return; // active tab still visible, nothing to do
+                // Active tab is hidden or missing — activate first visible tab
+                const firstVisible = buttons.find(b => !b.hidden);
+                if (!firstVisible) return;
+                buttons.forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                    b.setAttribute('tabindex', '-1');
+                });
+                container.querySelectorAll(':scope > .rp-tabs > .rp-tab-panel').forEach(p => p.classList.remove('active'));
+                firstVisible.classList.add('active');
+                firstVisible.setAttribute('aria-selected', 'true');
+                firstVisible.setAttribute('tabindex', '0');
+                const panelId = firstVisible.getAttribute('aria-controls');
+                if (panelId) {
+                    const panel = document.getElementById(panelId);
+                    if (panel) panel.classList.add('active');
+                }
+            });
         };
 
         document.querySelectorAll('.rp-input').forEach(input => {
@@ -2183,11 +2208,11 @@ const rappture = {
     // ── Status helpers ───────────────────────────────────────────────────────
 
     _setRunning(running) {
-        const btn = document.getElementById('rp-simulate-btn');
-        if (!btn) return;
-        btn.disabled = running;
-        btn.classList.toggle('running', running);
-        btn.textContent = running ? 'Running...' : 'Simulate';
+        document.querySelectorAll('.rp-btn-simulate').forEach(btn => {
+            btn.disabled = running;
+            btn.classList.toggle('running', running);
+            btn.textContent = running ? 'Running...' : 'Simulate';
+        });
     },
 
     _setStatus(text, cls = '') {
