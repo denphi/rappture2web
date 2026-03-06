@@ -40,8 +40,7 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
     _fill_defaults_in_tree(root)
 
     tool_dir = str(Path(tool_xml_path).parent)
-    job_id = uuid.uuid4().hex[:8]
-    driver_path = os.path.join(tool_dir, f"driver_{job_id}.xml")
+    driver_path = os.path.join(tool_dir, "driver.xml")
     tree.write(driver_path, encoding="unicode", xml_declaration=True)
     return driver_path
 
