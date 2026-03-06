@@ -468,11 +468,18 @@ async def run_simulation(
             command = command.replace("@driver", driver_path)
             exec_command = command
 
+    # When using rappture -execute: stdout is the final run XML; stderr carries
+    # live progress. Leave stderr as None (inherited) so rappture sees a real fd
+    # and doesn't launch the GUI. For the fallback (direct tool command) pipe
+    # stderr so we can capture and stream it.
+    use_rappture_execute = (not use_library_mode) and bool(shutil.which("rappture"))
+    stderr_mode = None if use_rappture_execute else asyncio.subprocess.PIPE
+
     try:
         process = await asyncio.create_subprocess_shell(
             exec_command,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=stderr_mode,
             cwd=tool_dir,
         )
         if process_callback is not None:
@@ -491,11 +498,12 @@ async def run_simulation(
                 if log_callback is not None:
                     await log_callback(text)
 
+        stderr_coros = [_read_stream(process.stderr, stderr_chunks)] if process.stderr else []
         try:
             await asyncio.wait_for(
                 asyncio.gather(
                     _read_stream(process.stdout, stdout_chunks),
-                    _read_stream(process.stderr, stderr_chunks),
+                    *stderr_coros,
                 ),
                 timeout=timeout,
             )
@@ -512,24 +520,34 @@ async def run_simulation(
         stdout_text = "".join(stdout_chunks)
         stderr_text = "".join(stderr_chunks)
 
-        # ── Parse output (classic and native rappture modes) ──────────────────
+        # ── Parse output ──────────────────────────────────────────────────────
         outputs = {}
         run_xml_path = None
 
         if not use_library_mode:
-            # Native rappture writes the run XML path to stdout as =RAPPTURE-RUN=>
-            # Classic mode: the tool script writes driver.xml in place or emits the path
-            for line in stdout_text.split("\n"):
-                if "=RAPPTURE-RUN=>" in line:
-                    run_xml_path = line.split("=RAPPTURE-RUN=>")[-1].strip()
-                    if not os.path.isabs(run_xml_path):
-                        run_xml_path = os.path.join(tool_dir, run_xml_path)
-                    break
+            if use_rappture_execute:
+                # rappture -execute writes the full run XML to stdout directly.
+                # Parse it in-memory; also save to run.xml for history.
+                run_xml_path = os.path.join(tool_dir, "run.xml")
+                try:
+                    with open(run_xml_path, "w", encoding="utf-8") as f:
+                        f.write(stdout_text)
+                    outputs = parse_run_xml(run_xml_path)
+                except Exception as exc:
+                    stderr_text += f"\nError parsing rappture output: {exc}"
+            else:
+                # Classic/direct mode: look for =RAPPTURE-RUN=> in stdout
+                for line in stdout_text.split("\n"):
+                    if "=RAPPTURE-RUN=>" in line:
+                        run_xml_path = line.split("=RAPPTURE-RUN=>")[-1].strip()
+                        if not os.path.isabs(run_xml_path):
+                            run_xml_path = os.path.join(tool_dir, run_xml_path)
+                        break
 
-            if run_xml_path is None or not os.path.exists(run_xml_path):
-                run_xml_path = driver_path  # tool may have modified driver in place
+                if run_xml_path is None or not os.path.exists(run_xml_path):
+                    run_xml_path = driver_path  # tool may have modified driver in place
 
-            if run_xml_path and os.path.exists(run_xml_path):
+            if run_xml_path and os.path.exists(run_xml_path) and not use_rappture_execute:
                 try:
                     outputs = parse_run_xml(run_xml_path)
                     # Some Rappture tools write logs only into <output><log>.
@@ -549,7 +567,8 @@ async def run_simulation(
                 except Exception as exc:
                     stderr_text += f"\nError parsing run.xml: {exc}"
 
-        log = stdout_text
+        # For rappture -execute mode stdout is XML, not log text
+        log = "" if use_rappture_execute else stdout_text
         if stderr_text:
             log += "\n--- stderr ---\n" + stderr_text
 
