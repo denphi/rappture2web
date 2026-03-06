@@ -144,27 +144,28 @@ def _walk_path(root, parts, create_missing=False):
 def _append_units_if_needed(elem, value: str) -> str:
     """Append units to a bare numeric value for a <number> element.
 
-    If the value already contains units (non-numeric characters after the
-    number, e.g. '50nm', '2 nm', '1e+18 /cm3'), return it unchanged.
+    If the value already contains units, strip any space between number and
+    units so Rappture::Units::convert receives e.g. '2e15/cm3' not '2e15 /cm3'.
     """
     if elem.tag != "number":
         return value
     v = value.strip()
     if not v:
         return value
-    # If the value already has any non-numeric, non-scientific characters
-    # after the leading number, assume units are already embedded.
     import re
     # Match a pure number (int, float, scientific notation)
-    if not re.fullmatch(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?', v):
-        # Value already has units or non-numeric chars — leave it alone
+    pure_num = re.fullmatch(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?', v)
+    if pure_num:
+        # Bare number — append units from sibling <units> element if present
+        units_elem = elem.find("units")
+        if units_elem is not None and units_elem.text:
+            units = units_elem.text.strip()
+            if units:
+                return f"{v}{units}"
         return v
-    # It's a bare number — append units from sibling <units> element if present
-    units_elem = elem.find("units")
-    if units_elem is not None and units_elem.text:
-        units = units_elem.text.strip()
-        if units:
-            return f"{v}{units}"
+    # Value has embedded units — remove any space between number and units
+    # e.g. '2e+15 /cm3' → '2e+15/cm3', '3 um' → '3um'
+    v = re.sub(r'([0-9])\s+([^0-9\s])', r'\1\2', v)
     return v
 
 
