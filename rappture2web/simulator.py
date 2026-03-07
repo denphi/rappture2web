@@ -491,7 +491,7 @@ async def run_simulation(
     # ── Cache check ──────────────────────────────────────────────────────────
     if use_cache and history is not None:
         cached_run = history.find_cached(input_values)
-        if cached_run is not None:
+        if cached_run is not None and cached_run.get("status") != "error":
             return {
                 "status": cached_run["status"],
                 "outputs": cached_run["outputs"],
