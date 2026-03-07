@@ -736,7 +736,7 @@ const rappture = {
         // Build ordered list: real outputs first, then log if non-empty
         const entries = Object.entries(outputs || {});
         if (log && log.trim()) {
-            entries.push(['__log__', { type: 'log', label: 'Log', content: log }]);
+            entries.push(['__log__', { type: 'log', label: 'Output Log', content: log }]);
         }
 
         if (entries.length === 0) {
@@ -1001,7 +1001,7 @@ const rappture = {
         let logBody = document.getElementById('rp-live-log-pre');
         if (!logBody) {
             // Build log output through the same selector + panel path as all outputs.
-            this._renderSingleOutputTab('__log__', { type: 'log', label: 'Log', content: text }, 'Log');
+            this._renderSingleOutputTab('__log__', { type: 'log', label: 'Output Log', content: text }, 'Output Log');
             const logPanel = document.getElementById('rp-panel-__log__');
             logBody = logPanel ? logPanel.querySelector('.rp-output-body') : null;
             if (logBody) logBody.id = 'rp-live-log-pre';
@@ -1009,7 +1009,8 @@ const rappture = {
         }
 
         if (logBody) {
-            logBody.textContent += text;
+            // Use insertAdjacentText to avoid O(n²) string concatenation on large logs
+            logBody.insertAdjacentText('beforeend', text);
             logBody.scrollTop = logBody.scrollHeight;
         }
     },
