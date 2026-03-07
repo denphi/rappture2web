@@ -24,12 +24,23 @@ def _find_rappture_binary() -> str | None:
 
 def _get_rappture_env_file() -> str | None:
     """Return path to rappture.env if available, else None."""
+    candidates = []
+
+    # 1. RAPPTURE_PATH env var (most reliable on NanoHub)
+    rapp_path = os.environ.get("RAPPTURE_PATH", "").strip()
+    if rapp_path:
+        candidates.append(os.path.join(rapp_path, "bin"))
+
+    # 2. Directory of the rappture binary found via PATH
     rappture_bin = _find_rappture_binary()
-    if not rappture_bin:
-        return None
-    rappture_dir = os.path.dirname(os.path.realpath(rappture_bin))
-    env_file = os.path.join(rappture_dir, "rappture.env")
-    return env_file if os.path.isfile(env_file) else None
+    if rappture_bin:
+        candidates.append(os.path.dirname(os.path.abspath(rappture_bin)))
+
+    for d in candidates:
+        env_file = os.path.join(d, "rappture.env")
+        if os.path.isfile(env_file):
+            return env_file
+    return None
 
 
 # ─── Driver XML helpers ───────────────────────────────────────────────────────
@@ -485,8 +496,13 @@ async def run_simulation(
     """
     tool_xml_path = str(Path(tool_xml_path).resolve())
     tool_dir = str(Path(tool_xml_path).parent)
-    results_dir = os.environ.get("RESULTSDIR", "").strip() or tool_dir
-    work_dir = results_dir if os.path.isdir(results_dir) else tool_dir
+    results_dir = os.environ.get("RESULTSDIR", "").strip()
+    if results_dir:
+        try:
+            os.makedirs(results_dir, exist_ok=True)
+        except OSError:
+            results_dir = ""
+    work_dir = results_dir if (results_dir and os.path.isdir(results_dir)) else tool_dir
 
     # ── Cache check ──────────────────────────────────────────────────────────
     if use_cache and history is not None:
@@ -518,6 +534,7 @@ async def run_simulation(
         command = _re.sub(r'\bpython\b', 'python3', command)
 
     driver_path = None
+    wrapper_path = None
 
     if use_library_mode and server_url:
         # Pass server URL as argv[1]
@@ -531,36 +548,33 @@ async def run_simulation(
     # get the proper session context (SESSION, SESSIONDIR, HUBNAME, etc.).
     # Without this wrapper, sub-tools called via invoke_app fail because the
     # NanoHub middleware environment is not set up.
-    submit_bin = shutil.which("submit")
-    if submit_bin and not use_library_mode:
-        # Run submit from the writable work_dir so its .submit.log is written
-        # there instead of the (possibly read-only) tool directory.
-        exec_command = f"cd \"{work_dir}\" && {submit_bin} --local {command}"
+    # Build subprocess environment: inherit current env.
+    proc_env = dict(os.environ)
+
+    rapp_env_file = _get_rappture_env_file()
+    if not use_library_mode:
+        # Write a per-run wrapper script in work_dir so that:
+        #  1. .submit.log (if submit is used) writes to work_dir (writable)
+        #  2. rappture env is sourced so 'package require Rappture' works
+        os.makedirs(work_dir, exist_ok=True)
+        wrapper_path = os.path.join(work_dir, ".r2w_run_{}.sh".format(uuid.uuid4().hex[:8]))
+        with open(wrapper_path, "w") as wf:
+            wf.write("#!/bin/sh\n")
+            if os.path.isfile("/etc/environ.sh"):
+                wf.write('. /etc/environ.sh\n')
+                wf.write('use -e -r rappture\n')
+            elif rapp_env_file:
+                wf.write('. "{}"\n'.format(rapp_env_file))
+            # Remove any anaconda/conda paths from PATH so that 'python'
+            # resolves to the system python2, not a conda python3.
+            wf.write('PATH=$(echo "$PATH" | tr ":" "\\n" | grep -v anaconda | tr "\\n" ":" | sed "s/:$//")\n')
+            wf.write('export PATH\n')
+            wf.write("cd \"{}\"\n".format(work_dir))
+            wf.write(command + "\n")
+        os.chmod(wrapper_path, 0o755)
+        exec_command = 'cd "{}" && {}'.format(work_dir, wrapper_path)
     else:
         exec_command = command
-
-    # Build subprocess environment: inherit current env, then inject any
-    # variables exported by rappture.env (TCLLIBPATH, RAPPTURE_LIBRARY, etc.)
-    # so that 'package require Rappture' works in Tcl scripts.  We source
-    # rappture.env inside a subshell and merge the result into proc_env so
-    # the variables survive even when submit re-execs the command.
-    proc_env = dict(os.environ)
-    rapp_env_file = _get_rappture_env_file()
-    if rapp_env_file and not use_library_mode:
-        try:
-            import subprocess as _sp
-            result = _sp.run(
-                f'. "{rapp_env_file}" && env',
-                shell=True, capture_output=True, text=True, timeout=10,
-                env=proc_env,
-            )
-            for line in result.stdout.splitlines():
-                if "=" in line:
-                    k, _, v = line.partition("=")
-                    if k and proc_env.get(k) != v:
-                        proc_env[k] = v
-        except Exception:
-            pass
 
     try:
         process = await asyncio.create_subprocess_shell(
@@ -696,5 +710,10 @@ async def run_simulation(
         if driver_path and os.path.exists(driver_path):
             try:
                 os.remove(driver_path)
+            except OSError:
+                pass
+        if wrapper_path and os.path.exists(wrapper_path):
+            try:
+                os.remove(wrapper_path)
             except OSError:
                 pass

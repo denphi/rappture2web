@@ -242,16 +242,25 @@ async def simulate(request: Request):
         global _running_process
         _running_process = proc
 
-    result = await run_simulation(
-        tool_xml_path=_tool_xml_path,
-        input_values=input_values,
-        server_url=_server_url,
-        use_library_mode=_use_library_mode,
-        history=_history,
-        use_cache=_use_cache,
-        log_callback=_stream_log,
-        process_callback=_on_process,
-    )
+    try:
+        result = await run_simulation(
+            tool_xml_path=_tool_xml_path,
+            input_values=input_values,
+            server_url=_server_url,
+            use_library_mode=_use_library_mode,
+            history=_history,
+            use_cache=_use_cache,
+            log_callback=_stream_log,
+            process_callback=_on_process,
+        )
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc()
+        print(tb)
+        _running_process = None
+        _session.update({"status": "error", "log": tb})
+        await _broadcast({"type": "status", "status": "error", "log": tb})
+        return JSONResponse({"status": "error", "log": tb}, status_code=500)
     _running_process = None
 
     # In library mode, api_simulate_done already recorded the run with real
