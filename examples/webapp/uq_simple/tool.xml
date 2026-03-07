@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>UQ Simple Curve (rappture2web)</title>
+  <about>Demonstrates Uncertainty Quantification on a simple curve.
+
+When UQ is enabled, number inputs can be set to uniform or gaussian
+distributions.  The tool runs multiple times at Smolyak collocation
+points and PUQ fits a response surface, producing PDF and probability
+band outputs.</about>
+  <command>
+    python3 @tool/uq_simple.py @driver
+  </command>
+  <uq>true</uq>
+</tool>
+<input>
+  <number id="amplitude">
+    <about>
+      <label>Amplitude</label>
+      <description>Amplitude scaling factor for the output curve.</description>
+    </about>
+    <min>0.1</min>
+    <max>10</max>
+    <default>2</default>
+  </number>
+  <number id="frequency">
+    <about>
+      <label>Frequency</label>
+      <description>Frequency of the cosine wave in Hz.</description>
+    </about>
+    <units>Hz</units>
+    <min>0.1Hz</min>
+    <max>10Hz</max>
+    <default>1Hz</default>
+  </number>
+  <integer id="points">
+    <about>
+      <label>Number of points</label>
+      <description>Number of data points in the output curve.</description>
+    </about>
+    <uq>false</uq>
+    <min>10</min>
+    <max>1000</max>
+    <default>200</default>
+  </integer>
+</input>
+<output>
+  <curve id="wave">
+    <about>
+      <label>Output Wave</label>
+      <description>A * cos(2*pi*f*x) plotted over [0, 10].</description>
+    </about>
+    <xaxis>
+      <label>Time</label>
+      <units>s</units>
+    </xaxis>
+    <yaxis>
+      <label>Amplitude</label>
+    </yaxis>
+  </curve>
+  <number id="peak">
+    <about>
+      <label>Peak Value</label>
+      <description>Maximum value of the output curve.</description>
+    </about>
+  </number>
+</output>
+</run>

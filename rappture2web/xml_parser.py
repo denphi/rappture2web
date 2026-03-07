@@ -34,6 +34,7 @@ class ToolInfo:
     title: str = ""
     about: str = ""
     command: str = ""
+    uq_enabled: bool = False  # True if <tool><uq>true</uq></tool>
 
 
 @dataclass
@@ -126,6 +127,10 @@ def parse_number(elem, node):
     node.attrs["max"] = _get_text(elem, "max")
     node.attrs["color"] = _get_text(elem, "color") or node.color
 
+    # UQ: <uq>false</uq> opts this input out of UQ even when tool has uq=true
+    uq_text = _get_text(elem, "uq", "").lower()
+    node.attrs["uq_enabled"] = uq_text not in ("false", "no", "0")
+
     # Parse presets
     presets = []
     for preset_elem in elem.findall("preset"):
@@ -141,6 +146,8 @@ def parse_integer(elem, node):
     """Parse integer-specific attributes."""
     node.attrs["min"] = _get_text(elem, "min")
     node.attrs["max"] = _get_text(elem, "max")
+    uq_text = _get_text(elem, "uq", "").lower()
+    node.attrs["uq_enabled"] = uq_text not in ("false", "no", "0")
 
 
 def parse_string(elem, node):
@@ -729,10 +736,12 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
     # Parse <tool> section
     tool_elem = root.find("tool")
     if tool_elem is not None:
+        uq_text = _get_text(tool_elem, "uq", "").lower()
         tool_def.tool = ToolInfo(
             title=_get_text(tool_elem, "title"),
             about=_get_text(tool_elem, "about"),
             command=_get_text(tool_elem, "command"),
+            uq_enabled=(uq_text in ("true", "yes", "1")),
         )
 
     # Parse <input> section

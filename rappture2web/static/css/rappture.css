@@ -437,6 +437,45 @@ body {
     max-width: 160px;
 }
 
+/* UQ distribution controls */
+.rp-uq-dist-select {
+    padding: 4px 6px;
+    border: 1px solid var(--rp-border);
+    border-radius: var(--rp-radius);
+    font-size: 11px;
+    background: #f0f4ff;
+    cursor: pointer;
+    color: #3355aa;
+    min-width: 80px;
+}
+.rp-uq-dist-params {
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: #f7f9ff;
+    border: 1px solid #d0d8f0;
+    border-radius: var(--rp-radius);
+    grid-column: 1 / -1;
+}
+.rp-uq-uniform,
+.rp-uq-gaussian {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.rp-uq-param-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #555;
+}
+.rp-uq-input {
+    width: 80px !important;
+    padding: 3px 5px !important;
+    font-size: 12px !important;
+}
+
 /* Boolean */
 .rp-boolean-label {
     display: flex;

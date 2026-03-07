@@ -30,6 +30,7 @@ setup(
         "rappture2web": [
             "templates/**/*.html",
             "static/**/*",
+            "puq/*.py",
         ]
     },
     include_package_data=True,

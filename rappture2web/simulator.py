@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import hashlib
 import json
 import os
@@ -13,6 +14,41 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from .xml_parser import parse_run_xml
+
+
+# ─── PUQ helpers ──────────────────────────────────────────────────────────────
+
+# Path to the puq.sh wrapper installed on NanoHUB.
+# Overridable via RAPPTURE2WEB_PUQ_SH env var for testing.
+_NANOHUB_PUQ_SH = "/apps/rappture/current/bin/puq"
+
+# Fallback: puq scripts shipped alongside this package
+_PKG_PUQ_DIR = Path(__file__).parent / "puq"
+
+
+def _find_puq_sh() -> str | None:
+    """Return path to the puq shell wrapper, or None if not available."""
+    override = os.environ.get("RAPPTURE2WEB_PUQ_SH", "").strip()
+    if override:
+        return override
+    if os.path.isfile(_NANOHUB_PUQ_SH):
+        return _NANOHUB_PUQ_SH
+    return None
+
+
+def _jpickle_dumps(obj) -> str:
+    """Serialize obj to PUQ jpickle format (simple JSON wrapping)."""
+    # PUQ's jpickle format for plain lists/tuples/strings/numbers is just JSON.
+    return json.dumps(obj)
+
+
+def _strip_units_value(value: str) -> float:
+    """Extract the numeric part from a Rappture value string like '300K' → 300.0."""
+    import re
+    if not value:
+        return 0.0
+    m = re.match(r'^([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)', value.strip())
+    return float(m.group(1)) if m else 0.0
 
 
 # ─── Rappture binary detection ────────────────────────────────────────────────
@@ -459,6 +495,356 @@ class RunHistory:
         if 0 <= idx < len(self._runs):
             return self._runs[idx]
         return None
+
+
+# ─── UQ simulation entry point ───────────────────────────────────────────────
+
+async def run_uq_simulation(
+    tool_xml_path: str,
+    input_values: dict,
+    uq_inputs: dict,
+    server_url: str = "",
+    use_library_mode: bool = False,
+    history: RunHistory | None = None,
+    timeout: int = 600,
+    log_callback=None,
+    process_callback=None,
+    inputs_override_callback=None,
+) -> dict:
+    """Run a UQ simulation using PUQ (Smolyak sparse grid).
+
+    Args:
+        tool_xml_path: Path to tool.xml.
+        input_values: Exact input values for inputs NOT participating in UQ.
+        uq_inputs: Dict keyed by Rappture path. Each value is a dict:
+            { "type": "uniform", "min": <float>, "max": <float> }
+            { "type": "gaussian", "mean": <float>, "std": <float>,
+              "min": <float>, "max": <float> }
+        server_url: URL for library mode.
+        use_library_mode: If True, use rp_library mode for each run.
+        history: RunHistory for storing result.
+        timeout: Per-run timeout in seconds.
+        log_callback: Async callable(text) for streaming log.
+
+    Returns:
+        dict with keys: status, outputs, log, run_id, run_num, cached
+    """
+    tool_xml_path = str(Path(tool_xml_path).resolve())
+    tool_dir = str(Path(tool_xml_path).parent)
+    results_dir = os.environ.get("RESULTSDIR", "").strip()
+    if results_dir:
+        try:
+            os.makedirs(results_dir, exist_ok=True)
+        except OSError:
+            results_dir = ""
+    work_dir = results_dir if (results_dir and os.path.isdir(results_dir)) else tool_dir
+
+    puq_sh = _find_puq_sh()
+    if puq_sh is None:
+        return {
+            "status": "error",
+            "log": "PUQ not available (puq.sh not found). "
+                   "Set RAPPTURE2WEB_PUQ_SH to the puq script path.",
+            "outputs": {},
+            "cached": False,
+        }
+
+    pid = uuid.uuid4().hex[:8]
+    uq_work_dir = os.path.join(work_dir, f"uq_{pid}")
+    os.makedirs(uq_work_dir, exist_ok=True)
+
+    log_lines: list[str] = []
+
+    async def _log(text: str):
+        log_lines.append(text)
+        if log_callback:
+            await log_callback(text)
+
+    try:
+        # ── 1. Build varlist for get_params.py ─────────────────────────────────
+        # varlist: list of [name, units, [dist_type, param1, ...]]
+        # name must be a valid Python identifier (use path-derived name)
+        varlist = []
+        uq_param_names = {}  # path → sanitized name
+        for path, spec in uq_inputs.items():
+            # Sanitize name: use the id part of the path e.g. input.number(temp) → temp
+            import re as _re
+            m = _re.search(r'\(([^)]+)\)', path)
+            name = m.group(1) if m else _re.sub(r'\W+', '_', path)
+            uq_param_names[path] = name
+
+            units = spec.get("units", "")
+            dist_type = spec.get("type", "uniform")
+            if dist_type == "uniform":
+                mn = float(spec.get("min", 0))
+                mx = float(spec.get("max", 1))
+                varlist.append([name, units, ["uniform", mn, mx]])
+            elif dist_type == "gaussian":
+                mean = float(spec.get("mean", 0))
+                std = float(spec.get("std", 1))
+                mn = float(spec.get("min", mean - 3 * std))
+                mx = float(spec.get("max", mean + 3 * std))
+                # PUQ NormalParameter accepts mean, dev, min, max
+                varlist.append([name, units, ["gaussian", mean, std,
+                                              {"min": mn, "max": mx}]])
+
+        varlist_json = _jpickle_dumps(varlist)
+        uq_type = "smolyak"
+        # smolyak_level can be set per-input spec (use first found) or default 1
+        smolyak_level = str(next(
+            (s.get("smolyak_level") for s in uq_inputs.values() if s.get("smolyak_level")),
+            1
+        ))
+
+        # ── 2. Run get_params.py ───────────────────────────────────────────────
+        await _log(f"[UQ] Running get_params with {len(varlist)} UQ parameters...\n")
+
+        get_params_script = str(_PKG_PUQ_DIR / "get_params.py")
+
+        # Build wrapper to set up rappture env for Python 2 PUQ
+        rapp_env_file = _get_rappture_env_file()
+        wrapper_get = os.path.join(uq_work_dir, ".uq_get_params.sh")
+        with open(wrapper_get, "w") as wf:
+            wf.write("#!/bin/sh\n")
+            if os.path.isfile("/etc/environ.sh"):
+                wf.write('. /etc/environ.sh\n')
+                wf.write('use -e -r rappture\n')
+            elif rapp_env_file:
+                wf.write('. "{}"\n'.format(rapp_env_file))
+            wf.write('PATH=$(echo "$PATH" | tr ":" "\\n" | grep -v anaconda | tr "\\n" ":" | sed "s/:$//")\n')
+            wf.write('export PATH\n')
+            wf.write(f'cd "{uq_work_dir}"\n')
+            wf.write(
+                f'python "{get_params_script}" '
+                f'{pid} \'{varlist_json}\' '
+                f'{uq_type} {smolyak_level}\n'
+            )
+        os.chmod(wrapper_get, 0o755)
+
+        proc = await asyncio.create_subprocess_shell(
+            wrapper_get,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=uq_work_dir,
+        )
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=120)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return {"status": "error", "log": "get_params.py timed out", "outputs": {}, "cached": False}
+        if proc.returncode != 0:
+            msg = err.decode("utf-8", errors="replace")
+            await _log(f"[UQ] get_params failed:\n{msg}\n")
+            return {"status": "error", "log": "".join(log_lines), "outputs": {}, "cached": False}
+
+        # ── 3. Read collocation points CSV ─────────────────────────────────────
+        csv_path = os.path.join(uq_work_dir, f"params{pid}.csv")
+        if not os.path.exists(csv_path):
+            await _log("[UQ] ERROR: params CSV not generated\n")
+            return {"status": "error", "log": "".join(log_lines), "outputs": {}, "cached": False}
+
+        with open(csv_path, newline="") as f:
+            reader = csv.DictReader(f)
+            collocation_rows = list(reader)
+
+        await _log(f"[UQ] {len(collocation_rows)} collocation points to evaluate\n")
+
+        # ── 4. Run tool for each collocation point ─────────────────────────────
+        tree = ET.parse(tool_xml_path)
+        root = tree.getroot()
+        command_elem = root.find("tool/command")
+        if command_elem is None or not command_elem.text:
+            return {"status": "error", "log": "No <command> in tool.xml", "outputs": {}, "cached": False}
+
+        base_command = command_elem.text.strip().replace("@tool", tool_dir)
+
+        # Normalise python → python3 when python is not available
+        if shutil.which("python") is None and shutil.which("python3") is not None:
+            import re as _re2
+            base_command = _re2.sub(r'\bpython\b', 'python3', base_command)
+
+        run_xmls: list[str] = []  # paths to run.xml files for each collocation point
+
+        for i, row in enumerate(collocation_rows):
+            await _log(f"[UQ] Run {i + 1}/{len(collocation_rows)}\n")
+
+            # Merge base input_values with collocation point values
+            run_inputs = dict(input_values)
+            for path, name in uq_param_names.items():
+                col_key = f"@@{name}"
+                if col_key in row:
+                    val_str = row[col_key].strip()
+                    run_inputs[path] = val_str
+
+            # For library mode: update session inputs so /api/inputs returns
+            # the collocation point values for this run.
+            if inputs_override_callback is not None:
+                inputs_override_callback(run_inputs)
+
+            if use_library_mode and server_url:
+                run_cmd = base_command.replace("@driver", server_url)
+                run_driver = None
+            else:
+                run_driver = create_driver_xml(tool_xml_path, run_inputs)
+                run_cmd = base_command.replace("@driver", run_driver)
+
+            run_wrapper = os.path.join(uq_work_dir, f".uq_run_{i}.sh")
+            with open(run_wrapper, "w") as wf:
+                wf.write("#!/bin/sh\n")
+                if os.path.isfile("/etc/environ.sh"):
+                    wf.write('. /etc/environ.sh\n')
+                    wf.write('use -e -r rappture\n')
+                elif rapp_env_file:
+                    wf.write('. "{}"\n'.format(rapp_env_file))
+                wf.write('PATH=$(echo "$PATH" | tr ":" "\\n" | grep -v anaconda | tr "\\n" ":" | sed "s/:$//")\n')
+                wf.write('export PATH\n')
+                wf.write(f'cd "{work_dir}"\n')
+                wf.write(run_cmd + "\n")
+            os.chmod(run_wrapper, 0o755)
+
+            proc_run = await asyncio.create_subprocess_shell(
+                run_wrapper,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=work_dir,
+                env=dict(os.environ),
+            )
+            if process_callback:
+                process_callback(proc_run)
+            try:
+                r_out, r_err = await asyncio.wait_for(proc_run.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                proc_run.kill()
+                await _log(f"[UQ] Run {i + 1} timed out\n")
+                return {"status": "error", "log": "".join(log_lines), "outputs": {}, "cached": False}
+
+            stdout_text = r_out.decode("utf-8", errors="replace")
+            stderr_text = r_err.decode("utf-8", errors="replace")
+            await _log(stdout_text)
+            if stderr_text:
+                await _log(stderr_text)
+
+            # Find the run.xml written by this run
+            run_xml_path = None
+            for line in stdout_text.split("\n"):
+                if "=RAPPTURE-RUN=>" in line:
+                    run_xml_path = line.split("=RAPPTURE-RUN=>")[-1].strip()
+                    if not os.path.isabs(run_xml_path):
+                        run_xml_path = os.path.join(tool_dir, run_xml_path)
+                    break
+            if run_xml_path is None or not os.path.exists(run_xml_path):
+                candidate = os.path.join(work_dir, "run.xml")
+                if os.path.exists(candidate):
+                    run_xml_path = candidate
+            if run_xml_path is None or not os.path.exists(run_xml_path):
+                run_xml_path = run_driver  # fallback
+
+            # Copy run.xml to uq_work_dir with indexed name
+            indexed_run_xml = os.path.join(uq_work_dir, f"run{i}.xml")
+            if run_xml_path and os.path.exists(run_xml_path):
+                import shutil as _sh
+                _sh.copy(run_xml_path, indexed_run_xml)
+            run_xmls.append(indexed_run_xml)
+
+            # Clean up driver xml
+            if run_driver and os.path.exists(run_driver):
+                try:
+                    os.remove(run_driver)
+                except OSError:
+                    pass
+
+        # ── 5. Inject results + run analyze.py ───────────────────────────────
+        await _log("[UQ] Injecting results into PUQ HDF5 and analyzing...\n")
+
+        hdf5_path = os.path.join(uq_work_dir, f"puq_{pid}.hdf5")
+        inject_script = str(_PKG_PUQ_DIR / "inject_results.py")
+        analyze_script = str(_PKG_PUQ_DIR / "analyze.py")
+        run_xmls_args = " ".join(f'"{p}"' for p in run_xmls)
+
+        analyze_wrapper = os.path.join(uq_work_dir, ".uq_analyze.sh")
+        with open(analyze_wrapper, "w") as wf:
+            wf.write("#!/bin/sh\n")
+            if os.path.isfile("/etc/environ.sh"):
+                wf.write('. /etc/environ.sh\n')
+                wf.write('use -e -r rappture\n')
+            elif rapp_env_file:
+                wf.write('. "{}"\n'.format(rapp_env_file))
+            wf.write('PATH=$(echo "$PATH" | tr ":" "\\n" | grep -v anaconda | tr "\\n" ":" | sed "s/:$//")\n')
+            wf.write('export PATH\n')
+            wf.write(f'cd "{uq_work_dir}"\n')
+            # Step 1: inject run results into HDF5
+            wf.write(f'python "{inject_script}" "{hdf5_path}" {run_xmls_args} || exit 1\n')
+            # Step 2: fit response surfaces and write run_uq.xml
+            wf.write(f'python "{analyze_script}" "{hdf5_path}"\n')
+        os.chmod(analyze_wrapper, 0o755)
+
+        proc_analyze = await asyncio.create_subprocess_shell(
+            analyze_wrapper,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=uq_work_dir,
+        )
+        try:
+            a_out, a_err = await asyncio.wait_for(proc_analyze.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            proc_analyze.kill()
+            await _log("[UQ] analyze.py timed out\n")
+            return {"status": "error", "log": "".join(log_lines), "outputs": {}, "cached": False}
+
+        await _log(a_out.decode("utf-8", errors="replace"))
+        if a_err:
+            await _log(a_err.decode("utf-8", errors="replace"))
+
+        # ── 6. Parse run_uq.xml ───────────────────────────────────────────────
+        run_uq_xml = os.path.join(uq_work_dir, "run_uq.xml")
+        outputs = {}
+        if os.path.exists(run_uq_xml):
+            try:
+                outputs = parse_run_xml(run_uq_xml)
+                outputs["__uq__"] = {"type": "uq_flag", "value": True}
+            except Exception as exc:
+                await _log(f"[UQ] Error parsing run_uq.xml: {exc}\n")
+        else:
+            await _log("[UQ] WARNING: run_uq.xml not generated\n")
+
+        log = "".join(log_lines)
+        run_record = None
+        if history is not None:
+            run_record = history.add(
+                input_values={"__uq_inputs__": uq_inputs, **input_values},
+                outputs=outputs,
+                log=log,
+                status="success",
+                run_xml=run_uq_xml,
+            )
+
+        return {
+            "status": "success",
+            "outputs": outputs,
+            "log": log,
+            "run_xml": run_uq_xml,
+            "run_id": run_record["run_id"] if run_record else None,
+            "run_num": run_record["run_num"] if run_record else None,
+            "cached": False,
+            "uq": True,
+        }
+
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc()
+        return {
+            "status": "error",
+            "log": "".join(log_lines) + f"\n{tb}",
+            "outputs": {},
+            "cached": False,
+        }
+    finally:
+        # Clean up wrapper scripts
+        for fname in Path(uq_work_dir).glob(".uq_*.sh"):
+            try:
+                fname.unlink()
+            except OSError:
+                pass
 
 
 # ─── Main simulation entry point ─────────────────────────────────────────────

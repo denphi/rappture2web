@@ -277,6 +277,7 @@ const rappture = {
 
     async collectInputs() {
         const inputs = {};
+        const uq_inputs = {};
         const imagePromises = [];
         document.querySelectorAll('.rp-widget[data-path]').forEach(widget => {
             const path = widget.dataset.path;
@@ -288,6 +289,37 @@ const rappture = {
                 const rawXml = widget.dataset.structureXml;
                 if (rawXml) inputs[path] = '@@RP-XML:' + rawXml;
                 return;
+            }
+
+            // UQ-eligible number/integer: check distribution select
+            if (widget.dataset.uqEligible === 'true' && (type === 'number' || type === 'integer')) {
+                const distSelect = widget.querySelector('.rp-uq-dist-select');
+                const distType = distSelect ? distSelect.value : 'exact';
+                if (distType !== 'exact') {
+                    const paramsDiv = widget.querySelector('.rp-uq-dist-params');
+                    const units = (widget.dataset.units || '').trim();
+                    const spec = { type: distType, units };
+                    if (distType === 'uniform') {
+                        const mn = widget.querySelector('.rp-uq-min');
+                        const mx = widget.querySelector('.rp-uq-max');
+                        spec.min = parseFloat(mn ? mn.value : widget.dataset.min) || 0;
+                        spec.max = parseFloat(mx ? mx.value : widget.dataset.max) || 1;
+                    } else if (distType === 'gaussian') {
+                        const mean = widget.querySelector('.rp-uq-mean');
+                        const std = widget.querySelector('.rp-uq-std');
+                        const gmin = widget.querySelector('.rp-uq-g-min');
+                        const gmax = widget.querySelector('.rp-uq-g-max');
+                        spec.mean = parseFloat(mean ? mean.value : 0) || 0;
+                        spec.std = parseFloat(std ? std.value : 1) || 1;
+                        if (gmin && gmin.value !== '') spec.min = parseFloat(gmin.value);
+                        if (gmax && gmax.value !== '') spec.max = parseFloat(gmax.value);
+                    }
+                    uq_inputs[path] = spec;
+                    // Also store exact value as fallback input
+                    const mainInput = widget.querySelector('input.rp-input-number, input.rp-input-integer');
+                    if (mainInput) inputs[path] = mainInput.value;
+                    return;
+                }
             }
 
             let value = null;
@@ -303,7 +335,7 @@ const rappture = {
                 if (hidden && hidden.value) inputs[path] = hidden.value;
                 return;
             } else {
-                const input = widget.querySelector('input:not([type="file"]), select, textarea');
+                const input = widget.querySelector('input:not([type="file"]):not(.rp-uq-input), select:not(.rp-uq-dist-select), textarea');
                 if (input) {
                     value = input.value;
                     // For number/integer widgets that carry known units (e.g. structure
@@ -321,7 +353,23 @@ const rappture = {
             if (value !== null) inputs[path] = value;
         });
         await Promise.all(imagePromises);
-        return inputs;
+        return { inputs, uq_inputs };
+    },
+
+    onUqDistChange(select) {
+        const widget = select.closest('.rp-uq-widget');
+        if (!widget) return;
+        const paramsDiv = widget.querySelector('.rp-uq-dist-params');
+        const uniformDiv = widget.querySelector('.rp-uq-uniform');
+        const gaussianDiv = widget.querySelector('.rp-uq-gaussian');
+        const val = select.value;
+        if (val === 'exact') {
+            if (paramsDiv) paramsDiv.style.display = 'none';
+        } else {
+            if (paramsDiv) paramsDiv.style.display = '';
+            if (uniformDiv) uniformDiv.style.display = val === 'uniform' ? '' : 'none';
+            if (gaussianDiv) gaussianDiv.style.display = val === 'gaussian' ? '' : 'none';
+        }
     },
 
     previewImage(fileInput, previewId) {
@@ -647,13 +695,15 @@ const rappture = {
         const container = document.getElementById('rp-results');
         container.innerHTML = '<div class="rp-results-placeholder"><p>Simulation running...</p></div>';
 
-        const inputs = await this.collectInputs();
+        const { inputs, uq_inputs } = await this.collectInputs();
 
         try {
+            const body = { inputs };
+            if (uq_inputs && Object.keys(uq_inputs).length > 0) body.uq_inputs = uq_inputs;
             const response = await fetch(this._bp + '/simulate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ inputs }),
+                body: JSON.stringify(body),
             });
             const result = await response.json();
 

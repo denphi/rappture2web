@@ -1,0 +1,111 @@
+<?xml version="1.0"?>
+<run>
+<tool>
+  <title>Projectile Motion with UQ (rappture2web)</title>
+  <about>Classic projectile motion example with Uncertainty Quantification.
+
+Set any of the numeric inputs to a uniform or gaussian distribution
+to explore how parameter uncertainty propagates through the simulation.
+The 'Number of time steps' input has UQ disabled — it always uses an
+exact value.</about>
+  <command>
+    python3 @tool/uq_projectile.py @driver
+  </command>
+  <uq>true</uq>
+</tool>
+<input>
+  <number id="height">
+    <about>
+      <label>Initial Height</label>
+      <description>The initial height of the projectile above the ground.</description>
+    </about>
+    <default>0</default>
+    <units>m</units>
+    <min>0m</min>
+    <max>1000m</max>
+  </number>
+  <number id="velocity">
+    <about>
+      <label>Initial Velocity</label>
+      <description>The initial speed of the projectile.</description>
+    </about>
+    <default>100</default>
+    <units>m/s</units>
+    <min>10m/s</min>
+    <max>1000m/s</max>
+  </number>
+  <number id="angle">
+    <about>
+      <label>Launch Angle</label>
+      <description>The angle (in degrees) at which the projectile is launched.</description>
+    </about>
+    <default>45</default>
+    <min>5</min>
+    <max>85</max>
+  </number>
+  <number id="g">
+    <about>
+      <label>Gravity (g)</label>
+      <description>Gravitational acceleration.  Standard gravity is 9.80665 m/s^2.</description>
+    </about>
+    <default>9.80665</default>
+    <units>m/s2</units>
+    <min>9.7639m/s2</min>
+    <max>9.8337m/s2</max>
+  </number>
+  <integer id="npts">
+    <about>
+      <label>Number of time steps</label>
+      <description>How many points to use when plotting the trajectory.</description>
+    </about>
+    <uq>false</uq>
+    <default>200</default>
+    <min>20</min>
+    <max>2000</max>
+  </integer>
+</input>
+<output>
+  <curve id="path">
+    <about>
+      <label>Trajectory</label>
+      <description>Distance vs. height of the projectile.</description>
+    </about>
+    <xaxis>
+      <label>Distance</label>
+      <units>m</units>
+    </xaxis>
+    <yaxis>
+      <label>Height</label>
+      <units>m</units>
+    </yaxis>
+  </curve>
+  <curve id="height_vs_time">
+    <about>
+      <label>Height vs Time</label>
+      <description>Height of the projectile as a function of time.</description>
+    </about>
+    <xaxis>
+      <label>Time</label>
+      <units>s</units>
+    </xaxis>
+    <yaxis>
+      <label>Height</label>
+      <units>m</units>
+    </yaxis>
+  </curve>
+  <number id="distance">
+    <about>
+      <label>Total Distance</label>
+      <description>Horizontal distance the projectile travels.</description>
+    </about>
+    <units>m</units>
+  </number>
+  <number id="maxheight">
+    <about>
+      <label>Maximum Height</label>
+      <description>Peak height reached by the projectile.</description>
+    </about>
+    <units>m</units>
+  </number>
+</output>
+</run>

@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .xml_parser import ToolDef, parse_tool_xml
-from .simulator import RunHistory, run_simulation
+from .simulator import RunHistory, run_simulation, run_uq_simulation
 from .encoding import to_data_uri, is_encoded
 
 # ─── Global state ────────────────────────────────────────────────────────────
@@ -217,6 +217,7 @@ async def simulate(request: Request):
 
     data = await request.json()
     input_values = data.get("inputs", {})
+    uq_inputs = data.get("uq_inputs", {})  # UQ distribution specs keyed by Rappture path
     job_id = uuid.uuid4().hex[:8]
 
     _session = {
@@ -243,16 +244,34 @@ async def simulate(request: Request):
         _running_process = proc
 
     try:
-        result = await run_simulation(
-            tool_xml_path=_tool_xml_path,
-            input_values=input_values,
-            server_url=_server_url,
-            use_library_mode=_use_library_mode,
-            history=_history,
-            use_cache=_use_cache,
-            log_callback=_stream_log,
-            process_callback=_on_process,
-        )
+        if uq_inputs:
+            # UQ mode: run with PUQ
+            def _override_inputs(new_inputs: dict):
+                """Update session inputs for each collocation point run (library mode)."""
+                _session["inputs"] = new_inputs
+
+            result = await run_uq_simulation(
+                tool_xml_path=_tool_xml_path,
+                input_values=input_values,
+                uq_inputs=uq_inputs,
+                server_url=_server_url,
+                use_library_mode=_use_library_mode,
+                history=_history,
+                log_callback=_stream_log,
+                process_callback=_on_process,
+                inputs_override_callback=_override_inputs,
+            )
+        else:
+            result = await run_simulation(
+                tool_xml_path=_tool_xml_path,
+                input_values=input_values,
+                server_url=_server_url,
+                use_library_mode=_use_library_mode,
+                history=_history,
+                use_cache=_use_cache,
+                log_callback=_stream_log,
+                process_callback=_on_process,
+            )
     except Exception as exc:
         import traceback
         tb = traceback.format_exc()

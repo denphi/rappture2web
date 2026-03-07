@@ -1,7 +1,12 @@
 {% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
-<div class="rp-widget rp-number" data-path="{{ widget.path }}" data-type="number" {% if widget.enable
+{% set uq_eligible = tool.uq_enabled and widget.attrs.get('uq_enabled', true) %}
+<div class="rp-widget rp-number{% if uq_eligible %} rp-uq-widget{% endif %}" data-path="{{ widget.path }}" data-type="number" {% if widget.enable
     %}data-enable='{{ widget.enable }}' {% endif %} {% if widget.color %}data-color="{{ widget.color }}" {% elif
-    widget.attrs.color %}data-color="{{ widget.attrs.color }}" {% endif %}>
+    widget.attrs.color %}data-color="{{ widget.attrs.color }}" {% endif %}
+    {% if uq_eligible %}data-uq-eligible="true"{% endif %}
+    data-units="{{ widget.attrs.units or '' }}"
+    data-min="{{ widget.attrs.min | strip_units if widget.attrs.min else '' }}"
+    data-max="{{ widget.attrs.max | strip_units if widget.attrs.max else '' }}">
     {% set _tt = {'desc': widget.description, 'units': widget.attrs.units, 'min': widget.attrs.min | strip_units if widget.attrs.min else '', 'max': widget.attrs.max | strip_units if widget.attrs.max else ''} %}
     <label class="rp-label" for="{{ input_id }}" data-rp-tooltip='{{ _tt | tojson }}' title="{{ widget.description }}">
         {% if widget.icon and widget.icon.strip() %}
@@ -45,7 +50,35 @@
             {% endfor %}
         </select>
         {% endif %}
+        {% if uq_eligible %}
+        <select class="rp-uq-dist-select" aria-label="Distribution type for {{ widget.label or widget.id }}"
+            onchange="rappture.onUqDistChange(this)">
+            <option value="exact">exact</option>
+            <option value="uniform">uniform</option>
+            <option value="gaussian">gaussian</option>
+        </select>
+        {% endif %}
     </div>
+    {% if uq_eligible %}
+    <div class="rp-uq-dist-params" style="display:none">
+        <div class="rp-uq-uniform" style="display:none">
+            <label class="rp-uq-param-label">min <input type="number" class="rp-input rp-uq-input rp-uq-min" step="any"
+                value="{{ widget.attrs.min | strip_units if widget.attrs.min else '' }}"></label>
+            <label class="rp-uq-param-label">max <input type="number" class="rp-input rp-uq-input rp-uq-max" step="any"
+                value="{{ widget.attrs.max | strip_units if widget.attrs.max else '' }}"></label>
+        </div>
+        <div class="rp-uq-gaussian" style="display:none">
+            <label class="rp-uq-param-label">mean <input type="number" class="rp-input rp-uq-input rp-uq-mean" step="any"
+                value="{{ (widget.current if widget.current else widget.default) | strip_units }}"></label>
+            <label class="rp-uq-param-label">std <input type="number" class="rp-input rp-uq-input rp-uq-std" step="any" min="0"
+                value=""></label>
+            <label class="rp-uq-param-label">min <input type="number" class="rp-input rp-uq-input rp-uq-g-min" step="any"
+                value="{{ widget.attrs.min | strip_units if widget.attrs.min else '' }}" placeholder="auto"></label>
+            <label class="rp-uq-param-label">max <input type="number" class="rp-input rp-uq-input rp-uq-g-max" step="any"
+                value="{{ widget.attrs.max | strip_units if widget.attrs.max else '' }}" placeholder="auto"></label>
+        </div>
+    </div>
+    {% endif %}
     {% if widget.color or widget.attrs.color %}
     <div class="rp-color-bar" aria-hidden="true" style="height:6px;border-radius:3px"></div>
     {% endif %}

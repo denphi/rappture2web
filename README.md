@@ -60,6 +60,10 @@ All `rx['input.(id).current'].value` reads and `rx['output.curve(f).component.xy
 | `string`, `number`, `integer`, `boolean` | Scalar outputs |
 | `log` | Simulation log output |
 
+## Documentation
+
+Full documentation is available at [https://rappture2web.readthedocs.io](https://rappture2web.readthedocs.io).
+
 ## License
 
 MIT
