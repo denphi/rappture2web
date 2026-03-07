@@ -79,6 +79,25 @@ def _fill_defaults_in_tree(root) -> None:
             value = _append_units_if_needed(elem, value)
         current_el.text = value
 
+    # Second pass: for each <structure>, mirror its flat direct-child parameters
+    # (choice, number, integer, string, boolean) into <current><parameters> so
+    # that the Rappture Tcl library can read them via structure.current.parameters.(id).current
+    FLAT_PARAM_TAGS = {"number", "integer", "string", "boolean", "choice"}
+    for struct_elem in input_elem.iter("structure"):
+        flat_children = [c for c in struct_elem if c.tag in FLAT_PARAM_TAGS and c.get("id")]
+        if not flat_children:
+            continue
+        for child in flat_children:
+            child_id = child.get("id")
+            cur_el = child.find("current")
+            val = (cur_el.text or "").strip() if cur_el is not None else ""
+            if not val:
+                dflt_el = child.find("default")
+                val = (dflt_el.text or "").strip() if dflt_el is not None else ""
+            if not val:
+                continue
+            _set_structure_param(struct_elem, child.tag, child_id, val)
+
 
 def _set_xml_value(root, rappture_path: str, value: str):
     """Navigate the XML tree by Rappture path and set a <current> value.
@@ -89,6 +108,9 @@ def _set_xml_value(root, rappture_path: str, value: str):
     writes the value into the canonical Rappture location (current.parameters)
     and copies unit/label metadata from any flat sibling definition so that
     Rappture::Units::convert receives a properly unit-tagged value.
+
+    When value starts with '@@RP-XML:', replace the target element wholesale
+    with the provided XML (used by loader to replace <structure> elements).
     """
     if not rappture_path or not rappture_path.strip():
         return
@@ -96,9 +118,29 @@ def _set_xml_value(root, rappture_path: str, value: str):
     if not parts:
         return
 
+    # Raw XML replacement (e.g. structure loaded from example file)
+    if value.startswith('@@RP-XML:'):
+        raw_xml = value[len('@@RP-XML:'):]
+        try:
+            new_elem = ET.fromstring(raw_xml)
+        except Exception:
+            return
+        parent = _walk_path(root, parts[:-1])
+        if parent is None:
+            return
+        tag, eid = parts[-1]
+        for i, child in enumerate(list(parent)):
+            if child.tag == tag and (not eid or child.get('id') == eid):
+                parent.remove(child)
+                parent.insert(i, new_elem)
+                return
+        parent.append(new_elem)
+        return
+
     # Detect if this path targets a sub-parameter inside a structure.
-    # Pattern: [..., ('structure', sid), ('number'|'integer', pid)]
-    if len(parts) >= 2 and parts[-1][0] in ("number", "integer"):
+    # Pattern: [..., ('structure', sid), ('number'|'integer'|'choice'|..., pid)]
+    STRUCT_PARAM_TAGS = {"number", "integer", "choice", "string", "boolean"}
+    if len(parts) >= 2 and parts[-1][0] in STRUCT_PARAM_TAGS:
         # Walk to the structure element
         struct_elem = _walk_path(root, parts[:-1])
         if struct_elem is not None and struct_elem.tag == "structure":

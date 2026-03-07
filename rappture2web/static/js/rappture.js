@@ -281,7 +281,14 @@ const rappture = {
         document.querySelectorAll('.rp-widget[data-path]').forEach(widget => {
             const path = widget.dataset.path;
             const type = widget.dataset.type;
-            if (!path || !type || type === 'group' || type === 'note' || type === 'separator' || type === 'structure') return;
+            if (!path || !type || type === 'group' || type === 'note' || type === 'separator') return;
+
+            // Structure: send raw XML if available (set by loader), skip otherwise
+            if (type === 'structure') {
+                const rawXml = widget.dataset.structureXml;
+                if (rawXml) inputs[path] = '@@RP-XML:' + rawXml;
+                return;
+            }
 
             let value = null;
             if (type === 'boolean') {
@@ -439,6 +446,12 @@ const rappture = {
                     const seg = id ? `${child.tagName}(${id})` : child.tagName;
                     const childPath = [...pathParts, seg].join('.');
                     extractStructure(child, childPath);
+                    // Store raw XML on widget and in valueMap so backend can replace element wholesale
+                    const rawXml = new XMLSerializer().serializeToString(child);
+                    const structWidget = document.querySelector(`.rp-widget[data-path="${childPath}"]`);
+                    if (structWidget) structWidget.dataset.structureXml = rawXml;
+                    valueMap[childPath] = '@@RP-XML:' + rawXml;
+                    continue;
                 }
 
                 // Skip adding path segments for these wrapper elements
@@ -536,7 +549,10 @@ const rappture = {
                 if (hasSelection) this.loadExampleByName(sel);
             };
 
-            if (explicitFiles.length > 0) {
+            // Only treat as explicit if all entries are concrete filenames (no glob chars)
+            const isExplicit = explicitFiles.length > 0 && explicitFiles.every(f => !/[*?[\]{}]/.test(f));
+
+            if (isExplicit) {
                 // Explicit filenames listed — fetch metadata for each in order
                 Promise.all(explicitFiles.map(fname =>
                     fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(fname) + '?pattern=' + encodeURIComponent(pattern))

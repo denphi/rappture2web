@@ -352,7 +352,7 @@ def parse_structure_input(elem, node, parent_path):
     if not has_parameters:
         flat_params = [
             c for c in elem
-            if c.tag in ("number", "integer", "string") and c.get("id")
+            if c.tag in ("number", "integer", "string", "choice", "boolean") and c.get("id")
         ]
         if flat_params:
             has_parameters = True
