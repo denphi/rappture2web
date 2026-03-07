@@ -4,7 +4,7 @@
      data-download-sources="{{ widget.attrs.download_sources | join(',') }}"
      data-loader-default="{{ widget.attrs.loader_default or '' }}"
      data-example="{{ widget.attrs.example or '*.xml' }}"
-     data-examples="{{ widget.attrs.examples | tojson if widget.attrs.examples else '[]' }}">
+     data-examples='{{ widget.attrs.examples | tojson if widget.attrs.examples else "[]" }}'>
     <label class="rp-label" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">
         {{ widget.label or "Load Example" }}
     </label>
