@@ -544,7 +544,9 @@ async def run_simulation(
     # NanoHub middleware environment is not set up.
     submit_bin = shutil.which("submit")
     if submit_bin and not use_library_mode:
-        exec_command = f"{submit_bin} --local {command}"
+        # Run submit from the writable work_dir so its .submit.log is written
+        # there instead of the (possibly read-only) tool directory.
+        exec_command = f"cd \"{work_dir}\" && {submit_bin} --local {command}"
     else:
         exec_command = command
 
