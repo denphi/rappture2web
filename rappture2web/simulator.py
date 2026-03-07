@@ -22,25 +22,14 @@ def _find_rappture_binary() -> str | None:
     return shutil.which("rappture")
 
 
-def _get_rappture_env_prefix() -> str:
-    """Return a shell prefix that sources rappture.env if available.
-
-    The rappture binary is a thin shell wrapper that sources rappture.env
-    (sets TCLLIBPATH, RAPPTURE_LIBRARY, LD_LIBRARY_PATH, etc.) before
-    running tclsh.  When we run tool scripts directly we must replicate
-    that setup so that 'package require Rappture' succeeds.
-
-    Returns a string like '. /path/to/rappture.env && ' ready to prepend
-    to the exec command, or '' if rappture / rappture.env is not found.
-    """
+def _get_rappture_env_file() -> str | None:
+    """Return path to rappture.env if available, else None."""
     rappture_bin = _find_rappture_binary()
     if not rappture_bin:
-        return ""
+        return None
     rappture_dir = os.path.dirname(os.path.realpath(rappture_bin))
     env_file = os.path.join(rappture_dir, "rappture.env")
-    if not os.path.isfile(env_file):
-        return ""
-    return f'. "{env_file}" && '
+    return env_file if os.path.isfile(env_file) else None
 
 
 # ─── Driver XML helpers ───────────────────────────────────────────────────────
