@@ -22,6 +22,27 @@ def _find_rappture_binary() -> str | None:
     return shutil.which("rappture")
 
 
+def _get_rappture_env_prefix() -> str:
+    """Return a shell prefix that sources rappture.env if available.
+
+    The rappture binary is a thin shell wrapper that sources rappture.env
+    (sets TCLLIBPATH, RAPPTURE_LIBRARY, LD_LIBRARY_PATH, etc.) before
+    running tclsh.  When we run tool scripts directly we must replicate
+    that setup so that 'package require Rappture' succeeds.
+
+    Returns a string like '. /path/to/rappture.env && ' ready to prepend
+    to the exec command, or '' if rappture / rappture.env is not found.
+    """
+    rappture_bin = _find_rappture_binary()
+    if not rappture_bin:
+        return ""
+    rappture_dir = os.path.dirname(os.path.realpath(rappture_bin))
+    env_file = os.path.join(rappture_dir, "rappture.env")
+    if not os.path.isfile(env_file):
+        return ""
+    return f'. "{env_file}" && '
+
+
 # ─── Driver XML helpers ───────────────────────────────────────────────────────
 
 def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
@@ -39,8 +60,22 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
     # (handles disabled widgets like workf that collectInputs skips).
     _fill_defaults_in_tree(root)
 
+    # Prefer $RESULTSDIR (writable on nanoHUB), then tool dir, then temp.
+    results_dir = os.environ.get("RESULTSDIR", "").strip()
     tool_dir = str(Path(tool_xml_path).parent)
-    driver_path = os.path.join(tool_dir, "driver.xml")
+    for candidate_dir in ([results_dir] if results_dir else []) + [tool_dir]:
+        driver_path = os.path.join(candidate_dir, "driver.xml")
+        try:
+            tree.write(driver_path, encoding="unicode", xml_declaration=True)
+            return driver_path
+        except (PermissionError, OSError):
+            continue
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(
+        prefix="driver_", suffix=".xml", delete=False, mode="w"
+    )
+    tmp.close()
+    driver_path = tmp.name
     tree.write(driver_path, encoding="unicode", xml_declaration=True)
     return driver_path
 
@@ -461,6 +496,8 @@ async def run_simulation(
     """
     tool_xml_path = str(Path(tool_xml_path).resolve())
     tool_dir = str(Path(tool_xml_path).parent)
+    results_dir = os.environ.get("RESULTSDIR", "").strip() or tool_dir
+    work_dir = results_dir if os.path.isdir(results_dir) else tool_dir
 
     # ── Cache check ──────────────────────────────────────────────────────────
     if use_cache and history is not None:
@@ -511,6 +548,12 @@ async def run_simulation(
     else:
         exec_command = command
 
+    # Prepend rappture.env sourcing so that 'package require Rappture' works
+    # in Tcl scripts that are run directly (not via the rappture binary).
+    rapp_env_prefix = _get_rappture_env_prefix()
+    if rapp_env_prefix and not use_library_mode:
+        exec_command = rapp_env_prefix + exec_command
+
     # Build subprocess environment: inherit current env.
     # Keep DISPLAY as-is so that internal Rappture/Tk calls can connect if a
     # display is available (e.g. Xvfb on NanoHub).  If DISPLAY is not set in
@@ -523,7 +566,7 @@ async def run_simulation(
             exec_command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=tool_dir,
+            cwd=work_dir,
             env=proc_env,
         )
         if process_callback is not None:
@@ -578,7 +621,12 @@ async def run_simulation(
                     break
 
             if run_xml_path is None or not os.path.exists(run_xml_path):
-                run_xml_path = driver_path  # tool may have modified driver in place
+                # Check RESULTSDIR for run.xml written by Rappture
+                candidate = os.path.join(work_dir, "run.xml")
+                if os.path.exists(candidate):
+                    run_xml_path = candidate
+                else:
+                    run_xml_path = driver_path  # tool may have modified driver in place
 
             if run_xml_path and os.path.exists(run_xml_path):
                 try:

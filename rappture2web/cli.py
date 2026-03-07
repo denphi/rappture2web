@@ -166,6 +166,12 @@ def main():
         action="store_true",
         help="Enable automatic wrwroxy launch on nanoHUB (disabled by default).",
     )
+    parser.add_argument(
+        "--app-name",
+        default=None,
+        help="Application name (used for nanoHUB URLs, e.g. 'mytool'). "
+             "Overrides auto-detected tool name.",
+    )
 
     args = parser.parse_args()
 
@@ -174,8 +180,10 @@ def main():
         print("Error: {} not found".format(tool_path), file=sys.stderr)
         sys.exit(1)
 
-    # Default cache dir: .rappture2web/ next to the tool XML
-    cache_dir = args.cache_dir or str(tool_path.parent / ".rappture2web")
+    # Default cache dir: prefer $RESULTSDIR (writable on nanoHUB), then tool dir
+    _results_dir = os.environ.get("RESULTSDIR", "").strip()
+    _default_cache = str(Path(_results_dir) / ".rappture2web") if _results_dir else str(tool_path.parent / ".rappture2web")
+    cache_dir = args.cache_dir or _default_cache
 
     # ── Proxy / base-path detection ──────────────────────────────────────────
     base_path = args.base_path.rstrip("/")
@@ -191,7 +199,7 @@ def main():
     use_wrwroxy = args.wrwroxy and (shutil.which("wrwroxy") is not None)
     resources = _parse_nanohub_resources()
     is_nanohub = bool(resources)
-    nanohub_tool_name = _resolve_nanohub_tool_name(resources)
+    nanohub_tool_name = args.app_name or _resolve_nanohub_tool_name(resources)
     nanohub_about_url = ""
     nanohub_questions_url = ""
     if is_nanohub and nanohub_tool_name:
