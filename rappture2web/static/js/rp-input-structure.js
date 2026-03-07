@@ -42,8 +42,9 @@
 
                     // Determine input type — always use text to preserve scientific notation display
                     const isNumeric = (p.tag === 'number' || p.tag === 'integer');
-                    const typeClass = isNumeric ? `rp-${p.tag}` : `rp-string`;
-                    const inputClass = isNumeric ? 'rp-input rp-input-number' : 'rp-input rp-input-string';
+                    const isChoice = p.tag === 'choice';
+                    const typeClass = isNumeric ? `rp-${p.tag}` : (isChoice ? 'rp-choice' : `rp-string`);
+                    const inputClass = isNumeric ? 'rp-input rp-input-number' : 'rp-input';
                     const inputType = 'text';
 
                     const widgetDiv = mkHtml("div", { class: `rp-widget ${typeClass}`, "data-type": p.tag, "data-path": rawPath, "data-units": p.units || '' });
@@ -82,35 +83,52 @@
                         return v.toExponential(3).replace(/\.?0+e/, 'e');
                     };
 
-                    const displayVal = isNumeric && numVal !== '' ? toSci(parseFloat(numVal)) : (isNumeric ? numVal : val);
-                    const input = mkHtml("input", {
-                        type: inputType,
-                        id: inputId,
-                        class: inputClass,
-                        name: rawPath,
-                        value: displayVal
-                    });
+                    let inputEl;
+                    if (isChoice && p.options && p.options.length > 0) {
+                        inputEl = mkHtml("select", { id: inputId, class: inputClass, name: rawPath });
+                        p.options.forEach(opt => {
+                            const o = mkHtml("option", { value: opt.value });
+                            o.textContent = opt.label || opt.value;
+                            if (opt.value === val || opt.label === val) o.selected = true;
+                            inputEl.appendChild(o);
+                        });
+                        // If nothing matched, select by default
+                        if (!inputEl.value && p.options.length > 0) inputEl.options[0].selected = true;
+                    } else {
+                        const displayVal = isNumeric && numVal !== '' ? toSci(parseFloat(numVal)) : (isNumeric ? numVal : val);
+                        inputEl = mkHtml("input", {
+                            type: inputType,
+                            id: inputId,
+                            class: inputClass,
+                            name: rawPath,
+                            value: displayVal
+                        });
+                    }
 
                     // On change: update data.parameters and re-render the preview
-                    input.addEventListener('change', () => {
-                        let rawNum = (input.value.match(/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/) || [''])[0];
-                        if (isNumeric && rawNum !== '') {
-                            let v = isInteger ? Math.round(parseFloat(rawNum)) : parseFloat(rawNum);
-                            if (!isNaN(v)) {
-                                if (minVal !== undefined && minVal !== '' && v < parseFloat(minVal)) v = parseFloat(minVal);
-                                if (maxVal !== undefined && maxVal !== '' && v > parseFloat(maxVal)) v = parseFloat(maxVal);
-                                rawNum = isInteger ? String(v) : toSci(v);
-                                input.value = rawNum;
+                    inputEl.addEventListener('change', () => {
+                        let newVal = inputEl.value;
+                        if (isNumeric) {
+                            let rawNum = (newVal.match(/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/) || [''])[0];
+                            if (rawNum !== '') {
+                                let v = isInteger ? Math.round(parseFloat(rawNum)) : parseFloat(rawNum);
+                                if (!isNaN(v)) {
+                                    if (minVal !== undefined && minVal !== '' && v < parseFloat(minVal)) v = parseFloat(minVal);
+                                    if (maxVal !== undefined && maxVal !== '' && v > parseFloat(maxVal)) v = parseFloat(maxVal);
+                                    rawNum = isInteger ? String(v) : toSci(v);
+                                    inputEl.value = rawNum;
+                                }
                             }
+                            newVal = rawNum + (p.units ? p.units : '');
                         }
-                        data.parameters[pIdx].current = rawNum + (p.units ? p.units : '');
+                        data.parameters[pIdx].current = newVal;
                         try {
                             rootEl.setAttribute('data-structure', JSON.stringify(data));
                             renderStructurePreview(rootEl, data);
                         } catch (e) { console.warn('Structure re-render failed', e); }
                     });
 
-                    controls.appendChild(input);
+                    controls.appendChild(inputEl);
                     widgetDiv.appendChild(controls);
                     paramsWrap.appendChild(widgetDiv);
                 });

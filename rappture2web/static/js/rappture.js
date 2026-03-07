@@ -372,12 +372,23 @@ const rappture = {
                         const currentElem = p.querySelector(':scope > current');
                         const defaultElem = p.querySelector(':scope > default');
 
+                        const curVal = currentElem ? currentElem.textContent.trim() : null;
+                        const defVal = defaultElem ? defaultElem.textContent.trim() : null;
+                        const options = tag === 'choice'
+                            ? Array.from(p.querySelectorAll(':scope > option')).map(o => {
+                                const oAbout = o.querySelector('about');
+                                const oLabel = oAbout ? (oAbout.querySelector('label') || {}).textContent || '' : '';
+                                const oVal = o.querySelector('value');
+                                return { label: oLabel.trim(), value: oVal ? oVal.textContent.trim() : oLabel.trim() };
+                              })
+                            : undefined;
                         parameters.push({
                             tag, id,
                             label: label.trim(),
                             units: units.trim(),
-                            current: currentElem ? currentElem.textContent : null,
-                            default: defaultElem ? defaultElem.textContent : null
+                            current: curVal || defVal,
+                            default: defVal,
+                            ...(options !== undefined && { options })
                         });
                     }
                 }
