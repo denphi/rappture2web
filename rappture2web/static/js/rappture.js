@@ -2226,6 +2226,21 @@ const rappture = {
         const esc = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         let widget = document.querySelector(`.rp-widget[data-path="${esc(cleanPath)}"]`)
             || document.querySelector(`.rp-widget[data-path="input.${esc(cleanPath)}"]`);
+
+        // Rappture shorthand: input.(group).(id) — parens without tag name.
+        // Match against data-path endings like *tag(id) by scanning all widgets.
+        if (!widget) {
+            // Build a regex: replace .(id) segments with \.[\w]+\(id\)
+            const regexSrc = cleanPath
+                .replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') // escape regex special chars
+                .replace(/\\\.\\\((\w+)\\\)/g, '\\.[\\w]+\\($1\\)'); // un-escape and expand .(id)
+            try {
+                const re = new RegExp('^(?:input\\.)?' + regexSrc + '$');
+                widget = Array.from(document.querySelectorAll('.rp-widget[data-path]'))
+                    .find(w => re.test(w.dataset.path)) || null;
+            } catch(e) { widget = null; }
+        }
+
         if (!widget) return null;
 
         const type = widget.dataset.type;
