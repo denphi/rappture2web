@@ -462,6 +462,22 @@ const rappture = {
                     const structWidget = document.querySelector(`.rp-widget[data-path="${childPath}"]`);
                     if (structWidget) structWidget.dataset.structureXml = rawXml;
                     valueMap[childPath] = '@@RP-XML:' + rawXml;
+                    // Also walk parameters so individual sub-widgets get updated
+                    // (handles case where structure widget children are rendered server-side)
+                    ['default', 'current'].forEach(section => {
+                        const sec = child.querySelector(`:scope > ${section}`);
+                        if (!sec) return;
+                        const params = sec.querySelector(':scope > parameters');
+                        if (!params) return;
+                        for (const p of params.children) {
+                            const pid = p.getAttribute('id');
+                            if (!pid) continue;
+                            const cur = p.querySelector(':scope > current');
+                            const dflt = p.querySelector(':scope > default');
+                            const val = (cur ? cur.textContent.trim() : null) || (dflt ? dflt.textContent.trim() : null);
+                            if (val !== null) valueMap[`${childPath}.${p.tagName}(${pid})`] = val;
+                        }
+                    });
                     continue;
                 }
 
