@@ -222,7 +222,7 @@ body {
     padding: 12px;
 }
 .rp-sidebar {
-    width: min(52vw, 780px);
+    width: min(40vw, 780px);
     min-width: 320px;
     max-width: 78vw;
     background: var(--rp-sidebar-bg);
