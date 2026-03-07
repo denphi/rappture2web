@@ -180,7 +180,9 @@ def parse_multichoice(elem, node):
 
 def parse_loader(elem, node):
     """Parse loader-specific attributes."""
-    node.attrs["example"] = _get_text(elem, "example")
+    examples = [e.text.strip() for e in elem.findall("example") if e.text and e.text.strip()]
+    node.attrs["examples"] = examples
+    node.attrs["example"] = examples[0] if examples else ""
     node.attrs["loader_default"] = _get_text(elem, "default")
     upload_targets = []
     upload_elem = elem.find("upload")

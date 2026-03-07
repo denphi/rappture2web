@@ -3,7 +3,8 @@
      data-upload-targets="{{ widget.attrs.upload_targets | join(',') }}"
      data-download-sources="{{ widget.attrs.download_sources | join(',') }}"
      data-loader-default="{{ widget.attrs.loader_default or '' }}"
-     data-example="{{ widget.attrs.example or '*.xml' }}">
+     data-example="{{ widget.attrs.example or '*.xml' }}"
+     data-examples="{{ widget.attrs.examples | tojson if widget.attrs.examples else '[]' }}">
     <label class="rp-label" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">
         {{ widget.label or "Load Example" }}
     </label>
@@ -12,9 +13,11 @@
                 onchange="rappture.loadExampleByName(this)">
             <option value="">— select example —</option>
         </select>
+        {% if widget.attrs.upload_targets %}
         <label style="font-size:11px;color:var(--rp-text-muted);margin-top:2px">or upload XML:
             <input type="file" accept=".xml" style="font-size:11px;display:block;margin-top:2px"
                    onchange="rappture.loadExample(this)">
         </label>
+        {% endif %}
     </div>
 </div>

@@ -517,25 +517,39 @@ const rappture = {
             sel.dataset.rpInit = '1';
             const defaultFile = widget.dataset.loaderDefault || '';
             const pattern = widget.dataset.example || '*.xml';
-            fetch(this._bp + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
-                .then(r => r.json())
-                .then(examples => {
-                    let hasSelection = false;
-                    examples.forEach(ex => {
-                        const opt = document.createElement('option');
-                        // Rappture Tcl scripts expect the label (e.g. "MOSFET n-type"), not the filename, in <current>
-                        opt.value = ex.label;
-                        opt.textContent = ex.label;
-                        opt.dataset.filename = ex.filename;
-                        if (ex.filename === defaultFile) {
-                            opt.selected = true;
-                            hasSelection = true;
-                        }
-                        sel.appendChild(opt);
-                    });
-                    if (hasSelection) this.loadExampleByName(sel);
-                })
-                .catch(() => { });
+            let explicitFiles = [];
+            try { explicitFiles = JSON.parse(widget.dataset.examples || '[]'); } catch(e) {}
+
+            const populate = (examples) => {
+                let hasSelection = false;
+                examples.forEach(ex => {
+                    const opt = document.createElement('option');
+                    opt.value = ex.label;
+                    opt.textContent = ex.label;
+                    opt.dataset.filename = ex.filename;
+                    if (ex.filename === defaultFile) {
+                        opt.selected = true;
+                        hasSelection = true;
+                    }
+                    sel.appendChild(opt);
+                });
+                if (hasSelection) this.loadExampleByName(sel);
+            };
+
+            if (explicitFiles.length > 0) {
+                // Explicit filenames listed — fetch metadata for each in order
+                Promise.all(explicitFiles.map(fname =>
+                    fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(fname) + '?pattern=' + encodeURIComponent(pattern))
+                        .then(r => r.json())
+                        .then(data => ({ filename: fname, label: data.label || fname.replace(/\.xml$/i, '') }))
+                        .catch(() => ({ filename: fname, label: fname.replace(/\.xml$/i, '') }))
+                )).then(populate).catch(() => {});
+            } else {
+                fetch(this._bp + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
+                    .then(r => r.json())
+                    .then(populate)
+                    .catch(() => { });
+            }
         });
     },
 

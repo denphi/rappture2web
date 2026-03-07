@@ -489,7 +489,19 @@ async def api_loader_example_file(filename: str, pattern: str = "*.xml"):
         return JSONResponse({"error": "Invalid path"}, status_code=403)
     if not fpath.exists():
         return JSONResponse({"error": "Not found"}, status_code=404)
-    return JSONResponse({"content": fpath.read_text()})
+    content = fpath.read_text()
+    label = fpath.stem
+    try:
+        from xml.etree import ElementTree as ET
+        root = ET.fromstring(content)
+        about = root.find(".//about")
+        if about is not None:
+            lbl = about.findtext("label")
+            if lbl:
+                label = lbl.strip()
+    except Exception:
+        pass
+    return JSONResponse({"content": content, "label": label})
 
 
 # ─── Run history endpoints ────────────────────────────────────────────────────
