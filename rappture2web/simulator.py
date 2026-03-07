@@ -539,18 +539,28 @@ async def run_simulation(
     else:
         exec_command = command
 
-    # Prepend rappture.env sourcing so that 'package require Rappture' works
-    # in Tcl scripts that are run directly (not via the rappture binary).
-    rapp_env_prefix = _get_rappture_env_prefix()
-    if rapp_env_prefix and not use_library_mode:
-        exec_command = rapp_env_prefix + exec_command
-
-    # Build subprocess environment: inherit current env.
-    # Keep DISPLAY as-is so that internal Rappture/Tk calls can connect if a
-    # display is available (e.g. Xvfb on NanoHub).  If DISPLAY is not set in
-    # the parent, leave it unset rather than forcing it to empty string (which
-    # causes "couldn't connect to display" errors in Tk-based sub-tools).
+    # Build subprocess environment: inherit current env, then inject any
+    # variables exported by rappture.env (TCLLIBPATH, RAPPTURE_LIBRARY, etc.)
+    # so that 'package require Rappture' works in Tcl scripts.  We source
+    # rappture.env inside a subshell and merge the result into proc_env so
+    # the variables survive even when submit re-execs the command.
     proc_env = dict(os.environ)
+    rapp_env_file = _get_rappture_env_file()
+    if rapp_env_file and not use_library_mode:
+        try:
+            import subprocess as _sp
+            result = _sp.run(
+                f'. "{rapp_env_file}" && env',
+                shell=True, capture_output=True, text=True, timeout=10,
+                env=proc_env,
+            )
+            for line in result.stdout.splitlines():
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    if k and proc_env.get(k) != v:
+                        proc_env[k] = v
+        except Exception:
+            pass
 
     try:
         process = await asyncio.create_subprocess_shell(
