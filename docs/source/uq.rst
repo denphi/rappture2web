@@ -2,8 +2,7 @@ Uncertainty Quantification (UQ)
 ===============================
 
 rappture2web supports Uncertainty Quantification (UQ) for numeric inputs,
-powered by `PUQ <https://nanohub.org/resources/25054>`_ (PRISM Uncertainty
-Quantification).
+powered by PUQ.
 
 Enabling UQ
 -----------

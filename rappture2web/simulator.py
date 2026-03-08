@@ -944,6 +944,12 @@ async def run_simulation(
         #  2. rappture env is sourced so 'package require Rappture' works
         os.makedirs(work_dir, exist_ok=True)
         wrapper_path = os.path.join(work_dir, ".r2w_run_{}.sh".format(uuid.uuid4().hex[:8]))
+        # Compute the tool's ../bin directory so scripts like run_main_*.sh
+        # that live there are on PATH (tool.xml is in rappture/ or the tool
+        # root; bin/ is a sibling of that directory).
+        tool_bin_dir = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(tool_xml_path)), "..", "bin")
+        )
         with open(wrapper_path, "w") as wf:
             wf.write("#!/bin/sh\n")
             if os.path.isfile("/etc/environ.sh"):
@@ -954,6 +960,10 @@ async def run_simulation(
             # Remove any anaconda/conda paths from PATH so that 'python'
             # resolves to the system python2, not a conda python3.
             wf.write('PATH=$(echo "$PATH" | tr ":" "\\n" | grep -v anaconda | tr "\\n" ":" | sed "s/:$//")\n')
+            # Prepend the tool's bin/ directory so that sibling scripts like
+            # run_main_<tool>.sh are found without needing an absolute path.
+            if os.path.isdir(tool_bin_dir):
+                wf.write('PATH="{}:$PATH"\n'.format(tool_bin_dir))
             wf.write('export PATH\n')
             wf.write("cd \"{}\"\n".format(work_dir))
             wf.write(command + "\n")
