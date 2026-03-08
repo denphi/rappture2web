@@ -12,7 +12,7 @@ that uses ``rappture2web.rp_library`` and can be run directly:
 Available examples
 ------------------
 
-**Basic input/output types:**
+**Basic input types:**
 
 .. list-table::
    :header-rows: 1
@@ -20,33 +20,42 @@ Available examples
 
    * - Example
      - Description
-   * - ``number/``
+   * - :doc:`number`
      - Number input with units, presets, and color bar
    * - ``number2/``
-     - Number input with multiple presets
-   * - ``integer/``
+     - Number input with color ranges
+   * - :doc:`integer`
      - Integer input with min/max bounds
    * - ``integer2/``
-     - Integer input demonstration
-   * - ``boolean/``
-     - Boolean checkbox input
-   * - ``string/``
+     - Integer input with color ranges
+   * - :doc:`boolean`
+     - Boolean checkbox input (on/yes/true/1 formats)
+   * - :doc:`string`
      - String text input (single-line and multiline)
-   * - ``choice/``
+   * - :doc:`choice`
      - Dropdown choice input
-   * - ``multichoice/``
+   * - :doc:`multichoice`
      - Multiple selection checkboxes
-   * - ``periodicelement/``
+   * - :doc:`periodicelement`
      - Interactive periodic table picker
-   * - ``image/``
+   * - :doc:`image`
      - Image upload input with loader
-   * - ``note/``
+   * - :doc:`note`
      - Read-only HTML note
-   * - ``group/``
-     - Grouped inputs
-   * - ``phase/``
-     - Phase-based (tabbed) workflow
-   * - ``enable/``
+
+**Layout and organization:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Example
+     - Description
+   * - :doc:`group`
+     - Grouped inputs with tabs, horizontal, and sentence layouts
+   * - :doc:`phase`
+     - Phase-based (multi-page) workflow
+   * - :doc:`enable`
      - Conditional enable/disable of inputs
 
 **Output types:**
@@ -57,30 +66,26 @@ Available examples
 
    * - Example
      - Description
-   * - ``curve/``
+   * - :doc:`curve`
      - XY curves: single, grouped, scatter, bar, log scale
-   * - ``histogram/``
-     - Bar histogram output
-   * - ``field/``
-     - 2D heatmap field on a regular grid
-   * - ``field3d/``
-     - 3D scalar field visualization
-   * - ``flow2d/``
-     - 2D vector flow field
-   * - ``flow_demo1/``
-     - Flow visualization demo 1
-   * - ``flow_demo2/``
-     - Flow visualization demo 2
-   * - ``flow_demo3/``
-     - Flow visualization demo 3
-   * - ``table/``
+   * - :doc:`histogram`
+     - Bar histogram output (single and grouped)
+   * - :doc:`field`
+     - 2D heatmap and 3D isosurface fields
+   * - :doc:`field3d`
+     - 3D scalar field visualization (point cloud)
+   * - :doc:`flow2d`
+     - 2D vector flow field (lid-driven cavity)
+   * - :doc:`flow_demos`
+     - 3D flow visualization demos (3 examples)
+   * - :doc:`table`
      - Data table output
-   * - ``sequence/``
-     - Animated sequence of frames
-   * - ``log/``
-     - Simulation log output
-   * - ``mapviewer/``
-     - Geographic map with scatter layer
+   * - :doc:`sequence`
+     - Animated sequence of image frames
+   * - :doc:`log`
+     - Simulation log text output
+   * - :doc:`mapviewer`
+     - Geographic map with heatmap/scatter layers
 
 **Complete applications:**
 
@@ -90,9 +95,39 @@ Available examples
 
    * - Example
      - Description
-   * - ``fermi/``
+   * - :doc:`fermi`
      - Fermi-Dirac distribution calculator
-   * - ``uq_simple/``
-     - Simple UQ demonstration
-   * - ``uq_projectile/``
+   * - :doc:`uq_simple`
+     - Simple UQ demonstration (cosine wave)
+   * - :doc:`uq_projectile`
      - Projectile motion with UQ support
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   number
+   integer
+   boolean
+   string
+   choice
+   multichoice
+   periodicelement
+   image
+   note
+   group
+   phase
+   enable
+   curve
+   histogram
+   field
+   field3d
+   flow2d
+   flow_demos
+   table
+   sequence
+   log
+   mapviewer
+   fermi
+   uq_simple
+   uq_projectile

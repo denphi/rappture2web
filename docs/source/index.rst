@@ -31,12 +31,6 @@ tables, maps, and more) in real time over WebSocket.
    :caption: Examples
 
    examples/index
-   examples/number
-   examples/curve
-   examples/fermi
-   examples/field
-   examples/uq_simple
-   examples/uq_projectile
 
 .. toctree::
    :maxdepth: 2
