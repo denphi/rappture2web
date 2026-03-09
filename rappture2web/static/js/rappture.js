@@ -1448,12 +1448,13 @@ const rappture = {
             uploadBadge.title = 'Uploaded run — cannot be compared with simulated runs';
             uploadBadge.innerHTML = '<svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M8 2L4 7h3v5h2V7h3z"/><rect x="2" y="13" width="12" height="1.5" rx="0.75"/></svg>';
 
-            // Reload from XML
+            // Reload from XML (only shown when a reloadable XML exists on the server)
             const reloadBtn = document.createElement('button');
             reloadBtn.className = 'rp-run-reload';
             reloadBtn.title = 'Reload outputs from run XML';
             reloadBtn.setAttribute('aria-label', `Reload ${run.label}`);
             reloadBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5V1l3 2.5L8 6V4.5a3.5 3.5 0 1 0 3.5 3.5h2z"/></svg>';
+            reloadBtn.style.display = run.has_xml ? '' : 'none';
             reloadBtn.addEventListener('click', () => this.reloadRun(run.run_id));
 
             // Delete

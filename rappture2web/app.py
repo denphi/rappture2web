@@ -539,6 +539,7 @@ async def api_get_runs():
     """Return list of all past runs (excluding raw outputs for brevity)."""
     summary = []
     for run in _history.runs:
+        xml_path = run.get("run_xml")
         summary.append({
             "run_id": run["run_id"],
             "run_num": run["run_num"],
@@ -548,6 +549,7 @@ async def api_get_runs():
             "cached": False,
             "inputs": run["inputs"],
             "source": run.get("source", "simulated"),
+            "has_xml": bool(xml_path and os.path.isfile(xml_path)),
         })
     return JSONResponse(summary)
 
@@ -648,8 +650,21 @@ async def api_upload_run(file: UploadFile = File(...)):
     try:
         outputs = parse_run_xml(tmp_path)
     except Exception as exc:
+        os.unlink(tmp_path)
         return JSONResponse({"error": f"Failed to parse XML: {exc}"}, status_code=400)
-    finally:
+
+    # Persist the XML so it can be re-parsed on reload; store in cache_dir if available
+    label = Path(file.filename).stem if file.filename else "uploaded"
+    saved_xml_path = None
+    if _history._cache_dir:
+        os.makedirs(_history._cache_dir, exist_ok=True)
+        saved_xml_path = os.path.join(_history._cache_dir, f"upload_{label}_{os.path.basename(tmp_path)}")
+        try:
+            os.rename(tmp_path, saved_xml_path)
+        except OSError:
+            os.unlink(tmp_path)
+            saved_xml_path = None
+    else:
         os.unlink(tmp_path)
 
     run_record = _history.add(
@@ -657,8 +672,8 @@ async def api_upload_run(file: UploadFile = File(...)):
         outputs=outputs,
         log="",
         status="success",
+        run_xml=saved_xml_path,
     )
-    label = Path(file.filename).stem if file.filename else "uploaded"
     _history.update_run(run_record["run_id"], label=label, source="upload")
 
     await _broadcast({

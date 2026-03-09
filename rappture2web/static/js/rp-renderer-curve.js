@@ -46,7 +46,7 @@ rappture._registerRenderer('curve', {
                 const ct = isSep ? 'line' : (m.curve_type || 'line').toLowerCase();
                 const pt = ct === 'bar' ? 'bar' : 'scatter';
                 const pm = ct === 'scatter' ? 'markers' : 'lines';
-                const tLabel = isSep ? null : (runLabel ? `${runLabel}: ${m.label}` : m.label);
+                const tLabel = isSep ? '' : (runLabel ? `${runLabel}: ${m.label}` : m.label);
                 const st = (m.trace && m.trace.style) || {};
                 const traceColor = isSep ? 'rgba(0,0,0,0.3)' : (st.color || null);
                 const dash = isSep ? 'dot' : (_dashMap[st.linestyle] || undefined);
@@ -342,10 +342,10 @@ rappture._registerRenderer('curve', {
                     traces.push({
                         x: m.trace.x, y: m.trace.y,
                         type: mpt, mode: isSep ? 'lines' : mpm,
-                        name: isSep ? null : `${run.label}: ${m.label}`,
+                        name: isSep ? '' : `${run.label}: ${m.label}`,
                         showlegend: !isSep,
-                        line: mpt !== 'bar' ? { width: isSep ? 1 : (isTop ? 3 : 1.5), color: isSep ? 'rgba(0,0,0,0.3)' : color, ...(isSep ? { dash: 'dot' } : {}) } : undefined,
-                        marker: isSep ? undefined : { color },
+                        ...(mpt !== 'bar' ? { line: { width: isSep ? 1 : (isTop ? 3 : 1.5), color: isSep ? 'rgba(0,0,0,0.3)' : color, ...(isSep ? { dash: 'dot' } : {}) } } : {}),
+                        ...(!isSep ? { marker: { color } } : {}),
                         opacity: isSep ? 1 : (isTop ? 1 : 0.75),
                     });
                 });
