@@ -60,17 +60,20 @@ rappture._registerRenderer('curve', {
             });
         }
         const _plotlyType = (_curveType === 'bar') ? 'bar' : 'scatter';
-        const _plotlyMode = (_curveType === 'scatter') ? 'markers' : 'lines';
+        const _plotlyModeBase = (_curveType === 'scatter') ? 'markers' : 'lines';
         return (data.traces || []).map((trace) => {
             const st = trace.style || {};
             const traceColor = st.color || runColor;
             const dash = _dashMap[st.linestyle] || undefined;
             const lw = st.linewidth ? parseFloat(st.linewidth) : 2;
+            // A single-point line trace is invisible — fall back to markers so it shows as a dot
+            const nPts = (trace.x || []).length;
+            const mode = (_plotlyModeBase === 'lines' && nPts === 1) ? 'markers' : _plotlyModeBase;
             return {
-                x: trace.x, y: trace.y, type: _plotlyType, mode: _plotlyMode,
+                x: trace.x, y: trace.y, type: _plotlyType, mode,
                 name: runLabel ? `${runLabel}${trace.label ? ': ' + trace.label : ''}` : (trace.label || label),
                 ...(_plotlyType !== 'bar' ? { line: { width: lw, ...(traceColor ? { color: traceColor } : {}), ...(dash ? { dash } : {}) } } : {}),
-                ...(traceColor ? { marker: { color: traceColor } } : {}),
+                ...(traceColor ? { marker: { color: traceColor, ...(nPts === 1 ? { size: 8 } : {}) } } : (nPts === 1 ? { marker: { size: 8 } } : {})),
             };
         });
     },

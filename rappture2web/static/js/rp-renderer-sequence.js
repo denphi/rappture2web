@@ -399,7 +399,25 @@ rappture._registerRenderer('sequence', {
                     if (oidSources.length === 0) continue;
 
                     if (!cached.plotlyDiv) cached.plotlyDiv = cached.rendered.querySelector('.js-plotly-plot');
-                    if (!cached.plotlyDiv || !cached.plotlyDiv._fullLayout) continue;
+
+                    // Non-Plotly outputs (e.g. drawing/structure): replace content
+                    if (!cached.plotlyDiv || !cached.plotlyDiv._fullLayout) {
+                        const reg2 = rappture._rendererRegistry[cached.type];
+                        if (reg2 && reg2.getTraces) continue; // Plotly not ready yet, skip
+                        const oidSources2 = group.sources || [];
+                        const first2 = oidSources2[0] && oidSources2[0].data;
+                        if (!first2) continue;
+                        const renderer2 = rappture.outputRenderers[cached.type];
+                        if (!renderer2) continue;
+                        const rendered2 = renderer2.call(rappture.outputRenderers, group.oid, first2);
+                        if (!rendered2) continue;
+                        const hdr2 = rendered2.querySelector('.rp-output-header');
+                        if (hdr2) hdr2.style.display = 'none';
+                        rendered2.style.cssText = cached.rendered.style.cssText;
+                        cached.rendered.replaceWith(rendered2);
+                        _cmpFrameCache[key] = { rendered: rendered2, type: cached.type, runMeta: cached.runMeta };
+                        continue;
+                    }
 
                     const reg = rappture._rendererRegistry[cached.type];
                     if (!reg) continue;

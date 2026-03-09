@@ -9,13 +9,58 @@
         requestAnimationFrame(fn);
     }
 
+    // CPK/Jmol element colors (standard chemistry coloring)
     const ELEMENT_COLORS = {
-        1: 0xffffff, 2: 0xd9ffff, 6: 0x909090, 7: 0x3050f8, 8: 0xff0d0d,
-        9: 0x90e050, 14: 0xf0c8a0, 15: 0xff8000, 16: 0xffff30, 17: 0x1ff01f,
-        30: 0x66ccff, // Zn -> light blue
-        31: 0xc28f8f, 32: 0x668f8f, 33: 0xbd80e3, 34: 0xffa100,
-        54: 0x2060ff, // Xe -> blue
-        70: 0x22cc66, // Yb -> green
+        1:  0xffffff, // H  - white
+        2:  0xd9ffff, // He - light cyan
+        3:  0xcc80ff, // Li - violet
+        4:  0xc2ff00, // Be - lime
+        5:  0xffb5b5, // B  - salmon
+        6:  0x909090, // C  - gray
+        7:  0x3050f8, // N  - blue
+        8:  0xff0d0d, // O  - red
+        9:  0x90e050, // F  - green
+        10: 0xb3e3f5, // Ne - light blue
+        11: 0xab5cf2, // Na - purple
+        12: 0x8aff00, // Mg - bright green
+        13: 0xbfa6a6, // Al - pinkish gray
+        14: 0xf0c8a0, // Si - tan
+        15: 0xff8000, // P  - orange
+        16: 0xffff30, // S  - yellow
+        17: 0x1ff01f, // Cl - green
+        18: 0x80d1e3, // Ar - cyan
+        19: 0x8f40d4, // K  - purple
+        20: 0x3dff00, // Ca - bright green
+        21: 0xe6e6e6, // Sc - light gray
+        22: 0xbfc2c7, // Ti - steel
+        23: 0xa6a6ab, // V  - gray
+        24: 0x8a99c7, // Cr - steel blue
+        25: 0x9c7ac7, // Mn - violet
+        26: 0xe06633, // Fe - orange-red
+        27: 0xf090a0, // Co - pink
+        28: 0x50d050, // Ni - green
+        29: 0xc88033, // Cu - copper
+        30: 0x7d80b0, // Zn - blue-gray
+        31: 0xc28f8f, // Ga
+        32: 0x668f8f, // Ge
+        33: 0xbd80e3, // As - violet
+        34: 0xffa100, // Se - orange
+        35: 0xa62929, // Br - dark red
+        36: 0x5cb8d1, // Kr - teal
+        37: 0x702eb0, // Rb - purple
+        38: 0x00ff00, // Sr - green
+        39: 0x94ffff, // Y  - cyan
+        40: 0x94e0e0, // Zr - teal
+        41: 0x73c2c9, // Nb
+        42: 0x54b5b5, // Mo - teal
+        47: 0xc0c0c0, // Ag - silver
+        48: 0xffd98f, // Cd - light gold
+        53: 0x940094, // I  - purple
+        54: 0x2060ff, // Xe - blue
+        56: 0x00c900, // Ba - green
+        79: 0xffd123, // Au - gold
+        80: 0xb8b8d0, // Hg - steel blue-gray
+        82: 0x575961, // Pb - dark gray
     };
 
     const SYMBOL_Z = {
@@ -31,10 +76,47 @@
     };
 
     const RADII = {
-        atomic: { 1: 0.53, 2: 0.31, 14: 1.11, 30: 1.35, 54: 1.08, 70: 1.94 },
-        covalent: { 1: 0.31, 2: 0.28, 14: 1.11, 30: 1.22, 54: 1.40, 70: 1.87 },
-        vdw: { 1: 1.20, 2: 1.40, 14: 2.10, 30: 1.39, 54: 2.16, 70: 2.20 },
+        atomic: {
+            1: 0.53, 2: 0.31, 3: 1.67, 4: 1.12, 5: 0.87, 6: 0.67, 7: 0.56, 8: 0.48, 9: 0.42, 10: 0.38,
+            11: 1.90, 12: 1.45, 13: 1.18, 14: 1.11, 15: 0.98, 16: 0.88, 17: 0.79, 18: 0.71,
+            19: 2.43, 20: 1.94, 26: 1.56, 27: 1.25, 28: 1.24, 29: 1.28, 30: 1.35, 35: 1.20, 53: 1.40,
+            54: 1.08, 70: 1.94,
+        },
+        covalent: {
+            1: 0.31, 2: 0.28, 3: 1.28, 4: 0.96, 5: 0.84, 6: 0.77, 7: 0.75, 8: 0.73, 9: 0.71, 10: 0.69,
+            11: 1.66, 12: 1.41, 13: 1.21, 14: 1.11, 15: 1.07, 16: 1.05, 17: 1.02, 18: 1.06,
+            19: 2.03, 20: 1.76, 26: 1.32, 27: 1.26, 28: 1.24, 29: 1.32, 30: 1.22, 35: 1.20, 53: 1.39,
+            54: 1.40, 70: 1.87,
+        },
+        vdw: {
+            1: 1.20, 2: 1.40, 3: 1.82, 4: 1.53, 5: 1.92, 6: 1.70, 7: 1.55, 8: 1.52, 9: 1.47, 10: 1.54,
+            11: 2.27, 12: 1.73, 13: 1.84, 14: 2.10, 15: 1.80, 16: 1.80, 17: 1.75, 18: 1.88,
+            19: 2.75, 20: 2.31, 26: 1.63, 27: 1.40, 28: 1.63, 29: 1.40, 30: 1.39, 35: 1.85, 53: 1.98,
+            54: 2.16, 70: 2.20,
+        },
     };
+
+    // Auto-detect bonds using covalent radii: bond if distance < (r1 + r2) * tolerance
+    function detectBonds(atoms, tolerance) {
+        const tol = tolerance || 1.3;
+        const bonds = [];
+        const cov = RADII.covalent;
+        for (let i = 0; i < atoms.length; i++) {
+            const ri = (cov[atoms[i].z] || 0.77) * tol;
+            for (let j = i + 1; j < atoms.length; j++) {
+                // Skip H-H bonds (common in polymers — produces noise)
+                if (atoms[i].z === 1 && atoms[j].z === 1) continue;
+                const rj = (cov[atoms[j].z] || 0.77) * tol;
+                const dx = atoms[i].pos.x - atoms[j].pos.x;
+                const dy = atoms[i].pos.y - atoms[j].pos.y;
+                const dz = atoms[i].pos.z - atoms[j].pos.z;
+                const dist2 = dx * dx + dy * dy + dz * dz;
+                const thresh = ri + rj;
+                if (dist2 < thresh * thresh && dist2 > 0.01) bonds.push([i, j]);
+            }
+        }
+        return bonds;
+    }
 
     function elementColor(z) {
         return ELEMENT_COLORS[z] !== undefined ? ELEMENT_COLORS[z] : 0xaaaaaa;
@@ -400,6 +482,7 @@
         const showOutline = opts.showOutline;
         const showAtomLabels = opts.showAtomLabels;
         const showEdges = opts.showEdges;
+        const autoBonds = opts.autoBonds !== false; // default true
         const representation = (opts.representation || 'ballandstick').toLowerCase();
         const radiusMode = (opts.atomRadii || 'covalent').toLowerCase();
         const colorMode = opts.colormap || 'elementDefault';
@@ -429,6 +512,8 @@
             bonds = parsed.bonds
                 .map(([a, b]) => [serialToIdx[a], serialToIdx[b]])
                 .filter(([ia, ib]) => ia !== undefined && ib !== undefined);
+            // Auto-detect bonds when none are defined in CONECT records
+            if (bonds.length === 0 && autoBonds) bonds = detectBonds(atoms);
         } else {
             const p = parsed.points;
             for (let i = 0; i < p.length / 3; i++) {
@@ -811,6 +896,7 @@
             <div class="rp-panel-section">
                 <div class="rp-panel-title">Molecule</div>
                 <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mol-show-${sid}" checked> Show Molecule</label>
+                <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mol-autobind-${sid}" checked> Auto-detect bonds</label>
                 <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mol-outline-${sid}"> Show Outline</label>
                 <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mol-labels-${sid}"> Show Atom Labels</label>
                 <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="drw-mol-edges-${sid}"> Show Edges</label>
@@ -993,6 +1079,7 @@
             showOutline: false,
             showAtomLabels: false,
             showEdges: false,
+            autoBonds: true,
             representation: 'ballandstick',
             atomRadii: 'covalent',
             colormap: 'elementDefault',
@@ -1262,6 +1349,7 @@
         const meshCmap = q(`#drw-mesh-cmap-${sid}`);
         const glyCb = q(`#drw-gly-${sid}`);
         const molShow = q(`#drw-mol-show-${sid}`);
+        const molAutoBond = q(`#drw-mol-autobind-${sid}`);
         const molOutline = q(`#drw-mol-outline-${sid}`);
         const molLabels = q(`#drw-mol-labels-${sid}`);
         const molEdges = q(`#drw-mol-edges-${sid}`);
@@ -1296,6 +1384,7 @@
 
         const pullMolUi = () => {
             ui.showMolecule = !!(molShow && molShow.checked);
+            ui.autoBonds = molAutoBond ? molAutoBond.checked : true;
             ui.showOutline = !!(molOutline && molOutline.checked);
             ui.showAtomLabels = !!(molLabels && molLabels.checked);
             ui.showEdges = !!(molEdges && molEdges.checked);

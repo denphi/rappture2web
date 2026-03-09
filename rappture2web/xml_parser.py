@@ -704,6 +704,20 @@ def _parse_output_element(elem, parent_path):
                 "vtk": (_get_text(gl_elem, "vtk") or "").strip(),
             })
         node.attrs["glyphs"] = glyphs
+    elif tag == "structure":
+        # Map structure output to drawing format so the drawing renderer handles it
+        parsed = _parse_structure_output(elem)
+        node.type = "drawing"
+        node.attrs["about"] = {
+            "label": parsed.get("label", ""),
+            "description": parsed.get("description", ""),
+            "camera": parsed.get("camera", ""),
+        }
+        node.attrs["molecules"] = parsed.get("molecules", [])
+        node.attrs["polydata"] = parsed.get("polydata", [])
+        node.attrs["glyphs"] = parsed.get("glyphs", [])
+        for ax in ("xaxis", "yaxis", "zaxis"):
+            node.attrs[ax] = parsed.get(ax, {"label": "", "units": ""})
     elif tag == "group":
         # Output groups can overlay plots
         node.children = [
@@ -935,6 +949,8 @@ def parse_run_xml(xml_path: str) -> dict:
             outputs[elem_id] = _parse_mapviewer_output(child)
         elif tag == "drawing":
             outputs[elem_id] = _parse_drawing_output(child)
+        elif tag == "structure":
+            outputs[elem_id] = _parse_structure_output(child)
         elif tag == "group":
             # Output groups contain overlaid items
             group_outputs = {}
@@ -1612,6 +1628,45 @@ def _parse_drawing_output(elem):
     }
 
 
+def _parse_structure_output(elem):
+    """Parse an output <structure> element (molecule/PDB data) into drawing format."""
+    about = elem.find("about")
+
+    def _decode_payload(text):
+        raw = (text or "").strip()
+        if not raw:
+            return ""
+        if raw.startswith("@@RP-ENC:"):
+            return _decode_rp_enc(raw).decode("utf-8", errors="replace")
+        return raw
+
+    molecules = []
+    components = elem.find("components")
+    mol_elems = components.findall("molecule") if components is not None else elem.findall("molecule")
+    for mol in mol_elems:
+        mol_about = mol.find("about")
+        molecules.append({
+            "id": mol.get("id", ""),
+            "label": _get_text(mol_about, "label") if mol_about is not None else "",
+            "style": _get_text(mol_about, "style") if mol_about is not None else "",
+            "pdb": _decode_payload(_get_text(mol, "pdb")),
+            "vtk": _decode_payload(_get_text(mol, "vtk")),
+        })
+
+    return {
+        "type": "drawing",
+        "label": _get_text(about, "label") if about is not None else "",
+        "description": _get_text(about, "description") if about is not None else "",
+        "camera": _get_text(about, "camera") if about is not None else "",
+        "molecules": molecules,
+        "polydata": [],
+        "glyphs": [],
+        "xaxis": {"label": "", "units": _get_text(elem, "units") or ""},
+        "yaxis": {"label": "", "units": ""},
+        "zaxis": {"label": "", "units": ""},
+    }
+
+
 def _parse_sequence_output(elem, mesh_registry=None):
     """Parse a <sequence> output element."""
     about = elem.find("about")
@@ -1635,6 +1690,10 @@ def _parse_sequence_output(elem, mesh_registry=None):
                     el_outputs[gc_id] = _parse_field_output(gc, mesh_registry=mesh_registry)
                 elif gc.tag == "image":
                     el_outputs[gc_id] = _parse_image_output(gc)
+                elif gc.tag == "structure":
+                    el_outputs[gc_id] = _parse_structure_output(gc)
+                elif gc.tag == "drawing":
+                    el_outputs[gc_id] = _parse_drawing_output(gc)
         elements.append({"index": idx, "outputs": el_outputs})
 
     index_elem = elem.find("index")
