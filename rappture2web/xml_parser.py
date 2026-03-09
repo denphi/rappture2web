@@ -1615,6 +1615,7 @@ def _parse_drawing_output(elem):
 def _parse_sequence_output(elem, mesh_registry=None):
     """Parse a <sequence> output element."""
     about = elem.find("about")
+    seq_label = _get_text(about, "label") if about is not None else (elem.get("id", "sequence"))
     # Sequences contain multiple elements at different indices
     elements = []
     for child in elem.findall("element"):
@@ -1625,7 +1626,11 @@ def _parse_sequence_output(elem, mesh_registry=None):
             if gc.tag in OUTPUT_TYPES:
                 gc_id = gc.get("id", gc.tag)
                 if gc.tag == "curve":
-                    el_outputs[gc_id] = _parse_curve_output(gc)
+                    parsed = _parse_curve_output(gc)
+                    # Force all curves in a sequence element onto one shared plot
+                    # by overriding the group to the sequence label.
+                    parsed["group"] = seq_label
+                    el_outputs[gc_id] = parsed
                 elif gc.tag == "field":
                     el_outputs[gc_id] = _parse_field_output(gc, mesh_registry=mesh_registry)
                 elif gc.tag == "image":
