@@ -142,7 +142,23 @@ def _fill_defaults_in_tree(root) -> None:
             current_el = ET.SubElement(elem, "current")
         # Only fill in if truly empty AND has no child elements
         # (a <current> with children belongs to a structure block)
-        if (current_el.text or "").strip() or len(current_el) > 0:
+        if len(current_el) > 0:
+            continue
+        current_text = (current_el.text or "").strip()
+        # For number elements, treat bare "0" as an uninitialized placeholder
+        # when the default is a non-zero numeric value. This matches the original
+        # Rappture behavior where tool.xml often uses <current>0</current> as a
+        # "not yet set" sentinel. User-submitted zeros always carry units (e.g.
+        # "0nm") so this only triggers on template placeholders.
+        if current_text and elem.tag == "number":
+            import re as _re
+            if _re.fullmatch(r'[+-]?0+\.?0*([eE][+-]?\d+)?', current_text):
+                default_text = default_el.text.strip()
+                # Check if default is numerically non-zero
+                m = _re.match(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?', default_text)
+                if m and float(m.group(0)) != 0.0:
+                    current_text = ""  # treat as unset; fall through to use default
+        if current_text:
             continue
         value = default_el.text.strip()
         # For number elements, append units if the default is a bare number
