@@ -305,16 +305,14 @@ rappture._registerRenderer('sequence', {
         framesHost.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;';
         body.appendChild(framesHost);
 
-        const renderSeqCompareFrame = (frameIdx) => {
-            slider.value = frameIdx;
-            cPrev.disabled = frameIdx === 0;
-            cNext.disabled = frameIdx === maxFrames - 1;
-            lbl.textContent = indexLabel + ' ' + (frameIdx + 1) + ' / ' + maxFrames;
-            framesHost.innerHTML = '';
+        // Cache of rendered items keyed by output key, same pattern as single-run mode.
+        // Map: key -> { rendered, type, plotlyDiv }
+        const _cmpFrameCache = {};
 
-            // Build ordered output groups for this frame and collect per-run sources.
+        // Helper: build ordered output groups for a given frame index
+        const _buildFrameGroups = (frameIdx) => {
             const order = [];
-            const byOutput = new Map(); // key -> { oid, sources: [{run, data}, ...] }
+            const byOutput = new Map();
             sources.forEach(({ run, data }) => {
                 const elems = data.elements || [];
                 const el = elems[Math.min(frameIdx, elems.length - 1)];
@@ -323,60 +321,111 @@ rappture._registerRenderer('sequence', {
                 for (let entryIdx = 0; entryIdx < cmpEntries.length; entryIdx++) {
                     const [oid, odata] = cmpEntries[entryIdx];
                     const t = String((odata && odata.type) || '');
-                    // For field outputs, group by label (or per-frame position fallback)
-                    // so runs with different generated field ids still overlay together.
                     const key = (t === 'field' || t.startsWith('field_'))
                         ? (odata && odata.label ? `__fieldlbl__${odata.label}` : `__fieldpos__${entryIdx}`)
                         : oid;
-                    if (!byOutput.has(key)) {
-                        byOutput.set(key, { oid, sources: [] });
-                        order.push(key);
-                    }
+                    if (!byOutput.has(key)) { byOutput.set(key, { oid, sources: [] }); order.push(key); }
                     byOutput.get(key).sources.push({ run, data: odata });
                 }
             });
+            return { order, byOutput };
+        };
 
-            for (const key of order) {
-                const group = byOutput.get(key);
-                if (!group) continue;
-                const oid = group.oid;
-                const oidSources = group.sources || [];
-                if (oidSources.length === 0) continue;
-                const first = oidSources[0].data;
-                const type = first.type;
-                let rendered = null;
+        const renderSeqCompareFrame = (frameIdx) => {
+            slider.value = frameIdx;
+            cPrev.disabled = frameIdx === 0;
+            cNext.disabled = frameIdx === maxFrames - 1;
+            lbl.textContent = indexLabel + ' ' + (frameIdx + 1) + ' / ' + maxFrames;
 
-                const regEntry = rappture._rendererRegistry[type];
-                if (regEntry && typeof regEntry.compare === 'function' && oidSources.length > 1) {
-                    const compared = regEntry.compare.call(rappture, oidSources, oid);
-                    rendered = compared && (compared.elem || compared);
-                }
-                // Field subtypes (field_2d/field_3d/...) do not define compare handlers.
-                // Route them through the main 'field' compare so runs overlay in one plot
-                // with selected run colors and first-run emphasis.
-                if (!rendered && oidSources.length > 1 && type.startsWith('field_')) {
-                    const fieldSources = oidSources.map(s => ({
-                        run: s.run,
-                        data: { ...s.data, type: 'field' },
-                    }));
-                    const fieldReg = rappture._rendererRegistry.field;
-                    if (fieldReg && typeof fieldReg.compare === 'function') {
-                        const compared = fieldReg.compare.call(rappture, fieldSources, oid);
+            const { order, byOutput } = _buildFrameGroups(frameIdx);
+
+            if (Object.keys(_cmpFrameCache).length === 0) {
+                // First render: build DOM and cache
+                framesHost.innerHTML = '';
+                for (const key of order) {
+                    const group = byOutput.get(key);
+                    if (!group) continue;
+                    const oid = group.oid;
+                    const oidSources = group.sources || [];
+                    if (oidSources.length === 0) continue;
+                    const first = oidSources[0].data;
+                    const type = first.type;
+                    let rendered = null;
+
+                    const regEntry = rappture._rendererRegistry[type];
+                    if (regEntry && typeof regEntry.compare === 'function' && oidSources.length > 1) {
+                        const compared = regEntry.compare.call(rappture, oidSources, oid);
                         rendered = compared && (compared.elem || compared);
                     }
-                }
-                if (!rendered) {
-                    const renderer = rappture.outputRenderers[type];
-                    if (renderer) {
-                        rendered = renderer.call(rappture.outputRenderers, oid, first);
+                    if (!rendered && oidSources.length > 1 && type.startsWith('field_')) {
+                        const fieldSources = oidSources.map(s => ({ run: s.run, data: { ...s.data, type: 'field' } }));
+                        const fieldReg = rappture._rendererRegistry.field;
+                        if (fieldReg && typeof fieldReg.compare === 'function') {
+                            const compared = fieldReg.compare.call(rappture, fieldSources, oid);
+                            rendered = compared && (compared.elem || compared);
+                        }
                     }
-                }
-                if (!rendered) continue;
+                    if (!rendered) {
+                        const renderer = rappture.outputRenderers[type];
+                        if (renderer) rendered = renderer.call(rappture.outputRenderers, oid, first);
+                    }
+                    if (!rendered) continue;
 
-                const hdr = rendered.querySelector('.rp-output-header');
-                if (hdr) hdr.style.display = 'none';
-                rendered.style.cssText = 'width:100%;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
-                framesHost.appendChild(rendered);
+                    const hdr = rendered.querySelector('.rp-output-header');
+                    if (hdr) hdr.style.display = 'none';
+                    rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;overflow:hidden;';
+                    framesHost.appendChild(rendered);
+                    _cmpFrameCache[key] = { rendered, type };
+
+                    // Poll for plotly div to cache reference
+                    let _pc = 0;
+                    const _poll = () => {
+                        const pd = rendered.querySelector('.js-plotly-plot');
+                        if (pd && pd._fullLayout) { _cmpFrameCache[key].plotlyDiv = pd; }
+                        else if (_pc++ < 40) { setTimeout(_poll, 50); }
+                    };
+                    setTimeout(_poll, 50);
+                }
+            } else {
+                // Subsequent frames: update Plotly plots in-place, preserving layout
+                for (const key of order) {
+                    const cached = _cmpFrameCache[key];
+                    if (!cached) continue;
+                    const group = byOutput.get(key);
+                    if (!group) continue;
+                    const oidSources = group.sources || [];
+                    if (oidSources.length === 0) continue;
+
+                    if (!cached.plotlyDiv) cached.plotlyDiv = cached.rendered.querySelector('.js-plotly-plot');
+                    if (!cached.plotlyDiv || !cached.plotlyDiv._fullLayout) continue;
+
+                    const reg = rappture._rendererRegistry[cached.type];
+                    if (!reg) continue;
+
+                    // Build combined traces from all sources (mirrors compare() logic)
+                    let newTraces = [];
+                    if (reg.getTraces) {
+                        oidSources.forEach(({ run, data: odata }) => {
+                            odata._runColor = run._color || null;
+                            odata._runLabel = run.label;
+                            newTraces = newTraces.concat(reg.getTraces(odata));
+                        });
+                    }
+                    if (newTraces.length === 0) continue;
+
+                    const fl = cached.plotlyDiv._fullLayout;
+                    const nextLayout = {
+                        title: { text: fl.title && fl.title.text || '' },
+                        xaxis: { title: { text: fl.xaxis && fl.xaxis.title && fl.xaxis.title.text || '' }, type: fl.xaxis && fl.xaxis.type || 'linear', showgrid: fl.xaxis && fl.xaxis.showgrid !== false },
+                        yaxis: { title: { text: fl.yaxis && fl.yaxis.title && fl.yaxis.title.text || '' }, type: fl.yaxis && fl.yaxis.type || 'linear', showgrid: fl.yaxis && fl.yaxis.showgrid !== false },
+                        showlegend: fl.showlegend !== false,
+                        legend: fl.legend ? { x: fl.legend.x, y: fl.legend.y, xanchor: fl.legend.xanchor, yanchor: fl.legend.yanchor, bgcolor: fl.legend.bgcolor, bordercolor: fl.legend.bordercolor, borderwidth: fl.legend.borderwidth } : undefined,
+                        margin: fl.margin ? { t: fl.margin.t, r: fl.margin.r, b: fl.margin.b, l: fl.margin.l } : undefined,
+                        template: fl.template,
+                        autosize: true,
+                    };
+                    Plotly.react(cached.plotlyDiv, newTraces, nextLayout);
+                }
             }
 
             if (frameIdx >= maxFrames - 1) _cStop();
