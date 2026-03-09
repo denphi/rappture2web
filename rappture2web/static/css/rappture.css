@@ -1353,7 +1353,7 @@ body {
     flex-direction: column;
     gap: 6px;
     flex-shrink: 0;
-    padding-bottom: 8px;
+    padding: 8px 14px;
 }
 .rp-seq-top-row {
     display: flex;

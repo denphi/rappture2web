@@ -12,7 +12,7 @@ rappture._registerRenderer('sequence', {
         const item = rappture.createOutputItem((data.about && data.about.label) || data.label || id, 'sequence');
         item.classList.add('rp-output-plot-item');
         const body = item.querySelector('.rp-output-body');
-        body.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;padding:0;gap:0;overflow:hidden;';
+        body.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;padding:0;overflow:hidden;';
         if (!data.elements || data.elements.length === 0) {
             body.textContent = 'No sequence data';
             return item;
@@ -260,7 +260,7 @@ rappture._registerRenderer('sequence', {
         const item = rappture.createOutputItem(seqLabel, 'sequence');
         item.classList.add('rp-output-plot-item');
         const body = item.querySelector('.rp-output-body');
-        body.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;padding:0;gap:0;overflow:hidden;';
+        body.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;padding:0;overflow:hidden;';
         const icons = rappture._rpUtils.icons;
 
         const maxFrames = Math.max(...sources.map(s => (s.data.elements || []).length));
