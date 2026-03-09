@@ -341,17 +341,21 @@ def parse_structure_input(elem, node, parent_path):
         if fields_elem is not None:
             for field in fields_elem.findall("field"):
                 about = field.find("about")
-                comp = field.find("component")
-                
-                fields.append({
-                    "id": field.get("id", ""),
-                    "label": _get_text(about, "label") if about is not None else "",
-                    "color": _get_text(about, "color") if about is not None else "",
-                    "scale": _get_text(about, "scale") if about is not None else "",
-                    "units": _get_text(field, "units"),
-                    "constant": _get_text(comp, "constant") if comp is not None else "",
-                    "domain": _get_text(comp, "domain") if comp is not None else ""
-                })
+                field_label = _get_text(about, "label") if about is not None else ""
+                field_color = _get_text(about, "color") if about is not None else ""
+                field_scale = _get_text(about, "scale") if about is not None else ""
+                field_units = _get_text(field, "units")
+                field_id = field.get("id", "")
+                for comp in field.findall("component"):
+                    fields.append({
+                        "id": field_id,
+                        "label": field_label,
+                        "color": field_color,
+                        "scale": field_scale,
+                        "units": field_units,
+                        "constant": _get_text(comp, "constant"),
+                        "domain": _get_text(comp, "domain")
+                    })
 
     # ── Flat direct-child pattern (mosfet.xml style) ─────────────────────────
     # <structure> may have number/integer elements as direct children that carry
@@ -400,16 +404,21 @@ def parse_structure_input(elem, node, parent_path):
             if fields_elem is not None:
                 for field in fields_elem.findall("field"):
                     about = field.find("about")
-                    comp = field.find("component")
-                    fields.append({
-                        "id": field.get("id", ""),
-                        "label": _get_text(about, "label") if about is not None else "",
-                        "color": _get_text(about, "color") if about is not None else "",
-                        "scale": _get_text(about, "scale") if about is not None else "",
-                        "units": _get_text(field, "units"),
-                        "constant": _get_text(comp, "constant") if comp is not None else "",
-                        "domain": _get_text(comp, "domain") if comp is not None else ""
-                    })
+                    field_label = _get_text(about, "label") if about is not None else ""
+                    field_color = _get_text(about, "color") if about is not None else ""
+                    field_scale = _get_text(about, "scale") if about is not None else ""
+                    field_units = _get_text(field, "units")
+                    field_id = field.get("id", "")
+                    for comp in field.findall("component"):
+                        fields.append({
+                            "id": field_id,
+                            "label": field_label,
+                            "color": field_color,
+                            "scale": field_scale,
+                            "units": field_units,
+                            "constant": _get_text(comp, "constant"),
+                            "domain": _get_text(comp, "domain")
+                        })
 
         curr_params = curr.find("parameters")
         if curr_params is not None:
