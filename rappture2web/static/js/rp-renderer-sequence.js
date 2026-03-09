@@ -375,7 +375,9 @@ rappture._registerRenderer('sequence', {
                     if (hdr) hdr.style.display = 'none';
                     rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;overflow:hidden;';
                     framesHost.appendChild(rendered);
-                    _cmpFrameCache[key] = { rendered, type };
+                    // Store run color/label mapping keyed by source index for subsequent frames
+                    const runMeta = oidSources.map(({ run }, si) => ({ color: run._color || null, label: run.label, isTop: si === 0 }));
+                    _cmpFrameCache[key] = { rendered, type, runMeta };
 
                     // Poll for plotly div to cache reference
                     let _pc = 0;
@@ -402,18 +404,19 @@ rappture._registerRenderer('sequence', {
                     const reg = rappture._rendererRegistry[cached.type];
                     if (!reg) continue;
 
-                    // Build combined traces mirroring compare() — set _runColor/_runLabel so getTraces applies colors
+                    // Build combined traces using cached run colors (set at first render, always valid)
+                    const runMeta = cached.runMeta || [];
                     let newTraces = [];
                     if (reg.getTraces) {
-                        oidSources.forEach(({ run, data: odata }, si) => {
-                            const isTop = si === 0;
-                            odata._runColor = run._color || null;
-                            odata._runLabel = run.label;
+                        oidSources.forEach(({ data: odata }, si) => {
+                            const meta = runMeta[si] || {};
+                            odata._runColor = meta.color || null;
+                            odata._runLabel = meta.label || '';
                             const baseTraces = reg.getTraces(odata);
                             baseTraces.forEach(t => {
                                 newTraces.push(Object.assign({}, t, {
-                                    line: t.line ? Object.assign({}, t.line, { width: isTop ? 3 : 1.5 }) : { width: isTop ? 3 : 1.5 },
-                                    opacity: isTop ? 1 : 0.75,
+                                    line: t.line ? Object.assign({}, t.line, { width: meta.isTop ? 3 : 1.5 }) : { width: meta.isTop ? 3 : 1.5 },
+                                    opacity: meta.isTop ? 1 : 0.75,
                                 }));
                             });
                         });
