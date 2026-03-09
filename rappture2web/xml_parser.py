@@ -557,6 +557,22 @@ def _parse_input_element(elem, parent_path):
         current=_get_text(elem, "current"),
     )
 
+    # For number elements: if <current> is a zero placeholder (bare "0" or
+    # "0<units>") but <default> is a non-zero value, use the default so the
+    # UI shows the correct initial value instead of the tool.xml sentinel.
+    if tag == "number" and node.current and node.default:
+        import re as _re
+        m_num = _re.match(r'^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\S*$', node.current.strip())
+        if m_num:
+            try:
+                cur_val = float(m_num.group(1))
+            except ValueError:
+                cur_val = None
+            if cur_val == 0.0:
+                m_def = _re.match(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?', node.default.strip())
+                if m_def and float(m_def.group(0)) != 0.0:
+                    node.current = node.default
+
     # Parse type-specific attributes
     if tag in TYPE_PARSERS:
         if tag == "structure":
