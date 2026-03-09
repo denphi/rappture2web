@@ -3,12 +3,13 @@
     {% if widget.label %}
     <label class="rp-label" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">{{ widget.label }}</label>
     {% endif %}
+    {% set _img_data = (widget.current if widget.current and widget.current.strip() else widget.default) %}
     <div class="rp-image-display" id="img-preview-{{ widget.path | replace('.', '-') }}" style="margin-bottom:4px">
-        {% if widget.default and widget.default.strip() %}
-        <img src="{{ to_data_uri(widget.default) }}" alt="{{ widget.label }}" style="max-width:100%;max-height:200px;display:block">
+        {% if _img_data and _img_data.strip() %}
+        <img src="{{ to_data_uri(_img_data) }}" alt="{{ widget.label }}" style="max-width:100%;max-height:200px;display:block">
         {% endif %}
     </div>
     {# Hidden field carries the encoded image data; populated by loader or previewImage #}
     <input type="hidden" class="rp-image-data rp-input"
-           value="{% if widget.default and widget.default.strip() %}{{ widget.default }}{% endif %}">
+           value="{% if _img_data and _img_data.strip() %}{{ _img_data }}{% endif %}">
 </div>
