@@ -92,6 +92,10 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
     for path, value in input_values.items():
         _set_xml_value(root, path, str(value))
 
+    # Apply loader default examples for any <loader> whose target <structure>
+    # has not already been set by input_values (i.e. user didn't supply it).
+    _apply_loader_defaults(root, tool_xml_path, input_values)
+
     # Ensure any <current> that is still empty/missing gets its <default> value
     # (handles disabled widgets like workf that collectInputs skips).
     _fill_defaults_in_tree(root)
@@ -114,6 +118,104 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
     driver_path = tmp.name
     tree.write(driver_path, encoding="unicode", xml_declaration=True)
     return driver_path
+
+
+def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None:
+    """For each <loader> in the input tree, if its default example file exists
+    and the corresponding <structure> target has not been supplied by the user,
+    load the example XML and replace the <structure> element wholesale.
+
+    This mirrors what the frontend does when a loader is pre-selected: it calls
+    _applyExampleXml which sends '@@RP-XML:<structure>...</structure>' for the
+    structure path.  Without this, driver.xml is missing all structure parameters
+    (geometry, doping, etc.) that the binary tool reads at runtime.
+    """
+    import glob as _glob
+    from pathlib import Path as _Path
+
+    input_elem = root.find("input")
+    if input_elem is None:
+        return
+
+    tool_dir = _Path(tool_xml_path).parent
+
+    # Build the set of structure paths already set by the user
+    user_structure_paths = {p for p in input_values if "structure" in p.lower()}
+
+    for loader_elem in input_elem.iter("loader"):
+        default_el = loader_elem.find("default")
+        if default_el is None or not (default_el.text or "").strip():
+            continue
+        default_file = default_el.text.strip()
+
+        # Find where the loader's <current> should go and what path it maps to.
+        # Also find the sibling <structure> element the loader will populate.
+        # We need to locate the example file on disk.
+        example_elem = loader_elem.find("example")
+        pattern = (example_elem.text.strip() if example_elem is not None and example_elem.text else "*.xml")
+        pattern_parent = str(_Path(pattern).parent)
+        if pattern_parent and pattern_parent != ".":
+            candidate = tool_dir / pattern_parent
+            search_dir = candidate if candidate.is_dir() else tool_dir
+        elif (tool_dir / "examples").is_dir():
+            search_dir = tool_dir / "examples"
+        else:
+            search_dir = tool_dir
+
+        example_path = search_dir / default_file
+        if not example_path.exists():
+            continue
+
+        # Parse the example XML
+        try:
+            ex_tree = ET.parse(str(example_path))
+        except Exception:
+            continue
+        ex_root = ex_tree.getroot()
+
+        # Find all <structure> elements inside the example's <input>
+        ex_input = ex_root.find("input")
+        if ex_input is None:
+            # The file itself may be just a run fragment starting with input's children
+            ex_input = ex_root
+
+        # Walk the example input and find structure elements; apply each to driver
+        # if not already supplied by the user.
+        for ex_struct in ex_input.iter("structure"):
+            # Build the Rappture path for this structure element by walking up.
+            # We'll find the matching structure in root by the same id.
+            struct_id = ex_struct.get("id")
+
+            # Search for this structure in the driver root by id
+            for driver_struct in root.iter("structure"):
+                if struct_id and driver_struct.get("id") != struct_id:
+                    continue
+                # Check if user already provided this structure
+                # (Approximate: build path for driver_struct and check)
+                already_set = any("structure" in p for p in user_structure_paths)
+                if already_set:
+                    break
+
+                # Replace the driver structure with the example structure wholesale
+                parent = _find_parent(root, driver_struct)
+                if parent is None:
+                    break
+                idx = list(parent).index(driver_struct)
+                parent.remove(driver_struct)
+                # Deep copy the example structure element
+                import copy as _copy
+                new_struct = _copy.deepcopy(ex_struct)
+                parent.insert(idx, new_struct)
+                break
+
+
+def _find_parent(root, target):
+    """Return the parent element of target in the tree rooted at root."""
+    for elem in root.iter():
+        for child in elem:
+            if child is target:
+                return elem
+    return None
 
 
 def _fill_defaults_in_tree(root) -> None:
@@ -164,6 +266,10 @@ def _fill_defaults_in_tree(root) -> None:
         # For number elements, append units if the default is a bare number
         if elem.tag == "number":
             value = _append_units_if_needed(elem, value)
+        # For choice elements, the <default> may be a label; resolve to the
+        # corresponding <value> so the binary receives the internal value.
+        elif elem.tag == "choice":
+            value = _resolve_choice_value(elem, value)
         current_el.text = value
 
     # Second pass: for each <structure>, mirror its flat direct-child parameters
@@ -268,6 +374,27 @@ def _walk_path(root, parts, create_missing=False):
                 found.set("id", elem_id)
         elem = found
     return elem
+
+
+def _resolve_choice_value(elem, label_or_value: str) -> str:
+    """For a <choice> element, resolve a label to its corresponding <value>.
+
+    Rappture tool.xml often stores the display label in <default> rather than
+    the internal value.  This function looks up the matching <option> and
+    returns the <value> text if found, otherwise returns label_or_value as-is.
+    """
+    candidate = label_or_value.strip()
+    for option in elem.findall("option"):
+        val_el = option.find("value")
+        if val_el is not None and val_el.text and val_el.text.strip() == candidate:
+            return candidate  # already a value
+        about = option.find("about")
+        if about is not None:
+            lbl_el = about.find("label")
+            if lbl_el is not None and lbl_el.text and lbl_el.text.strip() == candidate:
+                if val_el is not None and val_el.text:
+                    return val_el.text.strip()
+    return candidate
 
 
 def _append_units_if_needed(elem, value: str) -> str:
