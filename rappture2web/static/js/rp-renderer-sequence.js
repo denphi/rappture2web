@@ -414,9 +414,15 @@ rappture._registerRenderer('sequence', {
                             odata._runLabel = meta.label || '';
                             const baseTraces = reg.getTraces(odata);
                             baseTraces.forEach(t => {
+                                const isSep = t.showlegend === false && t.name === '';
+                                const runColor = meta.color || null;
+                                const lineColor = isSep ? (t.line && t.line.color) : runColor;
                                 newTraces.push(Object.assign({}, t, {
-                                    line: t.line ? Object.assign({}, t.line, { width: meta.isTop ? 3 : 1.5 }) : { width: meta.isTop ? 3 : 1.5 },
-                                    opacity: meta.isTop ? 1 : 0.75,
+                                    line: t.line
+                                        ? Object.assign({}, t.line, { width: isSep ? t.line.width : (meta.isTop ? 3 : 1.5), ...(lineColor ? { color: lineColor } : {}) })
+                                        : { width: meta.isTop ? 3 : 1.5, ...(runColor ? { color: runColor } : {}) },
+                                    ...(!isSep && runColor ? { marker: { color: runColor } } : {}),
+                                    opacity: isSep ? 1 : (meta.isTop ? 1 : 0.75),
                                 }));
                             });
                         });
