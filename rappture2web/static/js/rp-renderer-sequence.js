@@ -196,13 +196,21 @@ rappture._registerRenderer('sequence', {
                         if (cached.plotlyDiv && cached.plotlyDiv._fullLayout) {
                             const yr = _globalYRange[entryIdx];
                             const newTraces = reg.getTraces(odata);
-                            // Use current layout so user-applied changes (labels, log scale, etc.) persist
-                            const currentLayout = cached.plotlyDiv.layout || {};
-                            const nextLayout = Object.assign({}, currentLayout);
+                            // Snapshot the live layout (reflects all relayout/applyLayout changes)
+                            const fl = cached.plotlyDiv._fullLayout;
+                            const nextLayout = {
+                                title: { text: fl.title && fl.title.text || '' },
+                                xaxis: { title: { text: fl.xaxis && fl.xaxis.title && fl.xaxis.title.text || '' }, type: fl.xaxis && fl.xaxis.type || 'linear', showgrid: fl.xaxis && fl.xaxis.showgrid !== false },
+                                yaxis: { title: { text: fl.yaxis && fl.yaxis.title && fl.yaxis.title.text || '' }, type: fl.yaxis && fl.yaxis.type || 'linear', showgrid: fl.yaxis && fl.yaxis.showgrid !== false },
+                                showlegend: fl.showlegend !== false,
+                                legend: fl.legend ? { x: fl.legend.x, y: fl.legend.y, xanchor: fl.legend.xanchor, yanchor: fl.legend.yanchor, bgcolor: fl.legend.bgcolor, bordercolor: fl.legend.bordercolor, borderwidth: fl.legend.borderwidth } : undefined,
+                                margin: fl.margin ? { t: fl.margin.t, r: fl.margin.r, b: fl.margin.b, l: fl.margin.l } : undefined,
+                                template: fl.template,
+                                autosize: true,
+                            };
                             if (lockYChk && lockYChk.checked && yr) {
-                                nextLayout.yaxis = Object.assign({}, currentLayout.yaxis, { range: yr, autorange: false });
-                            } else {
-                                nextLayout.yaxis = Object.assign({}, currentLayout.yaxis, { autorange: true });
+                                nextLayout.yaxis.range = yr;
+                                nextLayout.yaxis.autorange = false;
                             }
                             Plotly.react(cached.plotlyDiv, newTraces, nextLayout);
                         }
