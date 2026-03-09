@@ -266,9 +266,20 @@ const rappture = {
                 const cached = msg.cached ? ' (cached)' : '';
                 const runLabel = msg.run_num ? ` Run #${msg.run_num}` : '';
                 this._setStatus(`Complete${runLabel}${cached}`, msg.status === 'success' ? 'success' : 'error');
-                this._preferFirstOutputOnNextRender = true;
-                // Refresh run history and auto-select newest run
-                this._fetchRunHistory(true);
+                if (msg.status !== 'success' && msg.log) {
+                    const container = document.getElementById('rp-results');
+                    if (container) container.innerHTML = `<div class="rp-results-placeholder" style="color:#b91c1c;text-align:left;padding:16px;"><strong>Simulation error</strong><pre style="margin-top:8px;white-space:pre-wrap;font-size:12px;">${msg.log}</pre></div>`;
+                    // Refresh history without auto-selecting (no run was recorded)
+                    this._fetchRunHistory(false);
+                } else if (msg.status === 'success' && msg.outputs && Object.keys(msg.outputs).length > 0) {
+                    // Render outputs immediately from the WS message — don't wait for history fetch
+                    this.renderOutputs(msg.outputs, msg.log || '');
+                    this._preferFirstOutputOnNextRender = false;
+                    this._fetchRunHistory(true);
+                } else {
+                    this._preferFirstOutputOnNextRender = true;
+                    this._fetchRunHistory(true);
+                }
                 break;
         }
     },
@@ -369,6 +380,125 @@ const rappture = {
             if (paramsDiv) paramsDiv.style.display = '';
             if (uniformDiv) uniformDiv.style.display = val === 'uniform' ? '' : 'none';
             if (gaussianDiv) gaussianDiv.style.display = val === 'gaussian' ? '' : 'none';
+            // Set a sensible default std on first switch to gaussian (10% of range, or 10% of mean)
+            if (val === 'gaussian') {
+                const stdInput = widget.querySelector('.rp-uq-std');
+                if (stdInput && !stdInput.value) {
+                    const wMin = parseFloat(widget.dataset.min);
+                    const wMax = parseFloat(widget.dataset.max);
+                    const meanInput = widget.querySelector('.rp-uq-mean');
+                    const mean = meanInput ? parseFloat(meanInput.value) : NaN;
+                    let defaultStd = NaN;
+                    if (!isNaN(wMin) && !isNaN(wMax) && wMax > wMin) {
+                        defaultStd = (wMax - wMin) * 0.1;
+                    } else if (!isNaN(mean) && mean !== 0) {
+                        defaultStd = Math.abs(mean) * 0.1;
+                    }
+                    if (!isNaN(defaultStd) && defaultStd > 0) stdInput.value = parseFloat(defaultStd.toPrecision(3));
+                }
+            }
+            // Wire input events on first activation (once flag)
+            if (!paramsDiv._uqWired) {
+                paramsDiv._uqWired = true;
+                paramsDiv.querySelectorAll('.rp-uq-input').forEach(inp => {
+                    inp.addEventListener('input', () => this._drawUqPreview(widget));
+                });
+            }
+            this._drawUqPreview(widget);
+        }
+    },
+
+    _drawUqPreview(widget) {
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = widget.querySelector('.rp-uq-preview');
+        if (!svg) return;
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+        const W = 120, H = 48, padX = 10, padY = 6;
+        const plotW = W - 2 * padX, plotH = H - 2 * padY;
+
+        const distSelect = widget.querySelector('.rp-uq-dist-select');
+        const dist = distSelect ? distSelect.value : 'exact';
+
+        const mk = (tag, attrs) => {
+            const el = document.createElementNS(NS, tag);
+            Object.entries(attrs || {}).forEach(([k, v]) => el.setAttribute(k, v));
+            return el;
+        };
+
+        // background
+        svg.appendChild(mk('rect', { x: 0, y: 0, width: W, height: H, fill: '#f8fafc' }));
+        // axes
+        svg.appendChild(mk('line', { x1: padX, y1: H - padY, x2: W - padX, y2: H - padY, stroke: '#94a3b8', 'stroke-width': 1 }));
+        svg.appendChild(mk('line', { x1: padX, y1: padY, x2: padX, y2: H - padY, stroke: '#94a3b8', 'stroke-width': 1 }));
+
+        if (dist === 'uniform') {
+            const mn = parseFloat(widget.querySelector('.rp-uq-min')?.value);
+            const mx = parseFloat(widget.querySelector('.rp-uq-max')?.value);
+            if (isNaN(mn) || isNaN(mx) || mx <= mn) {
+                const t = mk('text', { x: W / 2, y: H / 2 + 4, 'text-anchor': 'middle', 'font-size': 9, fill: '#94a3b8' });
+                t.textContent = 'set min & max';
+                svg.appendChild(t);
+                return;
+            }
+            // flat rectangle filling plot area
+            const rx = padX, rw = plotW, ry = padY + plotH * 0.15, rh = plotH * 0.7;
+            svg.appendChild(mk('rect', { x: rx, y: ry, width: rw, height: rh, fill: '#3b82f680', stroke: '#3b82f6', 'stroke-width': 1 }));
+            // min/max tick labels
+            const fmt = v => Math.abs(v) >= 1e4 || (Math.abs(v) > 0 && Math.abs(v) < 0.01) ? v.toExponential(1) : parseFloat(v.toPrecision(4));
+            const tMin = mk('text', { x: padX, y: H - 1, 'text-anchor': 'middle', 'font-size': 8, fill: '#475569' });
+            tMin.textContent = fmt(mn);
+            const tMax = mk('text', { x: W - padX, y: H - 1, 'text-anchor': 'middle', 'font-size': 8, fill: '#475569' });
+            tMax.textContent = fmt(mx);
+            svg.appendChild(tMin);
+            svg.appendChild(tMax);
+
+        } else if (dist === 'gaussian') {
+            const mean = parseFloat(widget.querySelector('.rp-uq-mean')?.value);
+            const std = parseFloat(widget.querySelector('.rp-uq-std')?.value);
+            if (isNaN(mean) || isNaN(std) || std <= 0) {
+                const t = mk('text', { x: W / 2, y: H / 2 + 4, 'text-anchor': 'middle', 'font-size': 9, fill: '#94a3b8' });
+                t.textContent = 'set mean & std';
+                svg.appendChild(t);
+                return;
+            }
+            const gminRaw = parseFloat(widget.querySelector('.rp-uq-g-min')?.value);
+            const gmaxRaw = parseFloat(widget.querySelector('.rp-uq-g-max')?.value);
+            const gmin = isNaN(gminRaw) ? mean - 3 * std : gminRaw;
+            const gmax = isNaN(gmaxRaw) ? mean + 3 * std : gmaxRaw;
+            const xRange = gmax - gmin || 1;
+            const gauss = x => Math.exp(-0.5 * ((x - mean) / std) ** 2);
+            // sample points
+            const N = 60;
+            const pts = [];
+            for (let i = 0; i <= N; i++) {
+                const xv = gmin + (xRange * i) / N;
+                pts.push([xv, gauss(xv)]);
+            }
+            const maxY = Math.max(...pts.map(p => p[1]));
+            const toSx = xv => padX + ((xv - gmin) / xRange) * plotW;
+            const toSy = yv => (H - padY) - (yv / maxY) * plotH * 0.85;
+            // fill area
+            let d = `M ${toSx(pts[0][0])} ${H - padY}`;
+            pts.forEach(([xv, yv]) => { d += ` L ${toSx(xv)} ${toSy(yv)}`; });
+            d += ` L ${toSx(pts[N][0])} ${H - padY} Z`;
+            svg.appendChild(mk('path', { d, fill: '#3b82f640', stroke: 'none' }));
+            // curve
+            let dl = `M ${toSx(pts[0][0])} ${toSy(pts[0][1])}`;
+            pts.slice(1).forEach(([xv, yv]) => { dl += ` L ${toSx(xv)} ${toSy(yv)}`; });
+            svg.appendChild(mk('path', { d: dl, fill: 'none', stroke: '#3b82f6', 'stroke-width': 1.5 }));
+            // truncation markers
+            const fmt = v => Math.abs(v) >= 1e4 || (Math.abs(v) > 0 && Math.abs(v) < 0.01) ? v.toExponential(1) : parseFloat(v.toPrecision(4));
+            [[gmin, 'start'], [gmax, 'end']].forEach(([xv, anchor]) => {
+                const sx = toSx(xv);
+                svg.appendChild(mk('line', { x1: sx, y1: padY, x2: sx, y2: H - padY, stroke: '#f59e0b', 'stroke-width': 1, 'stroke-dasharray': '2,2' }));
+                const t = mk('text', { x: sx, y: H - 1, 'text-anchor': anchor === 'start' ? 'start' : 'end', 'font-size': 8, fill: '#475569' });
+                t.textContent = fmt(xv);
+                svg.appendChild(t);
+            });
+            // mean marker
+            const mx = toSx(mean);
+            svg.appendChild(mk('line', { x1: mx, y1: padY, x2: mx, y2: H - padY, stroke: '#10b981', 'stroke-width': 1, 'stroke-dasharray': '3,2' }));
         }
     },
 
@@ -479,14 +609,19 @@ const rappture = {
                 fields.length = 0;
                 fieldsElem.querySelectorAll(':scope > field').forEach(f => {
                     const about = f.querySelector(':scope > about');
-                    const comp = f.querySelector(':scope > component');
-                    fields.push({
-                        label: about?.querySelector('label')?.textContent?.trim() || '',
-                        color: about?.querySelector('color')?.textContent?.trim() || '',
-                        scale: about?.querySelector('scale')?.textContent?.trim() || '',
-                        units: f.querySelector(':scope > units')?.textContent?.trim() || '',
-                        constant: comp?.querySelector('constant')?.textContent?.trim() || '',
-                        domain: comp?.querySelector('domain')?.textContent?.trim() || '',
+                    const fieldLabel = about?.querySelector('label')?.textContent?.trim() || '';
+                    const fieldColor = about?.querySelector('color')?.textContent?.trim() || '';
+                    const fieldScale = about?.querySelector('scale')?.textContent?.trim() || '';
+                    const fieldUnits = f.querySelector(':scope > units')?.textContent?.trim() || '';
+                    f.querySelectorAll(':scope > component').forEach(comp => {
+                        fields.push({
+                            label: fieldLabel,
+                            color: fieldColor,
+                            scale: fieldScale,
+                            units: fieldUnits,
+                            constant: comp.querySelector('constant')?.textContent?.trim() || '',
+                            domain: comp.querySelector('domain')?.textContent?.trim() || '',
+                        });
                     });
                 });
             });
@@ -710,6 +845,12 @@ const rappture = {
             const cached = result.cached ? ' (cached)' : '';
             const runLabel = result.run_num ? ` Run #${result.run_num}` : '';
             this._setStatus(`Complete${runLabel}${cached}`, result.status === 'success' ? 'success' : 'error');
+            if (result.status !== 'success' && result.log) {
+                const container = document.getElementById('rp-results');
+                if (container) {
+                    container.innerHTML = `<div class="rp-results-placeholder" style="color:#b91c1c;text-align:left;padding:16px;"><strong>Simulation error</strong><pre style="margin-top:8px;white-space:pre-wrap;font-size:12px;">${result.log}</pre></div>`;
+                }
+            }
             this._preferFirstOutputOnNextRender = true;
             this._fetchRunHistory(true);
 

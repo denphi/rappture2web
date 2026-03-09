@@ -26,7 +26,24 @@
         return Number.isFinite(n) ? n : dflt;
     }
 
-    function renderStructurePreview(rootEl, data) {
+    function renderStructurePreview(rootEl, data, requestedActiveLabel) {
+        // Build param-id → box info map from fields + components so we can show box cues on inputs
+        const paramBoxInfo = {};
+        const namedColorsFull = { green: "#00cc44", white: "#ffffff", red: "#dd2222", purple: "#9966cc", blue: "#3366cc", yellow: "#ffdd44", orange: "#ff8822", gray: "#aaaaaa", black: "#222222" };
+        const matColors = { GaAs: "#ccaaff", AlGaAs: "#ffffff", AlAs: "#aaddff", InAs: "#ffaaaa", InP: "#aaffaa", Si: "#dddddd", Ge: "#ffddaa", SiGe: "#ddffdd" };
+        const compsArr = (data && data.components) || [];
+        const fieldsArr = (data && data.fields) || [];
+        const boxByIdx = {};
+        compsArr.forEach((c, i) => { if (c.type === 'box') boxByIdx[`box${i}`] = c; });
+        fieldsArr.forEach(f => {
+            if (!f.constant || !f.domain) return;
+            const box = boxByIdx[f.domain];
+            if (!box) return;
+            const color = namedColorsFull[box.color] || box.color || matColors[box.material] || "#aaaadd";
+            const boxLabel = box.label || f.domain;
+            if (!paramBoxInfo[f.constant]) paramBoxInfo[f.constant] = { color, label: boxLabel };
+        });
+
         // Render Parameters — use the same HTML structure as number.html / string.html templates
         const paramsWrap = rootEl.querySelector(".rp-structure-parameters");
         if (paramsWrap) {
@@ -68,6 +85,15 @@
                             un.textContent = `[${p.units}]`;
                             lbl.appendChild(document.createTextNode(' '));
                             lbl.appendChild(un);
+                        }
+                        // Box cue badge: colored dot + box name for params shared across boxes
+                        const boxInfo = p.id && paramBoxInfo[p.id];
+                        if (boxInfo) {
+                            const badge = mkHtml("span", { style: `display:inline-flex;align-items:center;gap:3px;margin-left:6px;font-size:0.78em;color:#555;font-weight:normal;vertical-align:middle;` });
+                            const dot = mkHtml("span", { style: `display:inline-block;width:9px;height:9px;border-radius:50%;background:${boxInfo.color};border:1px solid #888;flex-shrink:0;` });
+                            badge.appendChild(dot);
+                            badge.appendChild(document.createTextNode(boxInfo.label));
+                            lbl.appendChild(badge);
                         }
                         widgetDiv.appendChild(lbl);
                     }
@@ -124,7 +150,9 @@
                         data.parameters[pIdx].current = newVal;
                         try {
                             rootEl.setAttribute('data-structure', JSON.stringify(data));
-                            renderStructurePreview(rootEl, data);
+                            // Preserve the active tab across re-render
+                            const activeLabel = rootEl.dataset.activeField || '';
+                            renderStructurePreview(rootEl, data, activeLabel);
                         } catch (e) { console.warn('Structure re-render failed', e); }
                     });
 
@@ -235,7 +263,8 @@
             if (!fieldGroups[k]) fieldGroups[k] = [];
             fieldGroups[k].push(f);
         });
-        const groupKeys = Object.keys(fieldGroups);
+        // Reverse so last field in XML appears as the first (active) tab
+        const groupKeys = Object.keys(fieldGroups).reverse();
         const chartSvgH = fields.length > 0 ? svgHeight * 2.2 : 0;
         const totalSvgH = svgHeight + chartSvgH;
 
@@ -312,7 +341,7 @@
                 if (c.label) {
                     const t = mk("text", {
                         x: x + ww / 2, y: svgHeight * 0.2, fill: "#000",
-                        "font-size": w * 0.04, "text-anchor": "middle", "font-family": "sans-serif"
+                        "font-size": w * 0.022, "text-anchor": "middle", "font-family": "sans-serif"
                     });
                     t.textContent = c.label;
                     svg.appendChild(t);
@@ -388,16 +417,28 @@
                 }
             });
 
+            // Compute initial active index before building chart groups so SVG display is correct
+            const initialIdx = (requestedActiveLabel && groupKeys.includes(requestedActiveLabel))
+                ? groupKeys.indexOf(requestedActiveLabel)
+                : 0;
+
             const chartGroups = [];
             groupKeys.forEach((label, gi) => {
                 const flds = fieldGroups[label];
                 const isLog = flds.some(f => (f.scale || '').toLowerCase() === 'log');
                 const units = flds[0] ? flds[0].units || '' : '';
-                const vals = flds.map(f => paramVal[f.constant] || 0).filter(v => v > 0);
+                const vals = flds.map(f => (f.constant in paramVal) ? paramVal[f.constant] : 0);
+                const positiveVals = vals.filter(v => v > 0);
                 let minY, maxY;
-                if (!vals.length) { minY = 0; maxY = 1; }
-                else if (isLog) { minY = Math.max(Math.min(...vals) * 0.01, 1e-30); maxY = Math.max(...vals) * 100; }
-                else { minY = 0; maxY = Math.max(...vals) * 1.5 || 1; }
+                if (isLog && positiveVals.length) {
+                    minY = Math.max(Math.min(...positiveVals) * 0.01, 1e-30);
+                    maxY = Math.max(...positiveVals) * 100;
+                } else {
+                    const allVals = vals.length ? vals : [0];
+                    minY = Math.min(0, ...allVals);
+                    maxY = Math.max(...allVals) * 1.5 || 1;
+                    if (minY === maxY) { minY -= 0.5; maxY += 0.5; }
+                }
 
                 const toY = v => {
                     const frac = isLog && v > 0
@@ -407,7 +448,7 @@
                 };
 
                 const g = document.createElementNS(NS, "g");
-                g.setAttribute("display", gi === 0 ? "inline" : "none");
+                g.setAttribute("display", gi === initialIdx ? "inline" : "none");
 
                 const ticks = [];
                 if (isLog && minY > 0) {
@@ -436,18 +477,35 @@
                 ylbl.textContent = label + (units ? ` (${units})` : '');
                 g.appendChild(ylbl);
 
+                // Track placed labels as [{cx, y}] to detect overlap in both axes
+                const placedLabels = [];
+                const minLabelGapY = fs * 1.1;
+                const minLabelGapX = w * 0.08;
                 flds.forEach(f => {
                     const box = boxByName[f.domain];
                     if (!box) return;
                     const xA = Math.min(num(box.corner0, minX), num(box.corner1, minX));
                     const xB = Math.max(num(box.corner0, minX), num(box.corner1, minX));
-                    const val = paramVal[f.constant] || 0;
-                    if (val <= 0) return;
+                    const val = (f.constant in paramVal) ? paramVal[f.constant] : 0;
+                    if (val === undefined) return;
                     const ly = toY(val);
                     const lc = namedColors[f.color] || f.color || "#333";
                     g.appendChild(mk("line", { x1: xA, y1: ly, x2: xB, y2: ly, stroke: lc, "stroke-width": w * 0.004 }));
                     const lv = (val >= 1e4 || (val > 0 && val < 0.01)) ? val.toExponential(2) : val.toPrecision(3);
-                    const lt2 = mk("text", { x: (xA + xB) / 2, y: ly - fs * 0.4, "text-anchor": "middle", "font-size": fs * 0.85, fill: lc, "font-family": "sans-serif" });
+                    const cx = (xA + xB) / 2;
+                    // Find a Y that doesn't collide with already-placed labels
+                    let labelY = ly - fs * 0.4;
+                    let attempts = 0;
+                    while (attempts < 20) {
+                        const conflict = placedLabels.some(p =>
+                            Math.abs(p.cx - cx) < minLabelGapX && Math.abs(p.y - labelY) < minLabelGapY
+                        );
+                        if (!conflict) break;
+                        labelY -= minLabelGapY;
+                        attempts++;
+                    }
+                    placedLabels.push({ cx, y: labelY });
+                    const lt2 = mk("text", { x: cx, y: labelY, "text-anchor": "middle", "font-size": fs * 0.85, fill: lc, "font-family": "sans-serif" });
                     lt2.textContent = lv + units;
                     g.appendChild(lt2);
                 });
@@ -455,6 +513,31 @@
                 svg.appendChild(g);
                 chartGroups.push(g);
             });
+
+            // Build a map from field label → set of parameter IDs used by that field
+            const fieldParamIds = {};
+            groupKeys.forEach(label => {
+                fieldParamIds[label] = new Set(fieldGroups[label].map(f => f.constant).filter(Boolean));
+            });
+
+            // Show/hide parameter inputs based on the active field tab
+            const applyParamVisibility = (activeLabel) => {
+                const paramsDiv = rootEl.querySelector('.rp-structure-parameters');
+                if (!paramsDiv) return;
+                const activeIds = fieldParamIds[activeLabel] || new Set();
+                paramsDiv.querySelectorAll(':scope > .rp-widget').forEach(w => {
+                    const path = w.dataset.path || '';
+                    const m = path.match(/\(([^)]+)\)$/);
+                    const id = m ? m[1] : '';
+                    w.style.display = (activeIds.size === 0 || activeIds.has(id)) ? '' : 'none';
+                });
+            };
+
+            const initialLabel = groupKeys[initialIdx] || '';
+            if (initialLabel) {
+                rootEl.dataset.activeField = initialLabel;
+                applyParamVisibility(initialLabel);
+            }
 
             // Only render tab buttons if there are multiple field groups to switch between
             if (groupKeys.length > 1) {
@@ -466,10 +549,12 @@
                 groupKeys.forEach((label, gi) => {
                     const btn = mkHtml("button", { type: "button" });
                     btn.textContent = label;
-                    Object.assign(btn.style, { padding: "2px 10px", fontSize: "11px", border: "1px solid #ccc", borderTop: "none", background: gi === 0 ? "#fff" : "#f0f0f0", cursor: "pointer" });
+                    Object.assign(btn.style, { padding: "2px 10px", fontSize: "11px", border: "1px solid #ccc", borderTop: "none", background: gi === initialIdx ? "#fff" : "#f0f0f0", cursor: "pointer" });
                     btn.addEventListener("click", () => {
                         chartGroups.forEach((g, j) => g.setAttribute("display", j === gi ? "inline" : "none"));
                         tabBtns.forEach((b, j) => b.style.background = j === gi ? "#fff" : "#f0f0f0");
+                        rootEl.dataset.activeField = label;
+                        applyParamVisibility(label);
                     });
                     tabBtns.push(btn);
                     tabRow.appendChild(btn);

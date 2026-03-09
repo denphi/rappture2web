@@ -77,6 +77,8 @@
             <label class="rp-uq-param-label">max <input type="number" class="rp-input rp-uq-input rp-uq-g-max" step="any"
                 value="{{ widget.attrs.max | strip_units if widget.attrs.max else '' }}" placeholder="auto"></label>
         </div>
+        <svg class="rp-uq-preview" viewBox="0 0 120 48" width="120" height="48"
+            style="display:block;margin-top:4px;" aria-hidden="true"></svg>
     </div>
     {% endif %}
     {% if widget.color or widget.attrs.color %}
