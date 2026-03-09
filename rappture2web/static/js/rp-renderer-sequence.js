@@ -12,7 +12,7 @@ rappture._registerRenderer('sequence', {
         const item = rappture.createOutputItem((data.about && data.about.label) || data.label || id, 'sequence');
         item.classList.add('rp-output-plot-item');
         const body = item.querySelector('.rp-output-body');
-        body.style.cssText = 'display:flex;flex-direction:column;padding:8px;gap:0;';
+        body.style.cssText = 'display:flex;flex-direction:column;padding:0;gap:0;overflow:hidden;';
         if (!data.elements || data.elements.length === 0) {
             body.textContent = 'No sequence data';
             return item;
@@ -160,7 +160,7 @@ rappture._registerRenderer('sequence', {
                     }
                     const hdr = rendered.querySelector('.rp-output-header');
                     if (hdr) hdr.style.display = 'none';
-                    rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;';
+                    rendered.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;border:none;border-radius:0;margin:0;overflow:hidden;';
                     plotDiv.appendChild(rendered);
                     _frameCache[oid] = { rendered, type: odata.type, entryIdx };
                     // Apply locked y-range once Plotly has initialized (poll since _whenVisible
@@ -196,17 +196,15 @@ rappture._registerRenderer('sequence', {
                         if (cached.plotlyDiv && cached.plotlyDiv._fullLayout) {
                             const yr = _globalYRange[entryIdx];
                             const newTraces = reg.getTraces(odata);
-                            // Delete existing traces then add new ones, preserving layout entirely
-                            const nExisting = cached.plotlyDiv.data.length;
-                            const deleteIdxs = Array.from({ length: nExisting }, (_, i) => i);
-                            Plotly.deleteTraces(cached.plotlyDiv, deleteIdxs);
-                            Plotly.addTraces(cached.plotlyDiv, newTraces);
-                            // Apply y-axis lock as a separate relayout
+                            // Use current layout so user-applied changes (labels, log scale, etc.) persist
+                            const currentLayout = cached.plotlyDiv.layout || {};
+                            const nextLayout = Object.assign({}, currentLayout);
                             if (lockYChk && lockYChk.checked && yr) {
-                                Plotly.relayout(cached.plotlyDiv, { 'yaxis.range': yr, 'yaxis.autorange': false });
+                                nextLayout.yaxis = Object.assign({}, currentLayout.yaxis, { range: yr, autorange: false });
                             } else {
-                                Plotly.relayout(cached.plotlyDiv, { 'yaxis.autorange': true });
+                                nextLayout.yaxis = Object.assign({}, currentLayout.yaxis, { autorange: true });
                             }
+                            Plotly.react(cached.plotlyDiv, newTraces, nextLayout);
                         }
                     } else {
                         // Non-Plotly output: replace content
