@@ -250,7 +250,9 @@ rappture._registerRenderer('sequence', {
         const firstData = sources[0].data;
         const seqLabel = (firstData.about && firstData.about.label) || firstData.label || id;
         const item = rappture.createOutputItem(seqLabel, 'sequence');
+        item.classList.add('rp-output-plot-item');
         const body = item.querySelector('.rp-output-body');
+        body.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;padding:0;gap:0;overflow:hidden;';
         const icons = rappture._rpUtils.icons;
 
         const maxFrames = Math.max(...sources.map(s => (s.data.elements || []).length));
@@ -292,7 +294,7 @@ rappture._registerRenderer('sequence', {
         };
 
         const framesHost = document.createElement('div');
-        framesHost.style.cssText = 'display:flex;flex-direction:column;gap:10px;min-height:0;';
+        framesHost.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;';
         body.appendChild(framesHost);
 
         const renderSeqCompareFrame = (frameIdx) => {
