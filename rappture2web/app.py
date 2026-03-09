@@ -601,6 +601,25 @@ async def api_reload_run(run_id: str):
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/runs/reload-all")
+async def api_reload_all_runs():
+    """Re-parse run XMLs for all runs that have a run_xml path."""
+    from .xml_parser import parse_run_xml
+    reloaded, skipped = 0, 0
+    for run in _history.runs:
+        xml_path = run.get("run_xml")
+        if not xml_path or not os.path.isfile(xml_path):
+            skipped += 1
+            continue
+        try:
+            outputs = parse_run_xml(xml_path)
+            _history.update_run(run["run_id"], outputs=outputs)
+            reloaded += 1
+        except Exception:
+            skipped += 1
+    return JSONResponse({"ok": True, "reloaded": reloaded, "skipped": skipped})
+
+
 @app.post("/api/runs/reorder")
 async def api_reorder_runs(request: Request):
     """Reorder runs. Body: {run_ids: [id, id, ...]} — first = top."""

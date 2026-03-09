@@ -1732,6 +1732,23 @@ const rappture = {
         }
     },
 
+    async reloadAllRuns() {
+        try {
+            const resp = await fetch(`${this._bp}/api/runs/reload-all`, { method: 'POST' });
+            const body = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                this._setStatus('Reload failed: ' + (body.error || resp.statusText), 'error');
+                return;
+            }
+            await this._fetchRunHistory();
+            this._renderRunHistory();
+            this._renderCheckedRuns();
+            this._setStatus(`Reloaded ${body.reloaded} run(s) from XML.`, 'success');
+        } catch (err) {
+            this._setStatus('Failed to reload runs: ' + err.message, 'error');
+        }
+    },
+
     async reloadRun(runId) {
         try {
             const resp = await fetch(`${this._bp}/api/runs/${runId}/reload`, { method: 'POST' });
