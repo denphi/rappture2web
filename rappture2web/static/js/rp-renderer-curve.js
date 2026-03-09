@@ -30,6 +30,59 @@ function _sanitizeTracesForLog(traces, xIsLog, yIsLog) {
     }));
 }
 
+/**
+ * Parse a mixed curve's _members for a separator to build composite subplot info.
+ * Returns null if no separator is found (render as single plot).
+ * Returns { segments: [{xStart, xEnd, xAxisRef, yAxisRef}], layout: {...} }
+ */
+function _buildCompositeLayout(members) {
+    const sepIdx = members.findIndex(m => m.label && m.label.toLowerCase().startsWith('separator'));
+    if (sepIdx === -1) return null;
+    const sep = members[sepIdx];
+    const sx = sep.trace && sep.trace.x;
+    if (!sx || sx.length < 2) return null;
+
+    // Parse boundary values from separator x array (repeated values mark breaks)
+    const breaks = [sx[0]];
+    for (let i = 1; i < sx.length; i++) {
+        if (sx[i] !== sx[i - 1]) breaks.push(sx[i]);
+    }
+    // breaks = [b0, b1, b2, ..., bn] where segments are [b0,b1], [b1,b2], ...
+    // But repeated same value marks a boundary — deduplicate
+    const boundaries = [...new Set(breaks)];
+    if (boundaries.length < 2) return null;
+    const nSeg = boundaries.length - 1;
+
+    // Build segments with equal horizontal domains
+    const gap = 0.03; // gap between subplots
+    const totalW = 1 - gap * (nSeg - 1);
+    const segW = totalW / nSeg;
+    const segments = [];
+    for (let i = 0; i < nSeg; i++) {
+        const domStart = i * (segW + gap);
+        const domEnd = domStart + segW;
+        segments.push({
+            xStart: boundaries[i],
+            xEnd: boundaries[i + 1],
+            xAxisRef: i === 0 ? 'x' : 'x' + (i + 1),
+            yAxisRef: i === 0 ? 'y' : 'y' + (i + 1),
+            xDomain: [domStart, domEnd],
+        });
+    }
+
+    // Build Plotly layout axes
+    const layoutAxes = {};
+    segments.forEach((seg, i) => {
+        const axKey = i === 0 ? 'xaxis' : 'xaxis' + (i + 1);
+        const ayKey = i === 0 ? 'yaxis' : 'yaxis' + (i + 1);
+        layoutAxes[axKey] = { domain: seg.xDomain, showgrid: true, range: [seg.xStart, seg.xEnd], matches: undefined };
+        layoutAxes[ayKey] = { showgrid: true, anchor: seg.xAxisRef };
+        if (i > 0) layoutAxes[axKey].anchor = seg.yAxisRef;
+    });
+
+    return { segments, layoutAxes, sepIdx };
+}
+
 // ── curve ──────────────────────────────────────────────────────────────────
 
 rappture._registerRenderer('curve', {
@@ -41,21 +94,32 @@ rappture._registerRenderer('curve', {
         const runLabel = data._runLabel || null;
         const _curveType = (data.curve_type || (data.about && data.about.type) || 'line').toLowerCase();
         if (_curveType === 'mixed' && data._members) {
-            return data._members.map((m) => {
-                const ct = (m.curve_type || 'line').toLowerCase();
-                const pt = ct === 'bar' ? 'bar' : 'scatter';
-                const pm = ct === 'scatter' ? 'markers' : 'lines';
-                const tLabel = runLabel ? `${runLabel}: ${m.label}` : m.label;
-                const st = (m.trace && m.trace.style) || {};
-                const traceColor = st.color || null;
-                const dash = _dashMap[st.linestyle] || undefined;
-                const lw = st.linewidth ? parseFloat(st.linewidth) : 2;
-                return {
-                    x: m.trace.x, y: m.trace.y, type: pt, mode: pm, name: tLabel,
-                    ...(pt !== 'bar' ? { line: { width: lw, ...(traceColor ? { color: traceColor } : {}), ...(dash ? { dash } : {}) } } : {}),
-                    ...(traceColor ? { marker: { color: traceColor } } : {}),
-                };
-            });
+            const composite = _buildCompositeLayout(data._members);
+            return data._members
+                .filter((m) => !(m.label && m.label.toLowerCase().startsWith('separator')))
+                .map((m) => {
+                    const ct = (m.curve_type || 'line').toLowerCase();
+                    const pt = ct === 'bar' ? 'bar' : 'scatter';
+                    const pm = ct === 'scatter' ? 'markers' : 'lines';
+                    const tLabel = runLabel ? `${runLabel}: ${m.label}` : m.label;
+                    const st = (m.trace && m.trace.style) || {};
+                    const traceColor = st.color || null;
+                    const dash = _dashMap[st.linestyle] || undefined;
+                    const lw = st.linewidth ? parseFloat(st.linewidth) : 2;
+                    // Assign to subplot based on x range midpoint
+                    let xAxisRef = 'x', yAxisRef = 'y';
+                    if (composite && m.trace && m.trace.x && m.trace.x.length > 0) {
+                        const xMid = m.trace.x[Math.floor(m.trace.x.length / 2)];
+                        const seg = composite.segments.find(s => xMid >= s.xStart - 1e-9 && xMid <= s.xEnd + 1e-9);
+                        if (seg) { xAxisRef = seg.xAxisRef; yAxisRef = seg.yAxisRef; }
+                    }
+                    return {
+                        x: m.trace.x, y: m.trace.y, type: pt, mode: pm, name: tLabel,
+                        xaxis: xAxisRef, yaxis: yAxisRef,
+                        ...(pt !== 'bar' ? { line: { width: lw, ...(traceColor ? { color: traceColor } : {}), ...(dash ? { dash } : {}) } } : {}),
+                        ...(traceColor ? { marker: { color: traceColor } } : {}),
+                    };
+                });
         }
         const _plotlyType = (_curveType === 'bar') ? 'bar' : 'scatter';
         const _plotlyMode = (_curveType === 'scatter') ? 'markers' : 'lines';
@@ -109,6 +173,8 @@ rappture._registerRenderer('curve', {
         const yIsLogRequested = data.yaxis && (data.yaxis.log === 'log' || data.yaxis.scale === 'log');
 
         // Build raw traces first to check for non-positive values, then sanitize for log axes
+        // For composite (mixed+separator) plots, detect subplot layout before building traces
+        const _composite = _isMixed && data._members ? _buildCompositeLayout(data._members) : null;
         const rawTraces = rappture._rendererRegistry['curve'].getTraces(data, label);
         const xHasNonPos = rawTraces.some(t => t.x && t.x.some(v => typeof v === 'number' && v <= 0));
         const yHasNonPos = rawTraces.some(t => t.y && t.y.some(v => typeof v === 'number' && v <= 0));
@@ -120,17 +186,28 @@ rappture._registerRenderer('curve', {
         const layout = {
             title: { text: '', font: { size: 14 } },
             xaxis: {
-                title: { text: xTitle0 },
+                title: { text: _composite ? '' : xTitle0 },
                 type: xIsLog ? 'log' : 'linear',
                 showgrid: true, zeroline: true,
                 ...(xMin !== undefined && xMax !== undefined ? { range: [xMin, xMax] } : {}),
+                ...(_composite ? _composite.layoutAxes.xaxis : {}),
             },
             yaxis: {
                 title: { text: yTitle0 },
                 type: yIsLog ? 'log' : 'linear',
                 showgrid: true, zeroline: true,
                 ...(yMin !== undefined && yMax !== undefined ? { range: [yMin, yMax] } : {}),
+                ...(_composite ? _composite.layoutAxes.yaxis : {}),
             },
+            ...(_composite ? (() => {
+                const extra = {};
+                _composite.segments.forEach((seg, i) => {
+                    if (i === 0) return;
+                    extra['xaxis' + (i + 1)] = _composite.layoutAxes['xaxis' + (i + 1)];
+                    extra['yaxis' + (i + 1)] = _composite.layoutAxes['yaxis' + (i + 1)];
+                });
+                return extra;
+            })() : {}),
             margin: { t: 36, r: 16, b: 60, l: 70 },
             showlegend: traces.length > 1,
             legend: { x: 1, y: 1, xanchor: 'right', yanchor: 'top', bgcolor: 'rgba(255,255,255,0.7)', bordercolor: 'rgba(0,0,0,0.1)', borderwidth: 1 },
