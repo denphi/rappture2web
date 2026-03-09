@@ -810,6 +810,7 @@ body {
     margin-bottom: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 .rp-output-item.rp-output-plot-item .rp-output-body {
     flex: 1;
