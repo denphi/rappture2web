@@ -313,13 +313,15 @@ rappture._registerRenderer('curve', {
     compare(sources, id) {
         const firstData = sources[0].data;
         const label = (firstData.about && firstData.about.label) || firstData.label || id;
+        const sid = id.replace(/[^a-z0-9_-]/gi, '_');
         const item = rappture.createOutputItem(label, 'plot');
         item.classList.add('rp-output-plot-item');
         const body = item.querySelector('.rp-output-body');
+        const U = rappture._rpUtils;
 
         const plotDiv = document.createElement('div');
         plotDiv.className = 'rp-output-plot';
-        body.appendChild(plotDiv);
+        plotDiv.id = 'plot-' + sid;
 
         const traces = [];
         sources.forEach(({ run, data }, si) => {
@@ -369,23 +371,148 @@ rappture._registerRenderer('curve', {
         const cYmax = firstData.yaxis && firstData.yaxis.max ? parseFloat(firstData.yaxis.max) : undefined;
         const cXlog = firstData.xaxis && (firstData.xaxis.scale === 'log');
         const cYlog = firstData.yaxis && (firstData.yaxis.log === 'log' || firstData.yaxis.scale === 'log');
-        const safeTraces = _sanitizeTracesForLog(traces, cXlog, cYlog);
+
+        const xHasNonPos = traces.some(t => t.x && t.x.some(v => typeof v === 'number' && v <= 0));
+        const yHasNonPos = traces.some(t => t.y && t.y.some(v => typeof v === 'number' && v <= 0));
+        const safeTraces = _sanitizeTracesForLog(traces, cXlog && !xHasNonPos, cYlog && !yHasNonPos);
+
         const layout = {
+            title: { text: '', font: { size: 14 } },
             xaxis: {
-                title: xLabel + (xUnits ? ` [${xUnits}]` : ''), showgrid: true,
+                title: { text: xLabel + (xUnits ? ` [${xUnits}]` : '') }, showgrid: true,
+                type: cXlog && !xHasNonPos ? 'log' : 'linear',
                 ...(cXmin !== undefined && cXmax !== undefined ? { range: [cXmin, cXmax] } : {}),
             },
             yaxis: {
-                title: yLabel + (yUnits ? ` [${yUnits}]` : ''), showgrid: true,
-                type: cYlog ? 'log' : 'linear',
+                title: { text: yLabel + (yUnits ? ` [${yUnits}]` : '') }, showgrid: true,
+                type: cYlog && !yHasNonPos ? 'log' : 'linear',
                 ...(cYmin !== undefined && cYmax !== undefined ? { range: [cYmin, cYmax] } : {}),
             },
             margin: { t: 36, r: 16, b: 60, l: 70 },
             showlegend: true,
+            legend: { x: 1, y: 1, xanchor: 'right', yanchor: 'top', bgcolor: 'rgba(255,255,255,0.7)', bordercolor: 'rgba(0,0,0,0.1)', borderwidth: 1 },
             template: _rpPlotlyTemplates['plotly'],
             autosize: true,
         };
-        _whenVisible(plotDiv, () => Plotly.newPlot(plotDiv, safeTraces, layout, { responsive: true }).then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv))));
+
+        const panelHtml = `
+          <div class="rp-panel-section">
+            <div class="rp-panel-title">Title</div>
+            <label>Plot title<input type="text" id="plt-title-${sid}" value="" placeholder="(none)"
+              style="${U.inputStyle}"></label>
+          </div>
+          <div class="rp-panel-section">
+            <div class="rp-panel-title">X Axis</div>
+            <label>Label<input type="text" id="plt-xl-${sid}" value="${xLabel}"
+              style="${U.inputStyle}"></label>
+            <label>Units<input type="text" id="plt-xu-${sid}" value="${xUnits}"
+              style="${U.inputStyle}"></label>
+            <label style="flex-direction:row;align-items:center;gap:6px;margin-top:2px">
+              <input type="checkbox" id="plt-xlog-${sid}" ${cXlog && !xHasNonPos ? 'checked' : ''}> Log scale
+            </label>
+            <label style="flex-direction:row;align-items:center;gap:6px">
+              <input type="checkbox" id="plt-xgrid-${sid}" checked> Grid
+            </label>
+          </div>
+          <div class="rp-panel-section">
+            <div class="rp-panel-title">Y Axis</div>
+            <label>Label<input type="text" id="plt-yl-${sid}" value="${yLabel}"
+              style="${U.inputStyle}"></label>
+            <label>Units<input type="text" id="plt-yu-${sid}" value="${yUnits}"
+              style="${U.inputStyle}"></label>
+            <label style="flex-direction:row;align-items:center;gap:6px;margin-top:2px">
+              <input type="checkbox" id="plt-ylog-${sid}" ${cYlog && !yHasNonPos ? 'checked' : ''}> Log scale
+            </label>
+            <label style="flex-direction:row;align-items:center;gap:6px">
+              <input type="checkbox" id="plt-ygrid-${sid}" checked> Grid
+            </label>
+          </div>
+          <div class="rp-panel-section">
+            <div class="rp-panel-title">Display</div>
+            <label>Line width<input type="range" id="plt-lw-${sid}" min="1" max="8" value="2" step="0.5"></label>
+            <label style="flex-direction:row;align-items:center;gap:6px">
+              <input type="checkbox" id="plt-leg-${sid}" checked> Legend
+            </label>
+            <label>Legend pos<select id="plt-legpos-${sid}" style="${U.inputStyle}">
+              <option value="inside-tr" selected>Inside top-right</option>
+              <option value="inside-tl">Inside top-left</option>
+              <option value="inside-br">Inside bottom-right</option>
+              <option value="inside-bl">Inside bottom-left</option>
+              <option value="outside-r">Outside right (mid)</option>
+              <option value="outside-rt">Outside right (top)</option>
+              <option value="outside-rb">Outside right (bot)</option>
+              <option value="outside-l">Outside left (mid)</option>
+              <option value="outside-lt">Outside left (top)</option>
+              <option value="outside-lb">Outside left (bot)</option>
+            </select></label>
+          </div>
+          ${U.themeSectionHtml('plt', sid)}
+          ${U.downloadSectionHtml('plt', sid)}`;
+
+        const { outerWrap, cp } = U.createSidecar(plotDiv, panelHtml, { maxHeight: 'none' });
+        body.appendChild(outerWrap);
+
+        const _legendPos = {
+            'inside-tr':  { x: 1,     y: 1,    xanchor: 'right',  yanchor: 'top' },
+            'inside-tl':  { x: 0,     y: 1,    xanchor: 'left',   yanchor: 'top' },
+            'inside-br':  { x: 1,     y: 0,    xanchor: 'right',  yanchor: 'bottom' },
+            'inside-bl':  { x: 0,     y: 0,    xanchor: 'left',   yanchor: 'bottom' },
+            'outside-r':  { x: 1.02,  y: 0.5,  xanchor: 'left',   yanchor: 'middle' },
+            'outside-rt': { x: 1.02,  y: 1,    xanchor: 'left',   yanchor: 'top' },
+            'outside-rb': { x: 1.02,  y: 0,    xanchor: 'left',   yanchor: 'bottom' },
+            'outside-l':  { x: -0.02, y: 0.5,  xanchor: 'right',  yanchor: 'middle' },
+            'outside-lt': { x: -0.02, y: 1,    xanchor: 'right',  yanchor: 'top' },
+            'outside-lb': { x: -0.02, y: 0,    xanchor: 'right',  yanchor: 'bottom' },
+        };
+        const _outsideKeys = new Set(['outside-r','outside-rt','outside-rb','outside-l','outside-lt','outside-lb']);
+        const applyLayout = () => {
+            const xl = cp.querySelector(`#plt-xl-${sid}`);
+            const xu = cp.querySelector(`#plt-xu-${sid}`);
+            const yl = cp.querySelector(`#plt-yl-${sid}`);
+            const yu = cp.querySelector(`#plt-yu-${sid}`);
+            const posKey = cp.querySelector(`#plt-legpos-${sid}`).value;
+            const lp = _legendPos[posKey] || _legendPos['inside-tr'];
+            const isOutside = _outsideKeys.has(posKey);
+            const isOutsideLeft = posKey.startsWith('outside-l');
+            Plotly.relayout(plotDiv, {
+                'title.text':       cp.querySelector(`#plt-title-${sid}`).value,
+                'xaxis.title.text': U.axTitle(xl, xu),
+                'xaxis.type':       cp.querySelector(`#plt-xlog-${sid}`).checked ? 'log' : 'linear',
+                'xaxis.showgrid':   cp.querySelector(`#plt-xgrid-${sid}`).checked,
+                'yaxis.title.text': U.axTitle(yl, yu),
+                'yaxis.type':       cp.querySelector(`#plt-ylog-${sid}`).checked ? 'log' : 'linear',
+                'yaxis.showgrid':   cp.querySelector(`#plt-ygrid-${sid}`).checked,
+                'showlegend':       cp.querySelector(`#plt-leg-${sid}`).checked,
+                'legend.x':         lp.x,
+                'legend.y':         lp.y,
+                'legend.xanchor':   lp.xanchor,
+                'legend.yanchor':   lp.yanchor,
+                'legend.bgcolor':   isOutside ? 'rgba(255,255,255,0)' : 'rgba(255,255,255,0.7)',
+                'margin.r':         isOutside && !isOutsideLeft ? 120 : 16,
+                'margin.l':         isOutsideLeft ? 120 : 70,
+            });
+        };
+        const applyTraces = () => {
+            const lw = parseFloat(cp.querySelector(`#plt-lw-${sid}`).value);
+            Plotly.restyle(plotDiv, { 'line.width': lw });
+        };
+
+        const plotLabel = label.replace(/[^a-z0-9]/gi, '_');
+        _whenVisible(outerWrap, () => {
+            U.storeBaseLayout(plotDiv, layout);
+            Plotly.newPlot(plotDiv, safeTraces, layout, { responsive: true })
+                .then(() => requestAnimationFrame(() => Plotly.Plots.resize(plotDiv)));
+            const xlogChk = cp.querySelector(`#plt-xlog-${sid}`);
+            const ylogChk = cp.querySelector(`#plt-ylog-${sid}`);
+            if (xHasNonPos) { xlogChk.disabled = true; xlogChk.checked = false; xlogChk.title = 'Log scale unavailable: data contains zero or negative values'; xlogChk.parentElement.style.opacity = '0.45'; }
+            if (yHasNonPos) { ylogChk.disabled = true; ylogChk.checked = false; ylogChk.title = 'Log scale unavailable: data contains zero or negative values'; ylogChk.parentElement.style.opacity = '0.45'; }
+            cp.querySelectorAll('input[type=text], input[type=checkbox]').forEach(el => el.addEventListener('input', applyLayout));
+            cp.querySelector(`#plt-legpos-${sid}`).addEventListener('change', applyLayout);
+            cp.querySelector(`#plt-lw-${sid}`).addEventListener('input', applyTraces);
+            U.wireThemeToggle(cp, plotDiv, 'plt', sid);
+            U.wireDownloadButtons(cp, plotDiv, plotLabel, 'plt', sid);
+        }, 50);
+
         return { elem: item, label };
     },
 });
