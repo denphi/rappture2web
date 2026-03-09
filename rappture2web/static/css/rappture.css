@@ -1177,6 +1177,29 @@ body {
     letter-spacing: 0.03em;
     cursor: default;
 }
+.rp-run-reload {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--rp-radius);
+    color: var(--rp-text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 1;
+    transition: all 0.15s;
+}
+.rp-run-reload:hover {
+    background: #dbeafe;
+    border-color: var(--rp-primary);
+    color: var(--rp-primary);
+}
+
 .rp-run-delete {
     flex-shrink: 0;
     width: 30px;

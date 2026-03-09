@@ -583,6 +583,24 @@ async def api_rename_run(run_id: str, request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/runs/{run_id}/reload")
+async def api_reload_run(run_id: str):
+    """Re-parse the run XML and update cached outputs."""
+    from .xml_parser import parse_run_xml
+    run = _history.get_by_id(run_id)
+    if run is None:
+        return JSONResponse({"error": "Run not found"}, status_code=404)
+    xml_path = run.get("run_xml")
+    if not xml_path or not os.path.isfile(xml_path):
+        return JSONResponse({"error": "Run XML file not found"}, status_code=404)
+    try:
+        outputs = parse_run_xml(xml_path)
+    except Exception as exc:
+        return JSONResponse({"error": f"Failed to parse XML: {exc}"}, status_code=400)
+    _history.update_run(run_id, outputs=outputs)
+    return JSONResponse({"ok": True})
+
+
 @app.post("/api/runs/reorder")
 async def api_reorder_runs(request: Request):
     """Reorder runs. Body: {run_ids: [id, id, ...]} — first = top."""

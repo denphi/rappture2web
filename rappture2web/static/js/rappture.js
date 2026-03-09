@@ -1448,6 +1448,14 @@ const rappture = {
             uploadBadge.title = 'Uploaded run — cannot be compared with simulated runs';
             uploadBadge.innerHTML = '<svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M8 2L4 7h3v5h2V7h3z"/><rect x="2" y="13" width="12" height="1.5" rx="0.75"/></svg>';
 
+            // Reload from XML
+            const reloadBtn = document.createElement('button');
+            reloadBtn.className = 'rp-run-reload';
+            reloadBtn.title = 'Reload outputs from run XML';
+            reloadBtn.setAttribute('aria-label', `Reload ${run.label}`);
+            reloadBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5V1l3 2.5L8 6V4.5a3.5 3.5 0 1 0 3.5 3.5h2z"/></svg>';
+            reloadBtn.addEventListener('click', () => this.reloadRun(run.run_id));
+
             // Delete
             const delBtn = document.createElement('button');
             delBtn.className = 'rp-run-delete';
@@ -1463,6 +1471,7 @@ const rappture = {
             row.appendChild(labelSpan);
             row.appendChild(statusSpan);
             row.appendChild(uploadBadge);
+            row.appendChild(reloadBtn);
             row.appendChild(delBtn);
             panel.appendChild(row);
 
@@ -1720,6 +1729,33 @@ const rappture = {
             this._renderCheckedRuns();
         } catch (err) {
             this._setStatus('Failed to delete run: ' + err.message, 'error');
+        }
+    },
+
+    async reloadRun(runId) {
+        try {
+            const resp = await fetch(`${this._bp}/api/runs/${runId}/reload`, { method: 'POST' });
+            if (!resp.ok) {
+                const body = await resp.json().catch(() => ({}));
+                this._setStatus('Reload failed: ' + (body.error || resp.statusText), 'error');
+                return;
+            }
+            // Re-fetch the updated run and replace it in our local list
+            const runResp = await fetch(`${this._bp}/api/runs/${runId}`);
+            if (runResp.ok) {
+                const updated = await runResp.json();
+                const idx = this._runs.findIndex(r => r.run_id === runId);
+                if (idx >= 0) {
+                    updated._color = this._runs[idx]._color;
+                    updated._checked = this._runs[idx]._checked;
+                    this._runs[idx] = updated;
+                }
+            }
+            this._renderRunHistory();
+            this._renderCheckedRuns();
+            this._setStatus('Run reloaded from XML.', 'success');
+        } catch (err) {
+            this._setStatus('Failed to reload run: ' + err.message, 'error');
         }
     },
 
