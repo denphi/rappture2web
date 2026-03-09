@@ -402,18 +402,17 @@ rappture._registerRenderer('sequence', {
                     const reg = rappture._rendererRegistry[cached.type];
                     if (!reg) continue;
 
-                    // Build combined traces mirroring compare() — use run._color and si for isTop/opacity
+                    // Build combined traces mirroring compare() — set _runColor/_runLabel so getTraces applies colors
                     let newTraces = [];
                     if (reg.getTraces) {
                         oidSources.forEach(({ run, data: odata }, si) => {
                             const isTop = si === 0;
-                            const color = run._color || null;
+                            odata._runColor = run._color || null;
+                            odata._runLabel = run.label;
                             const baseTraces = reg.getTraces(odata);
                             baseTraces.forEach(t => {
                                 newTraces.push(Object.assign({}, t, {
-                                    name: `${run.label}${t.name ? ': ' + t.name : ''}`,
-                                    line: t.line ? Object.assign({}, t.line, { color, width: isTop ? 3 : 1.5 }) : { color, width: isTop ? 3 : 1.5 },
-                                    marker: Object.assign({}, t.marker, { color }),
+                                    line: t.line ? Object.assign({}, t.line, { width: isTop ? 3 : 1.5 }) : { width: isTop ? 3 : 1.5 },
                                     opacity: isTop ? 1 : 0.75,
                                 }));
                             });
