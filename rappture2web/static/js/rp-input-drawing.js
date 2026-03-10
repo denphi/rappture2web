@@ -106,7 +106,7 @@
             const encoded = parts
                 .map(p => (p === ".." ? "__up__" : p))
                 .join("/");
-            result = `/tool-files/${encoded}`;
+            result = `${rappture._bp}/tool-files/${encoded}`;
         }
         return result;
     }
@@ -232,7 +232,7 @@
                     svg.appendChild(img);
                     // Load image to get natural size and adjust viewBox and image size
                     const imgObj = new Image();
-                    imgObj.src = window._rpBasePath + href;
+                    imgObj.src = href;
                     imgObj.onload = () => {
                         const nw = imgObj.naturalWidth;
                         const nh = imgObj.naturalHeight;
