@@ -81,6 +81,23 @@ def _get_rappture_env_file() -> str | None:
 
 # ─── Driver XML helpers ───────────────────────────────────────────────────────
 
+def build_driver_xml_string(tool_xml_path: str, input_values: dict) -> str:
+    """Build driver XML with input values filled in and return it as a string."""
+    tree = ET.parse(tool_xml_path)
+    root = tree.getroot()
+
+    for path, value in input_values.items():
+        _set_xml_value(root, path, str(value))
+
+    _apply_loader_defaults(root, tool_xml_path, input_values)
+    _fill_defaults_in_tree(root)
+
+    import io
+    buf = io.StringIO()
+    tree.write(buf, encoding="unicode", xml_declaration=True)
+    return buf.getvalue()
+
+
 def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
     """Create a driver.xml from tool.xml with user input values filled in.
 
@@ -1293,19 +1310,6 @@ async def run_simulation(
         # the actual outputs — skip adding here to avoid duplicates.
         run_record = None
         if history is not None and not use_library_mode:
-            # Inject driver XML to outputs so it's visible to the user
-            if driver_path and os.path.exists(driver_path):
-                try:
-                    with open(driver_path, 'r', encoding='utf-8') as f:
-                        outputs["__driver_xml__"] = {
-                            "type": "string",
-                            "label": "Driver XML",
-                            "current": f.read(),
-                            "about": {"label": "Driver XML"}
-                        }
-                except Exception:
-                    pass
-            
             run_record = history.add(
                 input_values=input_values,
                 outputs=outputs,

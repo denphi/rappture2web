@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .xml_parser import ToolDef, parse_tool_xml
-from .simulator import RunHistory, run_simulation, run_uq_simulation
+from .simulator import RunHistory, run_simulation, run_uq_simulation, build_driver_xml_string
 from .encoding import to_data_uri, is_encoded
 
 # ─── Global state ────────────────────────────────────────────────────────────
@@ -168,6 +168,22 @@ def _build_inputs_report(input_values: dict) -> dict:
         ],
         "rows": rows,
     }
+
+
+def _build_driver_xml_output(input_values: dict) -> dict | None:
+    """Build a string output containing the driver XML for the given inputs."""
+    if not _tool_xml_path:
+        return None
+    try:
+        xml_str = build_driver_xml_string(_tool_xml_path, input_values)
+        return {
+            "type": "string",
+            "label": "Driver XML",
+            "about": {"label": "Driver XML"},
+            "current": xml_str,
+        }
+    except Exception:
+        return None
 
 
 def _serialize(obj):
@@ -349,12 +365,16 @@ async def simulate(request: Request):
         "cached": result.get("cached", False),
     })
 
-    # Inject inputs report (only for non-library, non-cached runs — library mode
-    # injects it in api_simulate_done; cached runs already have it stored).
+    # Inject inputs report and driver XML (only for non-library, non-cached runs —
+    # library mode injects them in api_simulate_done; cached runs already have them).
     if not _use_library_mode and not result.get("cached") and result["status"] == "success":
         report = _build_inputs_report(input_values)
         result.setdefault("outputs", {})["__inputs__"] = report
         _session["outputs"]["__inputs__"] = report
+        driver_out = _build_driver_xml_output(input_values)
+        if driver_out:
+            result["outputs"]["__driver_xml__"] = driver_out
+            _session["outputs"]["__driver_xml__"] = driver_out
 
     # In library mode, api_simulate_done already broadcast the done message
     # with the correct outputs.  For cache hits and classic mode, broadcast now.
@@ -478,8 +498,11 @@ async def api_simulate_done(request: Request):
     if status == "success":
         _session["progress"] = {"percent": 100.0, "message": "Complete"}
 
-    # Inject inputs report into outputs
+    # Inject inputs report and driver XML into outputs
     _session["outputs"]["__inputs__"] = _build_inputs_report(_session["inputs"])
+    driver_out = _build_driver_xml_output(_session["inputs"])
+    if driver_out:
+        _session["outputs"]["__driver_xml__"] = driver_out
 
     # Record in history
     run_record = _history.add(

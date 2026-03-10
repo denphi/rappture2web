@@ -1273,13 +1273,25 @@ const rappture = {
         const collapse = item.querySelector('.rp-fs-collapse');
         if (expand) expand.style.display = isFs ? 'none' : '';
         if (collapse) collapse.style.display = isFs ? '' : 'none';
+
+        const _resizePlots = () => {
+            if (!window.Plotly) return;
+            item.querySelectorAll('.rp-output-plot, .js-plotly-plot').forEach(plotDiv => {
+                try { Plotly.Plots.resize(plotDiv); } catch (_) {}
+            });
+            // Also fire resize for Three.js canvases
+            item.querySelectorAll('canvas').forEach(c => c.dispatchEvent(new Event('resize')));
+        };
+        // Allow the browser to repaint the new layout before resizing
+        requestAnimationFrame(() => requestAnimationFrame(_resizePlots));
+
         if (isFs) {
-            // Dismiss on Escape
             const onKey = (e) => {
                 if (e.key === 'Escape') {
                     item.classList.remove('rp-output-fullscreen');
                     if (expand) expand.style.display = '';
                     if (collapse) collapse.style.display = 'none';
+                    requestAnimationFrame(() => requestAnimationFrame(_resizePlots));
                     document.removeEventListener('keydown', onKey);
                 }
             };
