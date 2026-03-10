@@ -845,15 +845,32 @@ body {
 }
 
 /* Output: string/log */
+.rp-output-log,
+.rp-output-string {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-bottom: 0;
+}
 .rp-output-log .rp-output-body {
+    flex: 1;
+    min-height: 0;
     font-family: "SF Mono", Monaco, "Cascadia Mono", monospace;
     font-size: 13px;
     white-space: pre-wrap;
-    max-height: 400px;
     overflow-y: auto;
     background: #1e293b;
     color: #e2e8f0;
     padding: 14px;
+}
+.rp-output-string .rp-output-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 /* Output: image */

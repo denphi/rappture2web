@@ -99,7 +99,7 @@ rappture._registerRenderer('string', {
         body.appendChild(hdr);
 
         const pre = document.createElement('pre');
-        pre.style.cssText = 'font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:6px 8px;margin:0;max-height:400px;overflow:auto';
+        pre.style.cssText = 'flex:1;min-height:0;font-size:12px;white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:6px 8px;margin:0;overflow:auto';
         pre.textContent = data.current || '';
         body.appendChild(pre);
 
