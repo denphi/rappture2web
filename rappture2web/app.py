@@ -468,22 +468,46 @@ async def api_get_outputs():
 
 # ─── Loader examples endpoint ────────────────────────────────────────────────
 
-def _loader_search_dir(tool_dir: Path, pattern: str) -> Path:
-    """Return the directory to search for loader examples.
+def _resolve_loader_examples(tool_dir: Path, pattern: str):
+    """Glob for loader example files relative to tool_dir.
 
-    If the pattern contains a path prefix (e.g. 'examples/*.xml'), use that
-    subdirectory.  If an 'examples/' subdir exists, prefer it.  Otherwise
-    fall back to tool_dir itself.
+    Supports recursive patterns like 'examples/**/*.xml' or simple globs
+    like '*.xml' or 'examples/asd*.xml'.  Returns a list of Path objects;
+    each path is absolute but guaranteed to be under tool_dir.
+
+    Search order:
+      1. tool_dir / pattern  (treat pattern as relative glob from tool root)
+      2. tool_dir / "examples" / pattern_name  (legacy flat examples/ dir)
+      3. tool_dir / pattern_name  (fallback flat search in tool_dir)
     """
-    from pathlib import PurePosixPath
-    parent = str(PurePosixPath(pattern).parent)
-    if parent and parent != ".":
-        candidate = tool_dir / parent
-        if candidate.is_dir():
-            return candidate
-    if (tool_dir / "examples").is_dir():
-        return tool_dir / "examples"
-    return tool_dir
+    tool_dir = tool_dir.resolve()
+    results = []
+    seen: set[Path] = set()
+
+    def _add(p: Path):
+        rp = p.resolve()
+        if rp in seen or not str(rp).startswith(str(tool_dir)):
+            return
+        if rp.name == "tool.xml" or not rp.is_file():
+            return
+        seen.add(rp)
+        results.append(rp)
+
+    # 1. Glob from tool_dir using the full pattern (handles subdirs and **)
+    for p in sorted(tool_dir.glob(pattern)):
+        _add(p)
+
+    # 2. If pattern has no path separator, also check examples/ subdir
+    if "/" not in pattern and "\\" not in pattern:
+        ex_dir = tool_dir / "examples"
+        if ex_dir.is_dir():
+            for p in sorted(ex_dir.glob(pattern)):
+                _add(p)
+        # 3. Fallback: flat search in tool_dir
+        for p in sorted(tool_dir.glob(pattern)):
+            _add(p)
+
+    return results
 
 
 @app.get("/api/loader-examples")
@@ -492,13 +516,14 @@ async def api_loader_examples(pattern: str = "*.xml"):
     if _tool_xml_path is None:
         return JSONResponse([])
     tool_dir = Path(_tool_xml_path).parent
-    search_dir = _loader_search_dir(tool_dir, pattern)
     from xml.etree import ElementTree as ET
-    glob_pattern = Path(pattern).name  # just the filename glob part
     results = []
-    for fpath in sorted(search_dir.glob(glob_pattern)):
-        if fpath.name == "tool.xml":
-            continue
+    for fpath in _resolve_loader_examples(tool_dir, pattern):
+        # Use path relative to tool_dir as the filename key so subdirs are preserved
+        try:
+            rel = fpath.relative_to(tool_dir.resolve())
+        except ValueError:
+            rel = Path(fpath.name)
         label = fpath.stem
         try:
             tree = ET.parse(fpath)
@@ -510,20 +535,20 @@ async def api_loader_examples(pattern: str = "*.xml"):
                     label = lbl.strip()
         except Exception:
             pass
-        results.append({"filename": fpath.name, "label": label})
+        results.append({"filename": str(rel), "label": label})
     return JSONResponse(results)
 
 
-@app.get("/api/loader-examples/{filename}")
+@app.get("/api/loader-examples/{filename:path}")
 async def api_loader_example_file(filename: str, pattern: str = "*.xml"):
     """Return the content of a specific example XML file."""
     if _tool_xml_path is None:
         return JSONResponse({"error": "No tool loaded"}, status_code=404)
-    tool_dir = Path(_tool_xml_path).parent
-    search_dir = _loader_search_dir(tool_dir, pattern)
-    fpath = (search_dir / filename).resolve()
+    tool_dir = Path(_tool_xml_path).parent.resolve()
+    # filename may be a relative path like 'examples/asd/example1.xml'
+    fpath = (tool_dir / filename).resolve()
     # Safety: ensure file is within tool_dir
-    if not str(fpath).startswith(str(tool_dir.resolve())):
+    if not str(fpath).startswith(str(tool_dir)):
         return JSONResponse({"error": "Invalid path"}, status_code=403)
     if not fpath.exists():
         return JSONResponse({"error": "Not found"}, status_code=404)

@@ -153,17 +153,30 @@ def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None
         # We need to locate the example file on disk.
         example_elem = loader_elem.find("example")
         pattern = (example_elem.text.strip() if example_elem is not None and example_elem.text else "*.xml")
-        pattern_parent = str(_Path(pattern).parent)
-        if pattern_parent and pattern_parent != ".":
-            candidate = tool_dir / pattern_parent
-            search_dir = candidate if candidate.is_dir() else tool_dir
-        elif (tool_dir / "examples").is_dir():
-            search_dir = tool_dir / "examples"
-        else:
-            search_dir = tool_dir
 
-        example_path = search_dir / default_file
-        if not example_path.exists():
+        # Resolve example file: try as relative path from tool_dir first (handles
+        # subdirectory cases like 'examples/asd/example1.xml'), then fall back to
+        # searching the pattern-derived or default examples/ directory.
+        example_path = None
+        candidate_direct = tool_dir / default_file
+        if candidate_direct.exists():
+            example_path = candidate_direct
+        else:
+            # Derive search dir from pattern parent
+            pattern_parent = str(_Path(pattern).parent)
+            if pattern_parent and pattern_parent != ".":
+                search_dir = tool_dir / pattern_parent
+                if not search_dir.is_dir():
+                    search_dir = tool_dir
+            elif (tool_dir / "examples").is_dir():
+                search_dir = tool_dir / "examples"
+            else:
+                search_dir = tool_dir
+            candidate = search_dir / _Path(default_file).name
+            if candidate.exists():
+                example_path = candidate
+
+        if example_path is None or not example_path.exists():
             continue
 
         # Parse the example XML
