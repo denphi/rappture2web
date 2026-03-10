@@ -9,6 +9,42 @@ import sys
 from pathlib import Path
 
 
+def _find_wrwroxy():
+    # type: () -> str or None
+    """
+    Find an available wrwroxy version using 'use'.
+
+    The 'use' command prints available packages to stderr.
+    Returns the version string (e.g. 'wrwroxy-0.3') or None if not found.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", "use"],
+            capture_output=True, text=True, timeout=10
+        )
+        available = result.stderr.strip()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+    # Collect all wrwroxy-* entries
+    # The 'use' output format is "package-version:" so strip trailing colons
+    versions = []
+    for token in available.split():
+        token = token.strip().rstrip(":")
+        if token.startswith("wrwroxy-"):
+            versions.append(token)
+
+    if not versions:
+        return None
+
+    # Sort descending so the newest version is tried first
+    versions.sort(reverse=True)
+    print("Available wrwroxy versions: {}".format(", ".join(versions)), flush=True)
+    return versions[0]
+
+
 def _get_session():
     """Return (session_id, sessiondir) from nanoHUB environment variables."""
     sessiondir = os.environ.get("SESSIONDIR") or os.environ.get("SESSION_DIR", "")
@@ -195,8 +231,18 @@ def main():
             base_path = detected_path
             proxy_url = detected_proxy
 
-    # On nanoHUB the app runs on args.port (8001) and wrwroxy forwards from 8000
-    use_wrwroxy = args.wrwroxy and (shutil.which("wrwroxy") is not None)
+    # On nanoHUB the app runs on args.port (8001) and wrwroxy forwards from 8000.
+    # wrwroxy is loaded via the `use` package system, so plain which() often fails.
+    # Use _find_wrwroxy() to discover the package name via `use` output.
+    use_wrwroxy = False
+    wrwroxy_pkg = None
+    if args.wrwroxy:
+        if shutil.which("wrwroxy") is not None:
+            # Already on PATH — use directly (pkg name not needed)
+            wrwroxy_pkg = "wrwroxy"
+        else:
+            wrwroxy_pkg = _find_wrwroxy()
+        use_wrwroxy = wrwroxy_pkg is not None
     resources = _parse_nanohub_resources()
     is_nanohub = bool(resources)
     nanohub_tool_name = args.app_name or _resolve_nanohub_tool_name(resources)
@@ -249,15 +295,29 @@ def main():
         import threading
         threading.Timer(1.2, webbrowser.open, args=[server_url]).start()
 
-    # Start wrwroxy if available on nanoHUB (forwards port 8000 → args.port)
-    if use_wrwroxy:
+    # Start wrwroxy if available on nanoHUB (forwards port 8000 → args.port).
+    # If wrwroxy_pkg is a versioned package name (e.g. 'wrwroxy-0.3') we must
+    # load it via `use` first since it may not be on PATH yet.
+    if use_wrwroxy and wrwroxy_pkg:
         import subprocess
-        subprocess.Popen([
-            "wrwroxy",
-            str(args.port),       # upstream port
-            "8000",               # listen port
-            base_path.lstrip("/"),
-        ])
+        print("Starting wrwroxy ({}) {} -> 8000 [{}]".format(
+            wrwroxy_pkg, args.port, base_path.lstrip("/") or "/"), flush=True)
+        if wrwroxy_pkg == "wrwroxy":
+            # Already on PATH — launch directly
+            subprocess.Popen([
+                "wrwroxy",
+                str(args.port),
+                "8000",
+                base_path.lstrip("/"),
+            ])
+        else:
+            # Load via `use` then exec wrwroxy in the same shell
+            cmd = "use -e -r {pkg} && wrwroxy {port} 8000 {path}".format(
+                pkg=wrwroxy_pkg,
+                port=args.port,
+                path=base_path.lstrip("/"),
+            )
+            subprocess.Popen(["bash", "-lc", cmd])
 
     import uvicorn
     uvicorn.run(app, host=args.host, port=args.port, log_level="info",
