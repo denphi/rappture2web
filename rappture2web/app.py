@@ -132,6 +132,44 @@ async def _broadcast(message: dict):
         _ws_clients.remove(ws)
 
 
+def _build_inputs_report(input_values: dict) -> dict:
+    """Build a table output summarising the inputs used for a simulation run.
+
+    Uses _tool_def to map Rappture paths to human-readable labels.
+    Returns a dict in the rappture2web table format.
+    """
+    # Build path → label map from tool definition
+    label_map: dict[str, str] = {}
+    if _tool_def is not None:
+        def _collect(nodes):
+            for node in nodes:
+                if node.path and node.label:
+                    label_map[node.path] = node.label
+                if node.children:
+                    _collect(node.children)
+        _collect(_tool_def.inputs)
+
+    rows = []
+    for path, value in sorted(input_values.items()):
+        # Skip very long values (e.g. uploaded XML blobs)
+        str_val = str(value) if value is not None else ""
+        if len(str_val) > 500:
+            str_val = str_val[:497] + "..."
+        label = label_map.get(path, path)
+        rows.append([label, str_val])
+
+    return {
+        "type": "table",
+        "label": "Simulation Inputs",
+        "about": {"label": "Simulation Inputs"},
+        "columns": [
+            {"label": "Parameter", "units": ""},
+            {"label": "Value", "units": ""},
+        ],
+        "rows": rows,
+    }
+
+
 def _serialize(obj):
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return {k: _serialize(v) for k, v in dataclasses.asdict(obj).items()}
@@ -311,6 +349,13 @@ async def simulate(request: Request):
         "cached": result.get("cached", False),
     })
 
+    # Inject inputs report (only for non-library, non-cached runs — library mode
+    # injects it in api_simulate_done; cached runs already have it stored).
+    if not _use_library_mode and not result.get("cached") and result["status"] == "success":
+        report = _build_inputs_report(input_values)
+        result.setdefault("outputs", {})["__inputs__"] = report
+        _session["outputs"]["__inputs__"] = report
+
     # In library mode, api_simulate_done already broadcast the done message
     # with the correct outputs.  For cache hits and classic mode, broadcast now.
     if not _use_library_mode or result.get("cached"):
@@ -432,6 +477,9 @@ async def api_simulate_done(request: Request):
     _session["status"] = status
     if status == "success":
         _session["progress"] = {"percent": 100.0, "message": "Complete"}
+
+    # Inject inputs report into outputs
+    _session["outputs"]["__inputs__"] = _build_inputs_report(_session["inputs"])
 
     # Record in history
     run_record = _history.add(
