@@ -827,6 +827,48 @@ body {
     font-weight: 600;
     font-size: 14px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.rp-output-header-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.rp-fullscreen-btn {
+    flex-shrink: 0;
+    margin-left: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: var(--rp-text-muted, #64748b);
+    display: flex;
+    align-items: center;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+.rp-fullscreen-btn:hover { opacity: 1; }
+
+/* Fullscreen state */
+.rp-output-item.rp-output-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    margin: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.rp-output-item.rp-output-fullscreen .rp-output-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 .rp-output-body {
     padding: 14px;

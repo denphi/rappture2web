@@ -1262,8 +1262,29 @@ const rappture = {
     createOutputItem(label, type) {
         const item = document.createElement('div');
         item.className = 'rp-output-item rp-output-' + type;
-        item.innerHTML = `<div class="rp-output-header">${label}</div><div class="rp-output-body"></div>`;
+        item.innerHTML = `<div class="rp-output-header"><span class="rp-output-header-label">${label}</span><button type="button" class="rp-fullscreen-btn" title="Toggle fullscreen" aria-label="Toggle fullscreen"><svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path class="rp-fs-expand" d="M1 1h4v1.5H2.5V4H1V1zm10 0h4v3h-1.5V2.5H11V1zM1 12h1.5v1.5H4V15H1v-3zm11.5 1.5V12H15v3h-3v-1.5h1.5z"/><path class="rp-fs-collapse" style="display:none" d="M5 1v4H1V3.5h2.5V1H5zm6 0h1.5v2.5H15V5h-4V1zM1 11h4v4H3.5v-2.5H1V11zm9.5 1.5H15V11h-1.5v2.5H11V15h-1.5v-2.5z"/></svg></button></div><div class="rp-output-body"></div>`;
+        item.querySelector('.rp-fullscreen-btn').addEventListener('click', () => rappture._toggleOutputFullscreen(item));
         return item;
+    },
+
+    _toggleOutputFullscreen(item) {
+        const isFs = item.classList.toggle('rp-output-fullscreen');
+        const expand = item.querySelector('.rp-fs-expand');
+        const collapse = item.querySelector('.rp-fs-collapse');
+        if (expand) expand.style.display = isFs ? 'none' : '';
+        if (collapse) collapse.style.display = isFs ? '' : 'none';
+        if (isFs) {
+            // Dismiss on Escape
+            const onKey = (e) => {
+                if (e.key === 'Escape') {
+                    item.classList.remove('rp-output-fullscreen');
+                    if (expand) expand.style.display = '';
+                    if (collapse) collapse.style.display = 'none';
+                    document.removeEventListener('keydown', onKey);
+                }
+            };
+            document.addEventListener('keydown', onKey);
+        }
     },
 
     renderGenericOutput(id, output) {
