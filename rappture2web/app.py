@@ -577,6 +577,8 @@ def _resolve_loader_examples(tool_dir: Path, pattern: str):
             for p in sorted(tool_dir.glob(pattern)):
                 _add(p)
     else:
+        if not pattern.startswith("examples/"):
+            pattern = "examples/" + pattern
         for p in sorted(tool_dir.glob(pattern)):
             _add(p)
 

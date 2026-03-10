@@ -234,11 +234,22 @@ def parse_drawing_input(elem, node):
         "height": _get_text(bg, "height") if bg is not None else "",
     }
 
-    subs = {}
+    subs = []
     subs_elem = elem.find("substitutions")
     if subs_elem is not None:
         for child in list(subs_elem):
-            subs[child.tag] = (child.text or "").strip()
+            if child.tag == "variable":
+                var = {
+                    "name": _get_text(child, "name"),
+                    "path": _get_text(child, "path"),
+                    "maps": []
+                }
+                for map_elem in child.findall("map"):
+                    var["maps"].append({
+                        "from": _get_text(map_elem, "from"),
+                        "to": _get_text(map_elem, "to")
+                    })
+                subs.append(var)
     node.attrs["substitutions"] = subs
 
     components = []
@@ -899,6 +910,7 @@ def parse_run_xml(xml_path: str) -> dict:
             mesh_registry[mesh_id] = _parse_mesh_element(child)
 
     # Second pass: parse all outputs
+    _log_counter = 0  # for <log> elements that have no id
     for child in output_elem:
         elem_id = child.get("id", child.tag)
         tag = child.tag
@@ -914,11 +926,50 @@ def parse_run_xml(xml_path: str) -> dict:
         elif tag == "image":
             outputs[elem_id] = _parse_image_output(child)
         elif tag == "log":
-            raw_log = child.text.strip() if child.text else ""
+            # <log> uses mixed content: the text may split across child.text
+            # and the .tail of sub-elements (e.g. text after </about>).
+            # Collect all text parts to reconstruct the full log content.
+            parts = []
+            if child.text:
+                parts.append(child.text)
+            for sub in child:
+                # Ignore the <about> element's own content (it's metadata),
+                # but DO capture text that appears after </about> (its .tail).
+                if sub.tail:
+                    parts.append(sub.tail)
+            raw_log = "".join(parts)
+            # trim only a single leading/trailing newline that often comes from
+            # XML indentation; do not strip spaces since they may be meaningful
+            if raw_log.startswith("\n"):
+                raw_log = raw_log[1:]
+            if raw_log.endswith("\n"):
+                raw_log = raw_log[:-1]
+
             if raw_log.startswith("@@RP-ENC:"):
                 raw_log = _decode_rp_enc(raw_log).decode("utf-8", errors="replace")
-            outputs["log"] = {
+            # Determine key: use explicit id when present; otherwise generate
+            # a unique key so that multiple id-less <log> elements don't
+            # overwrite each other.  First id-less log → "log"; subsequent
+            # ones → "log_2", "log_3", …
+            explicit_id = child.get("id", "").strip()
+            if explicit_id:
+                log_key = explicit_id
+                # avoid name collision with previous logs
+                if log_key in outputs:
+                    suffix = 2
+                    while f"{log_key}_{suffix}" in outputs:
+                        suffix += 1
+                    log_key = f"{log_key}_{suffix}"
+            else:
+                _log_counter += 1
+                log_key = "log" if _log_counter == 1 else f"log_{_log_counter}"
+            about_elem = child.find("about")
+            log_label = (
+                _get_text(about_elem, "label") if about_elem is not None else ""
+            ) or log_key
+            outputs[log_key] = {
                 "type": "log",
+                "label": log_label,
                 "content": raw_log,
             }
         elif tag == "table":

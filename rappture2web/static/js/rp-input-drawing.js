@@ -18,13 +18,36 @@
     }
 
     function parseBgBounds(bg, components) {
+        // if explicit width/height provided use that as the drawing extents
+        if (bg && (bg.width || bg.height)) {
+            const hasW = bg.width !== undefined && bg.width !== null && bg.width !== "";
+            const hasH = bg.height !== undefined && bg.height !== null && bg.height !== "";
+            const w = hasW ? num(bg.width, 1) : null;
+            const h = hasH ? num(bg.height, 1) : null;
+            if (hasW && hasH) {
+                return { x0: 0, y0: 0, x1: w, y1: h };
+            } else if (hasW) {
+                // width-only case: make viewBox square so height scales with width
+                return { x0: 0, y0: 0, x1: w, y1: w };
+            } else {
+                // height-only: make drawing square so normalized coords fill area
+                return { x0: 0, y0: 0, x1: h, y1: h };
+            }
+        }
         const fromBg = (bg && bg.coordinates) ? String(bg.coordinates).trim().split(/\s+/).map(Number).filter(Number.isFinite) : [];
         if (fromBg.length >= 4) {
             return { x0: fromBg[0], y0: fromBg[1], x1: fromBg[2], y1: fromBg[3] };
         }
         const vals = [];
         (components || []).forEach((c) => {
-            (c.coords || []).forEach((x) => vals.push(x));
+            const coords = c.coords || [];
+            if ((c.type || "").toLowerCase() === "picture" && coords.length >= 4) {
+                // For picture, coords are [x, y, width, height], so add the corners
+                const x = coords[0], y = coords[1], width = coords[2], height = coords[3];
+                vals.push(x, y, x + width, y, x + width, y + height, x, y + height);
+            } else {
+                coords.forEach((x) => vals.push(x));
+            }
         });
         if (vals.length >= 4) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -53,6 +76,41 @@
         else textEl.setAttribute("dominant-baseline", "middle");
     }
 
+    function applySubstitutions(text, subs, form) {
+        if (!text || !subs) return text;
+        let result = text;
+        subs.forEach(v => {
+            const path = v.path;
+            const widget = form.querySelector(`.rp-widget[data-path="${path}"]`);
+            let value = "";
+            if (widget) {
+                if (widget.dataset.type === 'loader') {
+                    const sel = widget.querySelector('.rp-loader-select');
+                    if (sel) value = sel.options[sel.selectedIndex]?.value || widget.dataset.loaderDefault || '';
+                } else {
+                    const inp = widget.querySelector('input:not([type="file"]), select, textarea');
+                    if (inp) value = inp.value;
+                }
+            }
+            v.maps.forEach(map => {
+                if (value === map.from) {
+                    result = result.replace('${' + v.name + '}', map.to);
+                }
+            });
+        });
+        // Resolve file:// references
+        if (result.startsWith("file://")) {
+            let fname = result.slice(7).trim();
+            // convert leading parent traversals to __up__ tokens, matching backend
+            const parts = fname.split("/").filter(p => p !== "" && p !== ".");
+            const encoded = parts
+                .map(p => (p === ".." ? "__up__" : p))
+                .join("/");
+            result = `/tool-files/${encoded}`;
+        }
+        return result;
+    }
+
     function renderDrawingPreview(rootEl, data) {
         const host = rootEl.querySelector(".rp-drawing-preview");
         if (!host) return;
@@ -66,19 +124,25 @@
         const w = Math.max(1e-9, Math.abs(b.x1 - b.x0));
         const h = Math.max(1e-9, Math.abs(b.y1 - b.y0));
 
-        const svg = mk("svg", {
+        const preserve = "xMidYMid meet";
+        const svgAttrs = {
             viewBox: `${minX} ${minY} ${w} ${h}`,
-            preserveAspectRatio: "xMidYMid meet",
+            preserveAspectRatio: preserve,
             width: "100%",
             height: "100%",
             style: `background:${bg.color || "#ffffff"}`,
-        });
+        };
+        const svg = mk("svg", svgAttrs);
 
         components.forEach((c) => {
             const lw = num(c.linewidth, 1);
             const stroke = c.outline || c.color || "black";
             const fill = c.fill || "none";
-            const coords = c.coords || [];
+            let coords = (c.coords || []).slice();
+            // if all coordinates are small (<=1) treat them as normalized fractions
+            if (coords.length && Math.max(...coords.map(Math.abs)) <= 1) {
+                coords = coords.map((v, i) => (i % 2 === 0 ? v * w : v * h));
+            }
             switch ((c.type || "").toLowerCase()) {
                 case "rectangle": {
                     if (coords.length < 4) break;
@@ -158,6 +222,34 @@
                     }));
                     break;
                 }
+                case "picture": {
+                    if (coords.length < 4) break;
+                    const href = applySubstitutions(c.contents || "", data.substitutions, rootEl.closest('form'));
+                    const img = mk("image", {
+                        x: coords[0], y: coords[1], width: coords[2] - coords[0], height: coords[3] - coords[1],
+                        href: href,
+                    });
+                    svg.appendChild(img);
+                    // Load image to get natural size and adjust viewBox and image size
+                    const imgObj = new Image();
+                    imgObj.src = href;
+                    imgObj.onload = () => {
+                        const nw = imgObj.naturalWidth;
+                        const nh = imgObj.naturalHeight;
+                        const aspect = nw / nh;
+                        // Set viewBox to image's natural dimensions
+                        svg.setAttribute('viewBox', `0 0 ${nw} ${nh}`);
+                        // Set image to natural size
+                        img.setAttribute('width', nw);
+                        img.setAttribute('height', nh);
+                        // Make container responsive: fit height, constrain width to aspect
+                        host.style.width = '100%';
+                        host.style.height = '100%';
+                        svg.style.maxWidth = `100%`;
+                        svg.style.maxHeight = `450px`;
+                    };
+                    break;
+                }
                 default:
                     break;
             }
@@ -170,6 +262,15 @@
         document.querySelectorAll(".rp-drawing-input").forEach((el) => {
             try { renderDrawingPreview(el, JSON.parse(el.getAttribute("data-drawing") || "{}")); } catch (_) { }
         });
+        const form = document.querySelector('form');
+        if (form) {
+            // redraw when any input changes to handle substitutions
+            form.addEventListener('change', () => {
+                document.querySelectorAll(".rp-drawing-input").forEach((el) => {
+                    try { renderDrawingPreview(el, JSON.parse(el.getAttribute("data-drawing") || "{}")); } catch (_) { }
+                });
+            });
+        }
     }
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

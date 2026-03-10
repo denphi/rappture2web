@@ -192,7 +192,7 @@ rappture._registerRenderer('curve', {
             </label>
             `}
             <label style="flex-direction:row;align-items:center;gap:6px">
-              <input type="checkbox" id="plt-leg-${sid}" ${traces.length > 1 ? 'checked' : ''}> Legend
+              <input type="checkbox" id="plt-leg-${sid}"> Legend
             </label>
             <label>Legend pos<select id="plt-legpos-${sid}" style="${U.inputStyle}">
               <option value="inside-tr" selected>Inside top-right</option>
@@ -398,7 +398,7 @@ rappture._registerRenderer('curve', {
                 ...(cYmin !== undefined && cYmax !== undefined ? { range: [cYmin, cYmax] } : {}),
             },
             margin: { t: 36, r: 16, b: 60, l: 70 },
-            showlegend: true,
+            showlegend: false,
             legend: { x: 1, y: 1, xanchor: 'right', yanchor: 'top', bgcolor: 'rgba(255,255,255,0.7)', bordercolor: 'rgba(0,0,0,0.1)', borderwidth: 1 },
             template: _rpPlotlyTemplates['plotly'],
             autosize: true,

@@ -182,21 +182,32 @@ rappture._registerRenderer('image', {
 
 rappture._registerRenderer('log', {
     render(id, data) {
-        const item = rappture.createOutputItem('Log', 'log');
-        item.querySelector('.rp-output-body').textContent = data.content || '';
+        const logLabel = data.label || id || 'Log';
+        const item = rappture.createOutputItem(logLabel, 'log');
+        const body = item.querySelector('.rp-output-body');
+        const text = data.content || '';
+        if (!text) {
+            // display a placeholder so the dark background isnt mistaken for
+            // a missing element
+            body.textContent = '(no log content)';
+            body.style.fontStyle = 'italic';
+            body.style.opacity = '0.7';
+        } else {
+            body.textContent = text;
+        }
         return item;
     },
     compare(sources, id) {
         const firstData = sources[0].data;
-        const logLabel = firstData.label || 'Log';
+        const logLabel = firstData.label || id || 'Log';
         const item = rappture.createOutputItem(logLabel, 'log');
         const body = item.querySelector('.rp-output-body');
-        body.style.cssText = 'display:flex;flex-direction:column;gap:8px;padding:8px;white-space:normal;font-family:inherit;font-size:inherit';
         sources.forEach(({ run, data }, si) => {
+            if (!data) return;
             const runName = run.label || run.run_num || `Run ${si + 1}`;
             const runColor = run._color || 'var(--rp-text-muted)';
             const hdr = document.createElement('div');
-            hdr.style.cssText = `font-size:12px;font-weight:${si === 0 ? '700' : '400'};color:${runColor};margin:0 0 2px;font-family:var(--rp-font);white-space:normal`;
+            hdr.style.cssText = `font-size:12px;font-weight:${si === 0 ? '700' : '400'};color:${runColor};margin:${si > 0 ? '8px' : '0'} 0 2px;font-family:var(--rp-font)`;
             hdr.textContent = runName;
             const pre = document.createElement('pre');
             pre.style.cssText = 'font-size:12px;white-space:pre-wrap;background:#0d1117;color:#cdd6f4;border:1px solid #334155;border-radius:3px;padding:6px 8px;margin:0;max-height:300px;overflow-y:auto;font-family:monospace';

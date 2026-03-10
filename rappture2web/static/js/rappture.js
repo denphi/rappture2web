@@ -589,7 +589,7 @@ const rappture = {
                                 const oLabel = oAbout ? (oAbout.querySelector('label') || {}).textContent || '' : '';
                                 const oVal = o.querySelector('value');
                                 return { label: oLabel.trim(), value: oVal ? oVal.textContent.trim() : oLabel.trim() };
-                              })
+                            })
                             : undefined;
                         parameters.push({
                             tag, id,
@@ -772,7 +772,7 @@ const rappture = {
             const defaultFile = widget.dataset.loaderDefault || '';
             const pattern = widget.dataset.example || '*.xml';
             let explicitFiles = [];
-            try { explicitFiles = JSON.parse(widget.dataset.examples || '[]'); } catch(e) {}
+            try { explicitFiles = JSON.parse(widget.dataset.examples || '[]'); } catch (e) { }
 
             const populate = (examples) => {
                 let hasSelection = false;
@@ -781,7 +781,7 @@ const rappture = {
                     opt.value = ex.label;
                     opt.textContent = ex.label;
                     opt.dataset.filename = ex.filename;
-                    if (ex.filename === defaultFile || ex.filename.endsWith('/' + defaultFile)) {
+                    if (ex.label === defaultFile || ex.filename === defaultFile || ex.filename.endsWith('/' + defaultFile)) {
                         opt.selected = true;
                         hasSelection = true;
                     }
@@ -800,7 +800,7 @@ const rappture = {
                         .then(r => r.json())
                         .then(data => ({ filename: fname, label: data.label || fname.replace(/\.xml$/i, '') }))
                         .catch(() => ({ filename: fname, label: fname.replace(/\.xml$/i, '') }))
-                )).then(populate).catch(() => {});
+                )).then(populate).catch(() => { });
             } else {
                 fetch(this._bp + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
                     .then(r => r.json())
@@ -1016,7 +1016,12 @@ const rappture = {
         // Determine which index should be active
         let activeIdx = 0;
         if (this._preferFirstOutputOnNextRender) {
-            const firstNonLogIdx = ids.findIndex(id => id !== '__log__');
+            // Skip any log-type panels (identified by __log__ key OR by their CSS class)
+            const firstNonLogIdx = ids.findIndex(id => {
+                if (id === '__log__') return false;
+                const el = panels[id] && panels[id].elem;
+                return !el || !el.classList.contains('rp-output-log');
+            });
             activeIdx = firstNonLogIdx >= 0 ? firstNonLogIdx : 0;
             this._preferFirstOutputOnNextRender = false;
         } else {
@@ -1277,7 +1282,7 @@ const rappture = {
         const _resizePlots = () => {
             if (!window.Plotly) return;
             item.querySelectorAll('.rp-output-plot, .js-plotly-plot').forEach(plotDiv => {
-                try { Plotly.Plots.resize(plotDiv); } catch (_) {}
+                try { Plotly.Plots.resize(plotDiv); } catch (_) { }
             });
             // Also fire resize for Three.js canvases
             item.querySelectorAll('canvas').forEach(c => c.dispatchEvent(new Event('resize')));
@@ -2591,7 +2596,7 @@ const rappture = {
                 const re = new RegExp('^(?:input\\.)?' + regexSrc + '$');
                 widget = Array.from(document.querySelectorAll('.rp-widget[data-path]'))
                     .find(w => re.test(w.dataset.path)) || null;
-            } catch(e) { widget = null; }
+            } catch (e) { widget = null; }
         }
 
         if (!widget) return null;
