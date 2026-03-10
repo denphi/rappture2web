@@ -191,32 +191,52 @@ const rappture = {
     // ── WebSocket ────────────────────────────────────────────────────────────
 
     ws: null,
-    wsReconnectDelay: 2000,
+    _wsReconnectDelay: 2000,
+    _wsReconnectAttempts: 0,
+    _wsMaxReconnectAttempts: 10,
+    _wsErrorPending: false,
     _preferFirstOutputOnNextRender: false,
 
     connectWebSocket() {
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const url = `${proto}://${location.host}${this._bp}/ws`;
-        this.ws = new WebSocket(url);
+        let ws;
+        try { ws = new WebSocket(url); } catch (e) { return; }
+        this.ws = ws;
+        this._wsErrorPending = false;
 
-        this.ws.onopen = () => {
+        ws.onopen = () => {
             console.debug('[rp] WebSocket connected');
+            this._wsReconnectAttempts = 0;
+            this._wsReconnectDelay = 2000;
             this._wsPing();
         };
 
-        this.ws.onmessage = (evt) => {
+        ws.onmessage = (evt) => {
             let msg;
             try { msg = JSON.parse(evt.data); } catch { return; }
             this._handleWsMessage(msg);
         };
 
-        this.ws.onclose = () => {
-            console.debug('[rp] WebSocket closed, reconnecting...');
-            setTimeout(() => this.connectWebSocket(), this.wsReconnectDelay);
+        ws.onclose = (e) => {
+            // Normal closure (1000) or going-away (1001) — no reconnect needed
+            if (e.code === 1000 || e.code === 1001) {
+                console.debug('[rp] WebSocket closed normally');
+                return;
+            }
+            if (this._wsReconnectAttempts >= this._wsMaxReconnectAttempts) {
+                console.debug('[rp] WebSocket max reconnect attempts reached, giving up');
+                return;
+            }
+            this._wsReconnectAttempts++;
+            this._wsReconnectDelay = Math.min(30000, this._wsReconnectDelay * 1.5);
+            console.debug(`[rp] WebSocket closed (code ${e.code}), reconnecting in ${Math.round(this._wsReconnectDelay / 1000)}s (attempt ${this._wsReconnectAttempts})`);
+            setTimeout(() => this.connectWebSocket(), this._wsReconnectDelay);
         };
 
-        this.ws.onerror = (e) => {
-            console.warn('[rp] WebSocket error', e);
+        ws.onerror = () => {
+            // onerror always fires before onclose; suppress — onclose handles reconnect
+            this._wsErrorPending = true;
         };
     },
 

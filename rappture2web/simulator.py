@@ -1011,6 +1011,8 @@ async def run_simulation(
     timeout: int = 300,
     log_callback=None,
     process_callback=None,
+    output_callback=None,
+    progress_callback=None,
 ) -> dict:
     """Run a Rappture simulation.
 
@@ -1145,8 +1147,57 @@ async def run_simulation(
                     break
                 text = line.decode("utf-8", errors="replace")
                 chunks.append(text)
-                if log_callback is not None:
+                # Parse Rappture progress markers emitted to stdout
+                stripped = text.strip()
+                if "=RAPPTURE-PROGRESS=>" in stripped and progress_callback is not None:
+                    try:
+                        payload = stripped.split("=RAPPTURE-PROGRESS=>")[-1].strip()
+                        # Format: "{percent} {message}" e.g. "42 Computing..."
+                        parts = payload.split(None, 1)
+                        pct = float(parts[0])
+                        msg = parts[1].strip() if len(parts) > 1 else ""
+                        await progress_callback(pct, msg)
+                    except Exception:
+                        pass
+                elif log_callback is not None:
                     await log_callback(text)
+
+        # Poll run.xml in the background to stream outputs incrementally
+        _poll_done = asyncio.Event()
+        _last_mtime: list[float] = [0.0]
+        _streamed_outputs: set[str] = set()
+
+        async def _poll_run_xml():
+            candidates = [
+                os.path.join(work_dir, "run.xml"),
+                driver_path or "",
+            ]
+            while not _poll_done.is_set():
+                await asyncio.sleep(3)
+                for candidate in candidates:
+                    if not candidate or not os.path.exists(candidate):
+                        continue
+                    try:
+                        mtime = os.path.getmtime(candidate)
+                    except OSError:
+                        continue
+                    if mtime <= _last_mtime[0]:
+                        continue
+                    _last_mtime[0] = mtime
+                    if output_callback is None:
+                        break
+                    try:
+                        partial_outputs = parse_run_xml(candidate)
+                    except Exception:
+                        break
+                    for oid, odata in partial_outputs.items():
+                        if oid in _streamed_outputs:
+                            continue
+                        _streamed_outputs.add(oid)
+                        await output_callback(oid, odata)
+                    break
+
+        poll_task = asyncio.ensure_future(_poll_run_xml()) if (not use_library_mode) else None
 
         try:
             await asyncio.wait_for(
@@ -1159,12 +1210,19 @@ async def run_simulation(
             await process.wait()
         except asyncio.TimeoutError:
             process.kill()
+            _poll_done.set()
+            if poll_task:
+                poll_task.cancel()
             return {
                 "status": "error",
                 "log": f"Simulation timed out after {timeout}s",
                 "outputs": {},
                 "cached": False,
             }
+        finally:
+            _poll_done.set()
+            if poll_task:
+                poll_task.cancel()
 
         stdout_text = "".join(stdout_chunks)
         stderr_text = "".join(stderr_chunks)

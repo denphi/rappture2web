@@ -239,6 +239,14 @@ async def simulate(request: Request):
         _session["log"] += text
         await _broadcast({"type": "log", "text": text})
 
+    async def _stream_output(oid: str, odata: dict):
+        _session["outputs"][oid] = odata
+        await _broadcast({"type": "output", "id": oid, "data": odata})
+
+    async def _stream_progress(percent: float, message: str):
+        _session["progress"] = {"percent": percent, "message": message}
+        await _broadcast({"type": "progress", "percent": percent, "message": message})
+
     def _on_process(proc):
         global _running_process
         _running_process = proc
@@ -271,6 +279,8 @@ async def simulate(request: Request):
                 use_cache=_use_cache,
                 log_callback=_stream_log,
                 process_callback=_on_process,
+                output_callback=_stream_output,
+                progress_callback=_stream_progress,
             )
     except Exception as exc:
         import traceback
