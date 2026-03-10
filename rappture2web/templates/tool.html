@@ -61,6 +61,7 @@
                         aria-selected="{{ 'true' if loop.first else 'false' }}"
                         aria-controls="{{ panel_id }}"
                         tabindex="{{ '0' if loop.first else '-1' }}"
+                        {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}
                         data-phase="{{ widget.path }}"
                         onclick="rappture.switchPhase('{{ widget.path }}')">
                     {{ widget.label or widget.id }}
