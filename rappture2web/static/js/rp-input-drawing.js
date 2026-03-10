@@ -232,7 +232,7 @@
                     svg.appendChild(img);
                     // Load image to get natural size and adjust viewBox and image size
                     const imgObj = new Image();
-                    imgObj.src = href;
+                    imgObj.src = window._rpBasePath + href;
                     imgObj.onload = () => {
                         const nw = imgObj.naturalWidth;
                         const nh = imgObj.naturalHeight;
