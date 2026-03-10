@@ -542,16 +542,18 @@ def _resolve_loader_examples(tool_dir: Path, pattern: str):
         results.append(rp)
 
     # 1. Glob from tool_dir using the full pattern (handles subdirs and **)
-    for p in sorted(tool_dir.glob(pattern)):
-        _add(p)
-
-    # 2. If pattern has no path separator, also check examples/ subdir
+    #    If the pattern has no path separator, restrict to examples/ to avoid
+    #    picking up files (e.g. tool.xml, driver.xml) sitting in tool_dir root.
     if "/" not in pattern and "\\" not in pattern:
         ex_dir = tool_dir / "examples"
         if ex_dir.is_dir():
-            for p in sorted(ex_dir.glob(pattern)):
+            for p in sorted(ex_dir.glob("**/" + pattern)):
                 _add(p)
-        # 3. Fallback: flat search in tool_dir
+        # Fallback: glob from tool_dir only if examples/ found nothing
+        if not results:
+            for p in sorted(tool_dir.glob(pattern)):
+                _add(p)
+    else:
         for p in sorted(tool_dir.glob(pattern)):
             _add(p)
 

@@ -288,7 +288,18 @@ const rappture = {
                 this._setStatus(`Complete${runLabel}${cached}`, msg.status === 'success' ? 'success' : 'error');
                 if (msg.status !== 'success' && msg.log) {
                     const container = document.getElementById('rp-results');
-                    if (container) container.innerHTML = `<div class="rp-results-placeholder" style="color:#b91c1c;text-align:left;padding:16px;"><strong>Simulation error</strong><pre style="margin-top:8px;white-space:pre-wrap;font-size:12px;">${msg.log}</pre></div>`;
+                    if (container) {
+                        const hasOutputs = msg.outputs && Object.keys(msg.outputs).length > 0;
+                        if (hasOutputs) {
+                            // Show error banner then render any outputs (e.g. driver XML)
+                            container.innerHTML = `<div style="color:#b91c1c;text-align:left;padding:12px 16px;border-bottom:1px solid #333;"><strong>Simulation error</strong><pre style="margin-top:8px;white-space:pre-wrap;font-size:12px;">${msg.log}</pre></div>`;
+                            const outputWrap = document.createElement('div');
+                            container.appendChild(outputWrap);
+                            this.renderOutputs(msg.outputs, '');
+                        } else {
+                            container.innerHTML = `<div class="rp-results-placeholder" style="color:#b91c1c;text-align:left;padding:16px;"><strong>Simulation error</strong><pre style="margin-top:8px;white-space:pre-wrap;font-size:12px;">${msg.log}</pre></div>`;
+                        }
+                    }
                     // Refresh history without auto-selecting (no run was recorded)
                     this._fetchRunHistory(false);
                 } else if (msg.status === 'success' && msg.outputs && Object.keys(msg.outputs).length > 0) {
@@ -770,7 +781,7 @@ const rappture = {
                     opt.value = ex.label;
                     opt.textContent = ex.label;
                     opt.dataset.filename = ex.filename;
-                    if (ex.filename === defaultFile) {
+                    if (ex.filename === defaultFile || ex.filename.endsWith('/' + defaultFile)) {
                         opt.selected = true;
                         hasSelection = true;
                     }
