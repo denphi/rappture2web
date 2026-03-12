@@ -901,6 +901,9 @@ body {
     gap: 12px;
     flex: 1;
 }
+.rp-fs-controls .rp-output-selector {
+    max-width: 360px;
+}
 .rp-fs-label {
     display: flex;
     align-items: center;

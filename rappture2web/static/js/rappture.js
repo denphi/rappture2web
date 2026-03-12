@@ -1282,7 +1282,14 @@ const rappture = {
     },
 
     _toggleOutputFullscreen(item) {
-        const isFs = item.classList.toggle('rp-output-fullscreen');
+        const wasFs = item.classList.contains('rp-output-fullscreen');
+        if (!wasFs) {
+            this._captureFullscreenOriginal(item);
+            item.classList.add('rp-output-fullscreen');
+        } else {
+            item.classList.remove('rp-output-fullscreen');
+        }
+        const isFs = !wasFs;
         const btn = item.querySelector('.rp-fullscreen-btn');
         if (btn) {
             const label = isFs ? 'Exit full screen' : 'Full screen';
@@ -1331,16 +1338,7 @@ const rappture = {
         const body = item.querySelector('.rp-output-body');
         const btn = item.querySelector('.rp-fullscreen-btn');
         if (!header || !body) return;
-
-        if (!item._rpFsOriginal) {
-            item._rpFsOriginal = {
-                itemClass: item.className,
-                label: labelSpan ? labelSpan.textContent : '',
-                bodyClass: body.className,
-                bodyStyle: body.style.cssText,
-                bodyNodes: Array.from(body.childNodes),
-            };
-        }
+        if (!item._rpFsOriginal) this._captureFullscreenOriginal(item);
 
         let toolbar = item.querySelector('.rp-fs-toolbar');
         if (!toolbar) {
@@ -1431,6 +1429,20 @@ const rappture = {
             body.innerHTML = '';
             orig.bodyNodes.forEach(n => body.appendChild(n));
         }
+    },
+
+    _captureFullscreenOriginal(item) {
+        const labelSpan = item.querySelector('.rp-output-header-label');
+        const body = item.querySelector('.rp-output-body');
+        if (!body) return;
+        const cleanClass = item.className.replace(/\brp-output-fullscreen\b/g, '').replace(/\s+/g, ' ').trim();
+        item._rpFsOriginal = {
+            itemClass: cleanClass || item.className,
+            label: labelSpan ? labelSpan.textContent : '',
+            bodyClass: body.className,
+            bodyStyle: body.style.cssText,
+            bodyNodes: Array.from(body.childNodes),
+        };
     },
 
     _getDefaultFullscreenRun() {
