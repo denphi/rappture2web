@@ -954,6 +954,8 @@ const rappture = {
     /** Render all outputs at once (classic mode / run replay). */
     renderOutputs(outputs, log) {
         const container = document.getElementById('rp-results');
+        this._lastRenderedOutputs = outputs || {};
+        this._lastRenderedLog = log || '';
 
         // Build ordered list: real outputs first, then log if non-empty
         const entries = Object.entries(outputs || {});
@@ -976,7 +978,10 @@ const rappture = {
             const elem = renderer
                 ? renderer.call(this, id, output)
                 : this.renderGenericOutput(id, output);
-            if (elem) panels[id] = { elem, label: (output.about && output.about.label) || output.label || id };
+            if (elem) {
+                elem.dataset.outputId = id;
+                panels[id] = { elem, label: (output.about && output.about.label) || output.label || id };
+            }
         }
 
         this._renderTabLayout(container, panels);
@@ -1121,8 +1126,11 @@ const rappture = {
             const renderer = this.outputRenderers[data.type];
             if (renderer) {
                 const newElem = renderer.call(this, id, data);
-                if (newElem) existingPanel.innerHTML = '';
-                if (newElem) existingPanel.appendChild(newElem);
+                if (newElem) {
+                    newElem.dataset.outputId = id;
+                    existingPanel.innerHTML = '';
+                    existingPanel.appendChild(newElem);
+                }
             }
             return;
         }
@@ -1132,6 +1140,7 @@ const rappture = {
         if (!renderer) return;
         const elem = renderer.call(this, id, data);
         if (!elem) return;
+        elem.dataset.outputId = id;
 
         this._renderSingleOutputTab(id, data, data.label || id, elem);
     },
@@ -1281,6 +1290,11 @@ const rappture = {
             btn.title = label;
             btn.setAttribute('aria-label', label);
         }
+        if (isFs) {
+            this._enterOutputFullscreen(item);
+        } else {
+            this._exitOutputFullscreen(item);
+        }
 
         const _resizePlots = () => {
             if (!window.Plotly) return;
@@ -1302,12 +1316,271 @@ const rappture = {
                         btn.title = 'Full screen';
                         btn.setAttribute('aria-label', 'Full screen');
                     }
+                    this._exitOutputFullscreen(item);
                     requestAnimationFrame(() => requestAnimationFrame(_resizePlots));
                     document.removeEventListener('keydown', onKey);
                 }
             };
             document.addEventListener('keydown', onKey);
         }
+    },
+
+    _enterOutputFullscreen(item) {
+        const header = item.querySelector('.rp-output-header');
+        const labelSpan = item.querySelector('.rp-output-header-label');
+        const body = item.querySelector('.rp-output-body');
+        const btn = item.querySelector('.rp-fullscreen-btn');
+        if (!header || !body) return;
+
+        if (!item._rpFsOriginal) {
+            item._rpFsOriginal = {
+                itemClass: item.className,
+                label: labelSpan ? labelSpan.textContent : '',
+                bodyClass: body.className,
+                bodyStyle: body.style.cssText,
+                bodyNodes: Array.from(body.childNodes),
+            };
+        }
+
+        let toolbar = item.querySelector('.rp-fs-toolbar');
+        if (!toolbar) {
+            toolbar = document.createElement('div');
+            toolbar.className = 'rp-fs-toolbar';
+
+            const controls = document.createElement('div');
+            controls.className = 'rp-fs-controls';
+
+            const outLabel = document.createElement('label');
+            outLabel.className = 'rp-fs-label';
+            outLabel.innerHTML = '<span>Output</span>';
+            const outSel = document.createElement('select');
+            outSel.className = 'rp-output-selector rp-fs-output';
+            outSel.setAttribute('aria-label', 'Select output for full screen');
+            outLabel.appendChild(outSel);
+            controls.appendChild(outLabel);
+
+            const runLabel = document.createElement('label');
+            runLabel.className = 'rp-fs-label';
+            runLabel.innerHTML = '<span>Run</span>';
+            const runSel = document.createElement('select');
+            runSel.className = 'rp-output-selector rp-fs-run';
+            runSel.setAttribute('aria-label', 'Select run for full screen');
+            runLabel.appendChild(runSel);
+            controls.appendChild(runLabel);
+
+            const actions = document.createElement('div');
+            actions.className = 'rp-fs-actions';
+
+            toolbar.appendChild(controls);
+            toolbar.appendChild(actions);
+            header.appendChild(toolbar);
+        }
+
+        if (labelSpan) labelSpan.style.display = 'none';
+        toolbar.style.display = 'flex';
+
+        const controls = toolbar.querySelector('.rp-fs-controls');
+        const actions = toolbar.querySelector('.rp-fs-actions');
+        const outSel = toolbar.querySelector('.rp-fs-output');
+        const runSel = toolbar.querySelector('.rp-fs-run');
+        if (btn && actions && btn.parentElement !== actions) actions.appendChild(btn);
+
+        if (runSel && !runSel._rpFsBound) {
+            runSel._rpFsBound = true;
+            runSel.addEventListener('change', () => {
+                const runId = runSel.value;
+                item._rpFsRunId = runId;
+                this._refreshFullscreenOutputs(item, runId, outSel);
+            });
+        }
+        if (outSel && !outSel._rpFsBound) {
+            outSel._rpFsBound = true;
+            outSel.addEventListener('change', () => {
+                const runId = item._rpFsRunId;
+                const outputId = outSel.value;
+                if (!item._rpFsSelections) item._rpFsSelections = {};
+                item._rpFsSelections[runId] = outputId;
+                this._renderFullscreenOutput(item, runId, outputId);
+            });
+        }
+
+        // Initialize run + output selectors
+        const defaultRun = this._getDefaultFullscreenRun();
+        this._populateFullscreenRuns(runSel, defaultRun);
+        item._rpFsRunId = runSel && runSel.value ? runSel.value : (defaultRun ? String(defaultRun.run_id) : 'current');
+        this._refreshFullscreenOutputs(item, item._rpFsRunId, outSel);
+    },
+
+    _exitOutputFullscreen(item) {
+        const header = item.querySelector('.rp-output-header');
+        const labelSpan = item.querySelector('.rp-output-header-label');
+        const btn = item.querySelector('.rp-fullscreen-btn');
+        const toolbar = item.querySelector('.rp-fs-toolbar');
+        const body = item.querySelector('.rp-output-body');
+
+        if (toolbar) toolbar.style.display = 'none';
+        if (labelSpan) labelSpan.style.display = '';
+        if (btn && header && btn.parentElement !== header) header.appendChild(btn);
+
+        if (item._rpFsOriginal && body) {
+            const orig = item._rpFsOriginal;
+            item.className = orig.itemClass || item.className;
+            if (labelSpan) labelSpan.textContent = orig.label || labelSpan.textContent;
+            body.className = orig.bodyClass || body.className;
+            body.style.cssText = orig.bodyStyle || '';
+            body.innerHTML = '';
+            orig.bodyNodes.forEach(n => body.appendChild(n));
+        }
+    },
+
+    _getDefaultFullscreenRun() {
+        if (!this._runs || this._runs.length === 0) return null;
+        const checked = this._runs.filter(r => r._checked);
+        return checked[0] || this._runs[0] || null;
+    },
+
+    _populateFullscreenRuns(runSel, defaultRun) {
+        if (!runSel) return;
+        runSel.innerHTML = '';
+        if (!this._runs || this._runs.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = 'current';
+            opt.textContent = 'Current run';
+            runSel.appendChild(opt);
+            runSel.disabled = true;
+            return;
+        }
+        runSel.disabled = false;
+        this._runs.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = String(r.run_id);
+            opt.textContent = r.label || (r.run_num ? `Run #${r.run_num}` : `Run ${r.run_id}`);
+            if (defaultRun && r.run_id === defaultRun.run_id) opt.selected = true;
+            runSel.appendChild(opt);
+        });
+    },
+
+    async _ensureRunOutputs(run) {
+        if (!run || run.outputs) return;
+        try {
+            const resp = await fetch(`${this._bp}/api/runs/${run.run_id}`);
+            if (resp.ok) {
+                const full = await resp.json();
+                Object.assign(run, full);
+            }
+        } catch (e) {
+            console.warn('Failed to load run outputs for fullscreen:', e);
+        }
+    },
+
+    _buildFullscreenOutputList(runId) {
+        let outputs = null;
+        let log = '';
+        if (runId === 'current' || !this._runs || this._runs.length === 0) {
+            outputs = this._lastRenderedOutputs || this._streamedOutputs || {};
+            log = this._lastRenderedLog || '';
+        } else {
+            const run = this._runs.find(r => String(r.run_id) === String(runId));
+            if (!run) return [];
+            const tagged = {};
+            for (const [k, v] of Object.entries(run.outputs || {})) {
+                tagged[k] = { ...v, _runColor: run._color, _runLabel: run.label };
+            }
+            outputs = tagged;
+            log = run.log || '';
+        }
+
+        const entries = Object.entries(outputs || {});
+        if (log && log.trim()) {
+            entries.push(['__log__', { type: 'log', label: 'Output Log', content: log }]);
+        }
+        const merged = rappture._mergeGroupedOutputs(entries);
+        return merged.map(([id, output]) => ({
+            id,
+            output,
+            label: (output.about && output.about.label) || output.label || id,
+        }));
+    },
+
+    async _refreshFullscreenOutputs(item, runId, outSel) {
+        if (!outSel) return;
+        if (runId !== 'current') {
+            const run = this._runs && this._runs.find(r => String(r.run_id) === String(runId));
+            if (run) await this._ensureRunOutputs(run);
+        }
+        const list = this._buildFullscreenOutputList(runId);
+        outSel.innerHTML = '';
+        if (list.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'No outputs';
+            outSel.appendChild(opt);
+            outSel.disabled = true;
+            this._renderFullscreenEmpty(item, 'No outputs returned.');
+            return;
+        }
+        outSel.disabled = false;
+        list.forEach((o) => {
+            const opt = document.createElement('option');
+            opt.value = o.id;
+            opt.textContent = o.label;
+            outSel.appendChild(opt);
+        });
+
+        const selections = item._rpFsSelections || (item._rpFsSelections = {});
+        const preferred = selections[runId] || (item.dataset.outputId || '');
+        const hasPreferred = list.some(o => o.id === preferred);
+        outSel.value = hasPreferred ? preferred : list[0].id;
+        selections[runId] = outSel.value;
+        this._renderFullscreenOutput(item, runId, outSel.value);
+    },
+
+    _renderFullscreenEmpty(item, message) {
+        const body = item.querySelector('.rp-output-body');
+        const labelSpan = item.querySelector('.rp-output-header-label');
+        if (labelSpan) labelSpan.textContent = 'Output';
+        if (body) {
+            body.className = 'rp-output-body';
+            body.style.cssText = 'padding:16px';
+            body.innerHTML = `<div class="rp-results-placeholder"><p>${message}</p></div>`;
+        }
+    },
+
+    _renderFullscreenOutput(item, runId, outputId) {
+        const list = this._buildFullscreenOutputList(runId);
+        const entry = list.find(o => o.id === outputId) || list[0];
+        if (!entry) {
+            this._renderFullscreenEmpty(item, 'No outputs returned.');
+            return;
+        }
+        const labelSpan = item.querySelector('.rp-output-header-label');
+        if (labelSpan) labelSpan.textContent = entry.label;
+
+        const renderer = this.outputRenderers[entry.output.type];
+        const rendered = renderer
+            ? renderer.call(this, entry.id, entry.output)
+            : this.renderGenericOutput(entry.id, entry.output);
+        if (!rendered) {
+            this._renderFullscreenEmpty(item, 'Unable to render output.');
+            return;
+        }
+
+        const body = item.querySelector('.rp-output-body');
+        const renderedBody = rendered.querySelector('.rp-output-body');
+        if (!body || !renderedBody) return;
+
+        const isFs = item.classList.contains('rp-output-fullscreen');
+        const classes = new Set(rendered.className.split(/\s+/));
+        if (isFs) classes.add('rp-output-fullscreen');
+        item.className = Array.from(classes).join(' ');
+
+        body.className = renderedBody.className || 'rp-output-body';
+        body.style.cssText = renderedBody.style.cssText || '';
+        body.innerHTML = '';
+        while (renderedBody.firstChild) {
+            body.appendChild(renderedBody.firstChild);
+        }
+        this._queueActiveOutputResize();
     },
 
     renderGenericOutput(id, output) {
