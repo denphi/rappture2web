@@ -137,7 +137,7 @@ rappture._registerRenderer('curve', {
                 ...(yMin !== undefined && yMax !== undefined ? { range: [yMin, yMax] } : {}),
             },
             margin: { t: 36, r: 16, b: 60, l: 70 },
-            showlegend: traces.filter(t => t.showlegend !== false).length > 1,
+            showlegend: data._seqHideLegend ? false : (traces.filter(t => t.showlegend !== false).length > 1),
             legend: { x: 1, y: 1, xanchor: 'right', yanchor: 'top', bgcolor: 'rgba(255,255,255,0.7)', bordercolor: 'rgba(0,0,0,0.1)', borderwidth: 1 },
             template: _rpPlotlyTemplates['plotly'],
             autosize: true,
@@ -440,7 +440,7 @@ rappture._registerRenderer('curve', {
             <div class="rp-panel-title">Display</div>
             <label>Line width<input type="range" id="plt-lw-${sid}" min="1" max="8" value="2" step="0.5"></label>
             <label style="flex-direction:row;align-items:center;gap:6px">
-              <input type="checkbox" id="plt-leg-${sid}" checked> Legend
+              <input type="checkbox" id="plt-leg-${sid}" ${firstData._seqHideLegend ? '' : 'checked'}> Legend
             </label>
             <label>Legend pos<select id="plt-legpos-${sid}" style="${U.inputStyle}">
               <option value="inside-tr" selected>Inside top-right</option>
@@ -566,7 +566,7 @@ rappture._registerRenderer('histogram', {
             yaxis: { title: yTitle0, showgrid: true },
             margin: { t: 36, r: 16, b: 60, l: 70 },
             bargap: 0.05,
-            showlegend: traces.length > 1,
+            showlegend: data._seqHideLegend ? false : (traces.length > 1),
             legend: { x: 1, y: 1, xanchor: 'right', yanchor: 'top', bgcolor: 'rgba(255,255,255,0.7)', bordercolor: 'rgba(0,0,0,0.1)', borderwidth: 1 },
             template: _rpPlotlyTemplates['plotly'],
             autosize: true,
@@ -601,7 +601,7 @@ rappture._registerRenderer('histogram', {
           <div class="rp-panel-section">
             <div class="rp-panel-title">Display</div>
             <label style="flex-direction:row;align-items:center;gap:6px">
-              <input type="checkbox" id="ht-leg-${sid}" ${traces.length > 1 ? 'checked' : ''}> Legend
+              <input type="checkbox" id="ht-leg-${sid}" ${(!data._seqHideLegend && traces.length > 1) ? 'checked' : ''}> Legend
             </label>
             <label>Legend pos<select id="ht-legpos-${sid}" style="${U.inputStyle}">
               <option value="inside-tr" selected>Inside top-right</option>

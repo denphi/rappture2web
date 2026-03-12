@@ -129,6 +129,9 @@ rappture._registerRenderer('sequence', {
                 frameEntries.forEach(([oid, odata], entryIdx) => {
                     const renderer = rappture.outputRenderers[odata.type];
                     if (!renderer) return;
+                    if (odata.type === 'curve' || odata.type === 'histogram') {
+                        odata._seqHideLegend = true;
+                    }
                     // Inject Lock Y checkbox id into curve data so it renders in the Y Axis panel
                     if ((odata.type === 'curve' || odata.type === 'histogram') && !lockYChk) {
                         odata._seqLockYId = lockYId;
@@ -320,6 +323,9 @@ rappture._registerRenderer('sequence', {
                 const cmpEntries = rappture._mergeGroupedOutputs(Object.entries(el.outputs || {}));
                 for (let entryIdx = 0; entryIdx < cmpEntries.length; entryIdx++) {
                     const [oid, odata] = cmpEntries[entryIdx];
+                    if (odata.type === 'curve' || odata.type === 'histogram') {
+                        odata._seqHideLegend = true;
+                    }
                     const t = String((odata && odata.type) || '');
                     const key = (t === 'field' || t.startsWith('field_'))
                         ? (odata && odata.label ? `__fieldlbl__${odata.label}` : `__fieldpos__${entryIdx}`)
