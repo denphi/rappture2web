@@ -748,7 +748,12 @@ const rappture = {
                 }
             } else {
                 const inp = w.querySelector('input:not([type="file"]), select, textarea');
-                if (inp) { inp.value = value; inp.dispatchEvent(new Event('change', { bubbles: true })); }
+                if (inp) {
+                    inp.value = value;
+                    if (w.classList.contains('rp-loader')) {
+                        w.dataset.pendingValue = value;
+                    }
+                    inp.dispatchEvent(new Event('change', { bubbles: true })); }
             }
         }
     },
@@ -780,17 +785,30 @@ const rappture = {
 
             const populate = (examples) => {
                 let hasSelection = false;
+                let matchedPreferred = false;
+                const pending = (widget.dataset.pendingValue || '').trim();
+                const preferred = pending || sel.value || '';
                 examples.forEach(ex => {
                     const opt = document.createElement('option');
                     opt.value = ex.label;
                     opt.textContent = ex.label;
                     opt.dataset.filename = ex.filename;
-                    if (ex.label === defaultFile || ex.filename === defaultFile || ex.filename.endsWith('/' + defaultFile)) {
+                    if (preferred && (ex.label === preferred || ex.filename === preferred || ex.filename.endsWith('/' + preferred))) {
                         opt.selected = true;
                         hasSelection = true;
+                        matchedPreferred = true;
                     }
                     sel.appendChild(opt);
                 });
+                if (!hasSelection) {
+                    const options = Array.from(sel.options);
+                    const defOpt = options.find(o => o.value === defaultFile || o.dataset.filename === defaultFile || (o.dataset.filename || '').endsWith('/' + defaultFile));
+                    if (defOpt) {
+                        defOpt.selected = true;
+                        hasSelection = true;
+                    }
+                }
+                if (matchedPreferred && pending) widget.dataset.pendingValue = '';
                 if (hasSelection) this.loadExampleByName(sel);
             };
 
