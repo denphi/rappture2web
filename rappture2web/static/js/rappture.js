@@ -1029,6 +1029,8 @@ const rappture = {
             });
             activeIdx = firstNonLogIdx >= 0 ? firstNonLogIdx : 0;
             this._preferFirstOutputOnNextRender = false;
+        } else if (this._activeOutputId && ids.includes(this._activeOutputId)) {
+            activeIdx = Math.max(0, ids.indexOf(this._activeOutputId));
         } else {
             activeIdx = prevActiveLabel
                 ? Math.max(0, ids.findIndex(id => panels[id].label === prevActiveLabel))
@@ -1052,6 +1054,7 @@ const rappture = {
             const opt = document.createElement('option');
             opt.value = label;
             opt.textContent = label;
+            opt.dataset.outputId = id;
             if (i === activeIdx) opt.selected = true;
             sel.appendChild(opt);
 
@@ -1064,8 +1067,11 @@ const rappture = {
             panelWrap.appendChild(panel);
         });
 
+        this._activeOutputId = ids[activeIdx];
+
         sel.addEventListener('change', () => {
             const idx = sel.selectedIndex;
+            this._activeOutputId = ids[idx];
             _switchTo(idx);
         });
 
@@ -1185,6 +1191,8 @@ const rappture = {
 
             sel.addEventListener('change', () => {
                 const panelId = sel.options[sel.selectedIndex].dataset.panel;
+                const outId = sel.options[sel.selectedIndex].dataset.outputId;
+                if (outId) this._activeOutputId = outId;
                 panelWrap.querySelectorAll('.rp-output-panel').forEach(p => p.classList.remove('active'));
                 const activePanel = document.getElementById(panelId);
                 if (activePanel) {
@@ -1202,8 +1210,10 @@ const rappture = {
         opt.value = label;
         opt.textContent = label;
         opt.dataset.panel = panelId;
+        opt.dataset.outputId = id;
         if (isFirst) opt.selected = true;
         sel.appendChild(opt);
+        if (isFirst) this._activeOutputId = id;
 
         const panel = document.createElement('div');
         panel.className = 'rp-output-panel' + (isFirst ? ' active' : '');
@@ -1357,14 +1367,21 @@ const rappture = {
             outLabel.appendChild(outSel);
             controls.appendChild(outLabel);
 
-            const runLabel = document.createElement('label');
-            runLabel.className = 'rp-fs-label';
-            runLabel.innerHTML = '<span>Run</span>';
-            const runSel = document.createElement('select');
-            runSel.className = 'rp-output-selector rp-fs-run';
-            runSel.setAttribute('aria-label', 'Select run for full screen');
-            runLabel.appendChild(runSel);
-            controls.appendChild(runLabel);
+            const runWrap = document.createElement('div');
+            runWrap.className = 'rp-fs-runmenu';
+            const runBtn = document.createElement('button');
+            runBtn.type = 'button';
+            runBtn.className = 'rp-fs-runbtn';
+            runBtn.setAttribute('aria-haspopup', 'menu');
+            runBtn.setAttribute('aria-expanded', 'false');
+            runBtn.textContent = 'Runs';
+            const runMenu = document.createElement('div');
+            runMenu.className = 'rp-fs-runmenu-panel';
+            runMenu.setAttribute('role', 'menu');
+            runMenu.setAttribute('aria-label', 'Select runs for comparison');
+            runWrap.appendChild(runBtn);
+            runWrap.appendChild(runMenu);
+            controls.appendChild(runWrap);
 
             const actions = document.createElement('div');
             actions.className = 'rp-fs-actions';
@@ -1380,33 +1397,59 @@ const rappture = {
         const controls = toolbar.querySelector('.rp-fs-controls');
         const actions = toolbar.querySelector('.rp-fs-actions');
         const outSel = toolbar.querySelector('.rp-fs-output');
-        const runSel = toolbar.querySelector('.rp-fs-run');
+        const runMenu = toolbar.querySelector('.rp-fs-runmenu-panel');
+        const runBtn = toolbar.querySelector('.rp-fs-runbtn');
         if (btn && actions && btn.parentElement !== actions) actions.appendChild(btn);
 
-        if (runSel && !runSel._rpFsBound) {
-            runSel._rpFsBound = true;
-            runSel.addEventListener('change', () => {
-                const runId = runSel.value;
-                item._rpFsRunId = runId;
-                this._refreshFullscreenOutputs(item, runId, outSel);
+        if (runMenu && !runMenu._rpFsBound) {
+            runMenu._rpFsBound = true;
+            runMenu.addEventListener('change', () => {
+                const runIds = Array.from(runMenu.querySelectorAll('input[type=checkbox]:checked'))
+                    .map(cb => cb.value)
+                    .filter(v => v !== '__none__');
+                item._rpFsRunIds = runIds;
+                this._updateFullscreenRunButton(runBtn, runIds);
+                this._refreshFullscreenOutputs(item, runIds, outSel);
             });
+        }
+        if (runBtn && !runBtn._rpFsBound) {
+            runBtn._rpFsBound = true;
+            runBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = runMenu.classList.toggle('open');
+                runBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+            const onDoc = (e) => {
+                if (!runMenu.classList.contains('open')) return;
+                if (runMenu.contains(e.target) || runBtn.contains(e.target)) return;
+                runMenu.classList.remove('open');
+                runBtn.setAttribute('aria-expanded', 'false');
+            };
+            document.addEventListener('click', onDoc);
+            item._rpFsRunMenuClose = onDoc;
         }
         if (outSel && !outSel._rpFsBound) {
             outSel._rpFsBound = true;
             outSel.addEventListener('change', () => {
-                const runId = item._rpFsRunId;
+                const runIds = item._rpFsRunIds || [];
                 const outputId = outSel.value;
                 if (!item._rpFsSelections) item._rpFsSelections = {};
-                item._rpFsSelections[runId] = outputId;
-                this._renderFullscreenOutput(item, runId, outputId);
+                const key = this._getFullscreenRunKey(runIds);
+                item._rpFsSelections[key] = outputId;
+                this._renderFullscreenOutput(item, runIds, outputId);
             });
         }
 
         // Initialize run + output selectors
-        const defaultRun = this._getDefaultFullscreenRun();
-        this._populateFullscreenRuns(runSel, defaultRun);
-        item._rpFsRunId = runSel && runSel.value ? runSel.value : (defaultRun ? String(defaultRun.run_id) : 'current');
-        this._refreshFullscreenOutputs(item, item._rpFsRunId, outSel);
+        const defaultRuns = this._getDefaultFullscreenRuns();
+        const existingIds = Array.isArray(item._rpFsRunIds) ? item._rpFsRunIds : null;
+        const initIds = existingIds && existingIds.length
+            ? existingIds
+            : (Array.isArray(defaultRuns) ? defaultRuns.map(r => String(r.run_id)) : []);
+        item._rpFsRunIds = initIds;
+        this._populateFullscreenRunMenu(runMenu, defaultRuns, initIds);
+        this._updateFullscreenRunButton(runBtn, item._rpFsRunIds);
+        this._refreshFullscreenOutputs(item, item._rpFsRunIds, outSel);
     },
 
     _exitOutputFullscreen(item) {
@@ -1415,6 +1458,17 @@ const rappture = {
         const btn = item.querySelector('.rp-fullscreen-btn');
         const toolbar = item.querySelector('.rp-fs-toolbar');
         const body = item.querySelector('.rp-output-body');
+
+        if (body && item._rpFsCurrentPanelKey) {
+            item._rpFsPanelState = item._rpFsPanelState || {};
+            item._rpFsPanelState[item._rpFsCurrentPanelKey] = this._capturePanelState(body);
+            const parts = item._rpFsCurrentPanelKey.split('::');
+            const outputId = parts.length > 1 ? parts[1] : null;
+            if (outputId) {
+                this._pendingPanelState = this._pendingPanelState || {};
+                this._pendingPanelState[outputId] = item._rpFsPanelState[item._rpFsCurrentPanelKey];
+            }
+        }
 
         if (toolbar) toolbar.style.display = 'none';
         if (labelSpan) labelSpan.style.display = '';
@@ -1428,6 +1482,26 @@ const rappture = {
             body.style.cssText = orig.bodyStyle || '';
             body.innerHTML = '';
             orig.bodyNodes.forEach(n => body.appendChild(n));
+        }
+        if (item._rpFsSelections) {
+            const key = this._getFullscreenRunKey(item._rpFsRunIds || []);
+            const outId = item._rpFsSelections[key];
+            if (outId) this._syncRegularOutputSelection(outId);
+        }
+        if (this._runs && item._rpFsRunIds) {
+            const ids = new Set(item._rpFsRunIds.map(String));
+            this._runs.forEach(r => { r._checked = ids.has(String(r.run_id)); });
+            this._renderRunHistory();
+            this._saveUIState();
+            this._renderCheckedRuns();
+            const outId = this._activeOutputId;
+            if (outId) {
+                setTimeout(() => this._applyPanelStateToRegular(outId), 80);
+            }
+        }
+        if (item._rpFsRunMenuClose) {
+            document.removeEventListener('click', item._rpFsRunMenuClose);
+            item._rpFsRunMenuClose = null;
         }
     },
 
@@ -1443,33 +1517,90 @@ const rappture = {
             bodyStyle: body.style.cssText,
             bodyNodes: Array.from(body.childNodes),
         };
+        const runIds = this._runs ? this._runs.filter(r => r._checked).map(r => String(r.run_id)) : [];
+        const outputId = this._activeOutputId || item.dataset.outputId;
+        if (outputId) {
+            const key = this._getFullscreenPanelKey(runIds, outputId);
+            item._rpFsPanelState = item._rpFsPanelState || {};
+            item._rpFsPanelState[key] = this._capturePanelState(body);
+        }
     },
 
-    _getDefaultFullscreenRun() {
+    _getDefaultFullscreenRuns() {
         if (!this._runs || this._runs.length === 0) return null;
         const checked = this._runs.filter(r => r._checked);
-        return checked[0] || this._runs[0] || null;
+        return checked.length ? checked : [this._runs[0]];
     },
 
-    _populateFullscreenRuns(runSel, defaultRun) {
-        if (!runSel) return;
-        runSel.innerHTML = '';
+    _populateFullscreenRunMenu(runMenu, defaultRuns, selectedIds) {
+        if (!runMenu) return;
+        runMenu.innerHTML = '';
         if (!this._runs || this._runs.length === 0) {
-            const opt = document.createElement('option');
-            opt.value = 'current';
-            opt.textContent = 'Current run';
-            runSel.appendChild(opt);
-            runSel.disabled = true;
+            const row = document.createElement('label');
+            row.className = 'rp-fs-runitem';
+            row.innerHTML = '<input type="checkbox" value="__none__" checked disabled> <span>Current run</span>';
+            runMenu.appendChild(row);
+            runMenu.classList.add('rp-fs-runmenu-disabled');
             return;
         }
-        runSel.disabled = false;
+        runMenu.classList.remove('rp-fs-runmenu-disabled');
+        const preferredIds = new Set(
+            (Array.isArray(selectedIds) && selectedIds.length ? selectedIds : (defaultRuns || []).map(r => String(r.run_id)))
+        );
         this._runs.forEach(r => {
-            const opt = document.createElement('option');
-            opt.value = String(r.run_id);
-            opt.textContent = r.label || (r.run_num ? `Run #${r.run_num}` : `Run ${r.run_id}`);
-            if (defaultRun && r.run_id === defaultRun.run_id) opt.selected = true;
-            runSel.appendChild(opt);
+            const row = document.createElement('label');
+            row.className = 'rp-fs-runitem';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = String(r.run_id);
+            cb.checked = preferredIds.has(String(r.run_id));
+            const name = document.createElement('span');
+            name.textContent = r.label || (r.run_num ? `Run #${r.run_num}` : `Run ${r.run_id}`);
+            row.appendChild(cb);
+            row.appendChild(name);
+            runMenu.appendChild(row);
         });
+    },
+
+    _updateFullscreenRunButton(runBtn, runIds) {
+        if (!runBtn) return;
+        const ids = Array.isArray(runIds) ? runIds : [];
+        if (!ids.length || !this._runs || this._runs.length === 0) {
+            runBtn.textContent = 'Runs';
+            runBtn.title = 'Runs';
+            return;
+        }
+        const names = ids
+            .map(id => this._runs.find(r => String(r.run_id) === String(id)))
+            .filter(Boolean)
+            .map(r => r.label || (r.run_num ? `Run #${r.run_num}` : `Run ${r.run_id}`));
+        const full = names.length ? names.join(', ') : 'Runs';
+        const maxChars = 36;
+        const truncated = full.length > maxChars ? (full.slice(0, maxChars - 3).trimEnd() + '...') : full;
+        runBtn.textContent = truncated;
+        runBtn.title = full;
+    },
+
+    _syncRegularOutputSelection(outputId) {
+        if (!outputId) return;
+        const container = document.getElementById('rp-results');
+        if (!container) return;
+        const sel = container.querySelector('.rp-output-selector');
+        if (!sel) return;
+        const opt = Array.from(sel.options).find(o => o.dataset.outputId === outputId);
+        if (!opt) return;
+        sel.value = opt.value;
+        this._activeOutputId = outputId;
+        sel.dispatchEvent(new Event('change'));
+    },
+
+    _applyPanelStateToRegular(outputId) {
+        if (!outputId) return;
+        if (!this._pendingPanelState || !this._pendingPanelState[outputId]) return;
+        const panel = document.getElementById('rp-panel-' + outputId);
+        if (!panel) return;
+        const state = this._pendingPanelState[outputId];
+        this._applyPanelState(panel, state);
     },
 
     async _ensureRunOutputs(run) {
@@ -1485,42 +1616,93 @@ const rappture = {
         }
     },
 
-    _buildFullscreenOutputList(runId) {
-        let outputs = null;
-        let log = '';
-        if (runId === 'current' || !this._runs || this._runs.length === 0) {
-            outputs = this._lastRenderedOutputs || this._streamedOutputs || {};
-            log = this._lastRenderedLog || '';
-        } else {
-            const run = this._runs.find(r => String(r.run_id) === String(runId));
-            if (!run) return [];
+    _buildFullscreenOutputList(runIds) {
+        const ids = Array.isArray(runIds) ? runIds : [];
+        if (ids.length === 0 || !this._runs || this._runs.length === 0) {
+            const outputs = this._lastRenderedOutputs || this._streamedOutputs || {};
+            const log = this._lastRenderedLog || '';
+            const entries = Object.entries(outputs || {});
+            if (log && log.trim()) {
+                entries.push(['__log__', { type: 'log', label: 'Output Log', content: log }]);
+            }
+            const merged = rappture._mergeGroupedOutputs(entries);
+            return merged.map(([id, output]) => ({
+                id,
+                output,
+                label: (output.about && output.about.label) || output.label || id,
+            }));
+        }
+
+        const runs = ids
+            .map(id => this._runs.find(r => String(r.run_id) === String(id)))
+            .filter(Boolean);
+        if (runs.length === 0) return [];
+
+        if (runs.length === 1) {
+            const run = runs[0];
             const tagged = {};
             for (const [k, v] of Object.entries(run.outputs || {})) {
                 tagged[k] = { ...v, _runColor: run._color, _runLabel: run.label };
             }
-            outputs = tagged;
-            log = run.log || '';
+            const entries = Object.entries(tagged || {});
+            if (run.log && run.log.trim()) {
+                entries.push(['__log__', { type: 'log', label: 'Output Log', content: run.log }]);
+            }
+            const merged = rappture._mergeGroupedOutputs(entries);
+            return merged.map(([id, output]) => ({
+                id,
+                output,
+                label: (output.about && output.about.label) || output.label || id,
+            }));
         }
 
-        const entries = Object.entries(outputs || {});
-        if (log && log.trim()) {
-            entries.push(['__log__', { type: 'log', label: 'Output Log', content: log }]);
-        }
-        const merged = rappture._mergeGroupedOutputs(entries);
-        return merged.map(([id, output]) => ({
-            id,
-            output,
-            label: (output.about && output.about.label) || output.label || id,
-        }));
+        const allIds = new Set();
+        runs.forEach(r => {
+            const merged = rappture._mergeGroupedOutputs(Object.entries(r.outputs || {}));
+            merged.forEach(([id]) => allIds.add(id));
+        });
+        if (runs.some(r => r.log && r.log.trim())) allIds.add('__log__');
+
+        const list = [];
+        Array.from(allIds).forEach(id => {
+            let label = id;
+            for (const r of runs) {
+                const merged = rappture._mergeGroupedOutputs(Object.entries(r.outputs || {}));
+                const hit = merged.find(([oid]) => oid === id);
+                if (hit) {
+                    const o = hit[1];
+                    label = (o.about && o.about.label) || o.label || id;
+                    break;
+                }
+            }
+            if (id === '__log__') label = 'Log';
+            list.push({ id, label });
+        });
+        return list;
     },
 
-    async _refreshFullscreenOutputs(item, runId, outSel) {
+    _getFullscreenRunKey(runIds) {
+        const ids = Array.isArray(runIds) ? runIds.slice() : [];
+        ids.sort();
+        return ids.join('|') || 'current';
+    },
+
+    async _refreshFullscreenOutputs(item, runIds, outSel) {
         if (!outSel) return;
-        if (runId !== 'current') {
-            const run = this._runs && this._runs.find(r => String(r.run_id) === String(runId));
-            if (run) await this._ensureRunOutputs(run);
+        const ids = Array.isArray(runIds) ? runIds : [];
+        if (ids.length === 0 && this._runs && this._runs.length > 0) {
+            outSel.innerHTML = '';
+            outSel.disabled = true;
+            this._renderFullscreenEmpty(item, 'Select one or more runs to view outputs.');
+            return;
         }
-        const list = this._buildFullscreenOutputList(runId);
+        if (ids.length > 0) {
+            for (const id of ids) {
+                const run = this._runs && this._runs.find(r => String(r.run_id) === String(id));
+                if (run) await this._ensureRunOutputs(run);
+            }
+        }
+        const list = this._buildFullscreenOutputList(ids);
         outSel.innerHTML = '';
         if (list.length === 0) {
             const opt = document.createElement('option');
@@ -1540,11 +1722,13 @@ const rappture = {
         });
 
         const selections = item._rpFsSelections || (item._rpFsSelections = {});
-        const preferred = selections[runId] || (item.dataset.outputId || '');
+        const key = this._getFullscreenRunKey(ids);
+        const preferred = selections[key] || this._activeOutputId || (item.dataset.outputId || '');
         const hasPreferred = list.some(o => o.id === preferred);
         outSel.value = hasPreferred ? preferred : list[0].id;
-        selections[runId] = outSel.value;
-        this._renderFullscreenOutput(item, runId, outSel.value);
+        selections[key] = outSel.value;
+        item.dataset.outputId = outSel.value;
+        this._renderFullscreenOutput(item, ids, outSel.value);
     },
 
     _renderFullscreenEmpty(item, message) {
@@ -1558,8 +1742,9 @@ const rappture = {
         }
     },
 
-    _renderFullscreenOutput(item, runId, outputId) {
-        const list = this._buildFullscreenOutputList(runId);
+    _renderFullscreenOutput(item, runIds, outputId) {
+        const ids = Array.isArray(runIds) ? runIds : [];
+        const list = this._buildFullscreenOutputList(ids);
         const entry = list.find(o => o.id === outputId) || list[0];
         if (!entry) {
             this._renderFullscreenEmpty(item, 'No outputs returned.');
@@ -1567,17 +1752,81 @@ const rappture = {
         }
         const labelSpan = item.querySelector('.rp-output-header-label');
         if (labelSpan) labelSpan.textContent = entry.label;
+        item.dataset.outputId = entry.id;
 
-        const renderer = this.outputRenderers[entry.output.type];
-        const rendered = renderer
-            ? renderer.call(this, entry.id, entry.output)
-            : this.renderGenericOutput(entry.id, entry.output);
+        const body = item.querySelector('.rp-output-body');
+        const panelKey = this._getFullscreenPanelKey(ids, entry.id);
+        if (body && item._rpFsCurrentPanelKey && item._rpFsPanelState) {
+            item._rpFsPanelState[item._rpFsCurrentPanelKey] = this._capturePanelState(body);
+        }
+
+        let rendered = null;
+        if (!ids.length || !this._runs || this._runs.length === 0) {
+            const outputs = this._lastRenderedOutputs || this._streamedOutputs || {};
+            const log = this._lastRenderedLog || '';
+            const entries = Object.entries(outputs || {});
+            if (log && log.trim()) entries.push(['__log__', { type: 'log', label: 'Output Log', content: log }]);
+            const merged = rappture._mergeGroupedOutputs(entries);
+            const hit = merged.find(([id]) => id === entry.id);
+            const output = hit ? hit[1] : null;
+            if (output) {
+                const renderer = this.outputRenderers[output.type];
+                rendered = renderer ? renderer.call(this, entry.id, output) : this.renderGenericOutput(entry.id, output);
+            }
+        } else if (ids.length === 1) {
+            const run = this._runs.find(r => String(r.run_id) === String(ids[0]));
+            if (run) {
+                const tagged = {};
+                for (const [k, v] of Object.entries(run.outputs || {})) {
+                    tagged[k] = { ...v, _runColor: run._color, _runLabel: run.label };
+                }
+                const entries = Object.entries(tagged || {});
+                if (run.log && run.log.trim()) entries.push(['__log__', { type: 'log', label: 'Output Log', content: run.log }]);
+                const merged = rappture._mergeGroupedOutputs(entries);
+                const hit = merged.find(([id]) => id === entry.id);
+                const output = hit ? hit[1] : null;
+                if (output) {
+                    const renderer = this.outputRenderers[output.type];
+                    rendered = renderer ? renderer.call(this, entry.id, output) : this.renderGenericOutput(entry.id, output);
+                }
+            }
+        } else {
+            const runs = ids.map(id => this._runs.find(r => String(r.run_id) === String(id))).filter(Boolean);
+            if (entry.id === '__log__') {
+                const sources = runs.filter(r => r.log && r.log.trim()).map(r => ({
+                    run: r,
+                    data: { type: 'log', label: 'Log', content: r.log },
+                }));
+                const reg = this._rendererRegistry.log;
+                if (reg && typeof reg.compare === 'function' && sources.length) {
+                    const compared = reg.compare.call(this, sources, entry.id);
+                    rendered = compared && (compared.elem || compared);
+                }
+            } else {
+                const sources = runs.map(r => {
+                    const merged = rappture._mergeGroupedOutputs(Object.entries(r.outputs || {}));
+                    const hit = merged.find(([id]) => id === entry.id);
+                    return hit ? { run: r, data: hit[1] } : null;
+                }).filter(Boolean);
+                if (sources.length) {
+                    const type = sources[0].data.type;
+                    const reg = this._rendererRegistry[type];
+                    if (reg && typeof reg.compare === 'function') {
+                        const compared = reg.compare.call(this, sources, entry.id);
+                        rendered = compared && (compared.elem || compared);
+                    } else {
+                        const first = sources[0].data;
+                        const renderer = this.outputRenderers[type];
+                        rendered = renderer ? renderer.call(this, entry.id, first) : this.renderGenericOutput(entry.id, first);
+                    }
+                }
+            }
+        }
         if (!rendered) {
             this._renderFullscreenEmpty(item, 'Unable to render output.');
             return;
         }
 
-        const body = item.querySelector('.rp-output-body');
         const renderedBody = rendered.querySelector('.rp-output-body');
         if (!body || !renderedBody) return;
 
@@ -1593,6 +1842,61 @@ const rappture = {
             body.appendChild(renderedBody.firstChild);
         }
         this._queueActiveOutputResize();
+        this._syncRegularOutputSelection(entry.id);
+        item._rpFsCurrentPanelKey = panelKey;
+        if (item._rpFsPanelState && item._rpFsPanelState[panelKey]) {
+            const state = item._rpFsPanelState[panelKey];
+            requestAnimationFrame(() => {
+                this._applyPanelState(body, state);
+                setTimeout(() => this._applyPanelState(body, state), 80);
+            });
+        }
+    },
+
+    _getFullscreenPanelKey(runIds, outputId) {
+        return `${this._getFullscreenRunKey(runIds)}::${outputId}`;
+    },
+
+    _capturePanelState(root) {
+        const state = [];
+        root.querySelectorAll('input, select, textarea').forEach(el => {
+            const id = el.id || '';
+            const name = el.name || '';
+            const type = (el.type || el.tagName || '').toLowerCase();
+            const entry = { id, name, type };
+            if (type === 'checkbox' || type === 'radio') {
+                entry.checked = !!el.checked;
+            } else if (el.tagName.toLowerCase() === 'select' && el.multiple) {
+                entry.value = Array.from(el.options).filter(o => o.selected).map(o => o.value);
+            } else {
+                entry.value = el.value;
+            }
+            state.push(entry);
+        });
+        return state;
+    },
+
+    _applyPanelState(root, state) {
+        if (!state || !state.length) return;
+        state.forEach(s => {
+            let el = null;
+            if (s.id) el = root.querySelector('#' + CSS.escape(s.id));
+            if (!el && s.name) el = root.querySelector(`[name="${s.name}"]`);
+            if (!el) return;
+            const type = (el.type || el.tagName || '').toLowerCase();
+            if (type === 'checkbox' || type === 'radio') {
+                el.checked = !!s.checked;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (el.tagName.toLowerCase() === 'select' && el.multiple && Array.isArray(s.value)) {
+                Array.from(el.options).forEach(o => { o.selected = s.value.includes(o.value); });
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else if (s.value !== undefined) {
+                el.value = s.value;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
     },
 
     renderGenericOutput(id, output) {

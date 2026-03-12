@@ -904,6 +904,52 @@ body {
 .rp-fs-controls .rp-output-selector {
     max-width: 360px;
 }
+.rp-fs-runmenu {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.rp-fs-runbtn {
+    background: #ffffff;
+    border: 1px solid var(--rp-border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1f2937;
+    cursor: pointer;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+}
+.rp-fs-runbtn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+.rp-fs-runmenu-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 220px;
+    max-width: 320px;
+    max-height: 200px;
+    overflow: auto;
+    padding: 8px 10px;
+    background: #ffffff;
+    border: 1px solid var(--rp-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+    display: none;
+    z-index: 2;
+}
+.rp-fs-runmenu-panel.open { display: flex; flex-direction: column; gap: 6px; }
+.rp-fs-runmenu-disabled { opacity: 0.6; }
+.rp-fs-runitem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--rp-text);
+    white-space: nowrap;
+}
 .rp-fs-label {
     display: flex;
     align-items: center;
