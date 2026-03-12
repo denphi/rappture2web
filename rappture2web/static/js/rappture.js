@@ -578,6 +578,8 @@ const rappture = {
                         const about = p.querySelector(':scope > about');
                         const label = about ? (about.querySelector('label') ? about.querySelector('label').textContent : '') : '';
                         const units = p.querySelector(':scope > units') ? p.querySelector(':scope > units').textContent : '';
+                        const minEl = p.querySelector(':scope > min');
+                        const maxEl = p.querySelector(':scope > max');
                         const currentElem = p.querySelector(':scope > current');
                         const defaultElem = p.querySelector(':scope > default');
 
@@ -595,6 +597,8 @@ const rappture = {
                             tag, id,
                             label: label.trim(),
                             units: units.trim(),
+                            min: minEl ? minEl.textContent.trim() : '',
+                            max: maxEl ? maxEl.textContent.trim() : '',
                             current: curVal || defVal,
                             default: defVal,
                             ...(options !== undefined && { options })

@@ -130,6 +130,18 @@
                             value: displayVal
                         });
                     }
+                    // If min == max, lock the field to the fixed value
+                    if (isNumeric && minVal !== undefined && maxVal !== undefined) {
+                        const mn = parseFloat(minVal);
+                        const mx = parseFloat(maxVal);
+                        if (!isNaN(mn) && !isNaN(mx) && mn === mx) {
+                            const fixed = isInteger ? String(Math.round(mn)) : toSci(mn);
+                            inputEl.value = fixed;
+                            inputEl.readOnly = true;
+                            inputEl.setAttribute('aria-readonly', 'true');
+                            inputEl.title = 'Fixed value';
+                        }
+                    }
 
                     // On change: update data.parameters and re-render the preview
                     inputEl.addEventListener('change', () => {
