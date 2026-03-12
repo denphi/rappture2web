@@ -1408,9 +1408,21 @@ const rappture = {
         if (runMenu && !runMenu._rpFsBound) {
             runMenu._rpFsBound = true;
             runMenu.addEventListener('change', () => {
-                const runIds = Array.from(runMenu.querySelectorAll('input[type=checkbox]:checked'))
+                let runIds = Array.from(runMenu.querySelectorAll('input[type=checkbox]:checked'))
                     .map(cb => cb.value)
                     .filter(v => v !== '__none__');
+                if (runIds.length === 0) {
+                    const fallback = item._rpFsRunIds && item._rpFsRunIds.length
+                        ? item._rpFsRunIds
+                        : Array.from(runMenu.querySelectorAll('input[type=checkbox]'))
+                            .map(cb => cb.value)
+                            .filter(v => v !== '__none__')
+                            .slice(0, 1);
+                    runMenu.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                        cb.checked = fallback.includes(cb.value);
+                    });
+                    runIds = fallback;
+                }
                 item._rpFsRunIds = runIds;
                 this._updateFullscreenRunButton(runBtn, runIds);
                 this._refreshFullscreenOutputs(item, runIds, outSel);
@@ -1494,10 +1506,16 @@ const rappture = {
         }
         if (this._runs && item._rpFsRunIds) {
             const ids = new Set(item._rpFsRunIds.map(String));
-            this._runs.forEach(r => { r._checked = ids.has(String(r.run_id)); });
-            this._renderRunHistory();
-            this._saveUIState();
-            this._renderCheckedRuns();
+            const curIds = new Set(this._runs.filter(r => r._checked).map(r => String(r.run_id)));
+            const same =
+                ids.size === curIds.size &&
+                Array.from(ids).every(id => curIds.has(id));
+            if (!same) {
+                this._runs.forEach(r => { r._checked = ids.has(String(r.run_id)); });
+                this._renderRunHistory();
+                this._saveUIState();
+                this._renderCheckedRuns();
+            }
             const outId = this._activeOutputId;
             if (outId) {
                 setTimeout(() => this._applyPanelStateToRegular(outId), 80);
@@ -1633,6 +1651,7 @@ const rappture = {
             return merged.map(([id, output]) => ({
                 id,
                 output,
+                type: output.type,
                 label: (output.about && output.about.label) || output.label || id,
             }));
         }
@@ -1656,6 +1675,7 @@ const rappture = {
             return merged.map(([id, output]) => ({
                 id,
                 output,
+                type: output.type,
                 label: (output.about && output.about.label) || output.label || id,
             }));
         }
@@ -1670,17 +1690,19 @@ const rappture = {
         const list = [];
         Array.from(allIds).forEach(id => {
             let label = id;
+            let type = '';
             for (const r of runs) {
                 const merged = rappture._mergeGroupedOutputs(Object.entries(r.outputs || {}));
                 const hit = merged.find(([oid]) => oid === id);
                 if (hit) {
                     const o = hit[1];
                     label = (o.about && o.about.label) || o.label || id;
+                    type = o.type || '';
                     break;
                 }
             }
             if (id === '__log__') label = 'Log';
-            list.push({ id, label });
+            list.push({ id, label, type });
         });
         return list;
     },
@@ -1727,12 +1749,21 @@ const rappture = {
 
         const selections = item._rpFsSelections || (item._rpFsSelections = {});
         const key = this._getFullscreenRunKey(ids);
-        const preferred = selections[key] || this._activeOutputId || (item.dataset.outputId || '');
-        const hasPreferred = list.some(o => o.id === preferred);
-        outSel.value = hasPreferred ? preferred : list[0].id;
-        selections[key] = outSel.value;
-        item.dataset.outputId = outSel.value;
-        this._renderFullscreenOutput(item, ids, outSel.value);
+        const preferred = selections[key] || item._rpFsLastOutputId || this._activeOutputId || (item.dataset.outputId || '');
+        let selectedId = list.some(o => o.id === preferred) ? preferred : '';
+        if (!selectedId && item._rpFsLastOutputLabel) {
+            const byLabelType = list.find(o => o.label === item._rpFsLastOutputLabel && (!item._rpFsLastOutputType || o.type === item._rpFsLastOutputType));
+            if (byLabelType) selectedId = byLabelType.id;
+        }
+        if (!selectedId && item._rpFsLastOutputLabel) {
+            const byLabel = list.find(o => o.label === item._rpFsLastOutputLabel);
+            if (byLabel) selectedId = byLabel.id;
+        }
+        if (!selectedId) selectedId = list[0].id;
+        outSel.value = selectedId;
+        selections[key] = selectedId;
+        item.dataset.outputId = selectedId;
+        this._renderFullscreenOutput(item, ids, selectedId);
     },
 
     _renderFullscreenEmpty(item, message) {
@@ -1757,6 +1788,9 @@ const rappture = {
         const labelSpan = item.querySelector('.rp-output-header-label');
         if (labelSpan) labelSpan.textContent = entry.label;
         item.dataset.outputId = entry.id;
+        item._rpFsLastOutputId = entry.id;
+        item._rpFsLastOutputLabel = entry.label;
+        item._rpFsLastOutputType = entry.type || '';
 
         const body = item.querySelector('.rp-output-body');
         const panelKey = this._getFullscreenPanelKey(ids, entry.id);
@@ -1846,7 +1880,9 @@ const rappture = {
             body.appendChild(renderedBody.firstChild);
         }
         this._queueActiveOutputResize();
-        this._syncRegularOutputSelection(entry.id);
+        if (!item.classList.contains('rp-output-fullscreen')) {
+            this._syncRegularOutputSelection(entry.id);
+        }
         item._rpFsCurrentPanelKey = panelKey;
         if (item._rpFsPanelState && item._rpFsPanelState[panelKey]) {
             const state = item._rpFsPanelState[panelKey];
