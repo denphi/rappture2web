@@ -3311,21 +3311,13 @@ overlay = document.createElement('div');
         });
         const form = document.getElementById('rp-form');
         if (form) form.classList.toggle('rp-running', running);
-        const footer = document.getElementById('rp-footer');
-        if (footer) footer.hidden = !running;
-        document.body.classList.toggle('rp-has-footer', running);
         if (running) {
             this._clockStart = Date.now();
             if (this._clockInterval) clearInterval(this._clockInterval);
             this._clockInterval = setInterval(() => this._tickClock(), 1000);
-            if (this._statsInterval) clearInterval(this._statsInterval);
-            this._statsInterval = setInterval(() => this._pollStats(), 2000);
         } else {
             if (this._clockInterval) { clearInterval(this._clockInterval); this._clockInterval = null; }
-            if (this._statsInterval) { clearInterval(this._statsInterval); this._statsInterval = null; }
             this._clockStart = null;
-            const sel = document.getElementById('rp-footer-stats');
-            if (sel) sel.textContent = '';
         }
     },
 
@@ -3337,7 +3329,7 @@ overlay = document.createElement('div');
             const el = document.getElementById('rp-footer-stats');
             if (!el) return;
             const parts = [];
-            if (data.cpu !== null) parts.push(`CPU: ${data.cpu}%`);
+            if (data.cpu !== null) parts.push(`CPU: ${data.cpu}`);
             if (data.mem_mb !== null) parts.push(`Mem: ${data.mem_mb} MB`);
             el.textContent = parts.join('  |  ');
         } catch { /* ignore */ }
@@ -3408,4 +3400,6 @@ document.addEventListener('DOMContentLoaded', () => {
     rappture.connectWebSocket();
     rappture._fetchRunHistory();
     document.querySelectorAll('.rp-periodicelement').forEach(w => rappture.initPeriodicElement(w));
+    rappture._pollStats();
+    rappture._statsInterval = setInterval(() => rappture._pollStats(), 2000);
 });

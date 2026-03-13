@@ -212,12 +212,8 @@ body {
 
 /* Layout */
 :root { --rp-footer-height: 36px; }
-.rp-main { height: calc(100vh - var(--rp-header-height)); }
-.rp-has-footer .rp-main { height: calc(100vh - var(--rp-header-height) - var(--rp-footer-height)); }
+.rp-main { height: calc(100vh - var(--rp-header-height) - var(--rp-footer-height)); }
 .rp-header-has-toolbar + .rp-main {
-    height: calc(100vh - var(--rp-header-height-with-toolbar));
-}
-.rp-header-has-toolbar + .rp-has-footer .rp-main {
     height: calc(100vh - var(--rp-header-height-with-toolbar) - var(--rp-footer-height));
 }
 .rp-layout {
@@ -770,7 +766,7 @@ body {
 .rp-form.rp-running .rp-top-groups-container,
 .rp-form.rp-running .rp-widget:not(.rp-actions) {
     pointer-events: none;
-    opacity: 0.5;
+    opacity: 0.75;
     user-select: none;
 }
 
