@@ -1038,7 +1038,7 @@ async def run_simulation(
     use_library_mode: bool = False,
     history: RunHistory | None = None,
     use_cache: bool = True,
-    timeout: int = 300,
+    timeout: int | None = None,
     log_callback=None,
     process_callback=None,
     output_callback=None,

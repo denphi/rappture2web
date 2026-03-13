@@ -57,6 +57,7 @@ _nanohub_support_url: str = ""
 _nanohub_terminate_url: str = ""
 _nanohub_about_url: str = ""
 _nanohub_questions_url: str = ""
+_timeout: int | None = None
 
 APP_DIR = Path(__file__).parent
 
@@ -92,13 +93,15 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
              nanohub_support_url: str = "",
              nanohub_terminate_url: str = "",
              nanohub_about_url: str = "",
-             nanohub_questions_url: str = ""):
+             nanohub_questions_url: str = "",
+             timeout: int | None = None):
     """Configure the tool and start-up options."""
     global _tool_def, _tool_xml_path, _history, _server_url
     global _use_library_mode, _use_cache, _base_path
     global _is_nanohub
     global _nanohub_support_url, _nanohub_terminate_url
     global _nanohub_about_url, _nanohub_questions_url
+    global _timeout
 
     _tool_xml_path = str(Path(xml_path).resolve())
 
@@ -110,6 +113,7 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
     _nanohub_terminate_url = (nanohub_terminate_url or "").strip()
     _nanohub_about_url = (nanohub_about_url or "").strip()
     _nanohub_questions_url = (nanohub_questions_url or "").strip()
+    _timeout = timeout
 
     _tool_def = parse_tool_xml(_tool_xml_path, base_path=_base_path)
     _server_url = server_url
@@ -335,6 +339,7 @@ async def simulate(request: Request):
                 process_callback=_on_process,
                 output_callback=_stream_output,
                 progress_callback=_stream_progress,
+                timeout=_timeout,
             )
     except Exception as exc:
         import traceback
