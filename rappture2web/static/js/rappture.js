@@ -2488,9 +2488,10 @@ overlay = document.createElement('div');
             const resp = await fetch(`${this._bp}/cache/toggle`, { method: 'POST' });
             const data = await resp.json();
             const on = data.enabled;
-            const stateEl = document.getElementById('rp-cache-state');
-            if (stateEl) stateEl.textContent = on ? 'on' : 'off';
-            if (btn) btn.classList.toggle('rp-cache-toggle-off', !on);
+            if (btn) {
+                btn.classList.toggle('rp-cache-toggle-off', !on);
+                btn.title = on ? 'Cache enabled — click to disable' : 'Cache disabled — click to enable';
+            }
             this._setStatus(`Cache ${on ? 'enabled' : 'disabled'}.`, 'info');
         } catch (e) {
             this._setStatus('Failed to toggle cache.', 'error');
