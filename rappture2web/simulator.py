@@ -1214,7 +1214,7 @@ async def run_simulation(
         if driver_xml_content:
             if status_callback:
                 await status_callback("Searching cache...")
-            _cache_msg = f"[cache] Checking remote cache at {cache_url} ..."
+            _cache_msg = "[cache] Checking remote cache ..."
             print(_cache_msg, flush=True)
             if log_callback:
                 await log_callback(_cache_msg + "\n")
@@ -1479,7 +1479,7 @@ async def run_simulation(
             try:
                 if status_callback:
                     await status_callback("Storing results in cache...")
-                _store_msg = f"[cache] Storing results in remote cache at {_effective_write_url} ..."
+                _store_msg = "[cache] Storing results in remote cache ..."
                 print(_store_msg, flush=True)
                 if log_callback:
                     await log_callback(_store_msg + "\n")
