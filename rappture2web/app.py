@@ -528,21 +528,26 @@ async def stop_simulation():
 
 @app.get("/stats")
 async def get_stats():
-    """Return CPU and memory usage of the running simulation process."""
-    if _psutil is None or _running_process is None:
+    """Return CPU and memory usage — process stats when running, system stats otherwise."""
+    if _psutil is None:
         return JSONResponse({"cpu": None, "mem_mb": None})
     try:
-        proc = _psutil.Process(_running_process.pid)
-        children = proc.children(recursive=True)
-        cpu = proc.cpu_percent(interval=0.1)
-        mem = proc.memory_info().rss
-        for ch in children:
-            try:
-                cpu += ch.cpu_percent(interval=0)
-                mem += ch.memory_info().rss
-            except (_psutil.NoSuchProcess, _psutil.AccessDenied):
-                pass
-        return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(mem / 1024 / 1024, 1)})
+        if _running_process is not None:
+            proc = _psutil.Process(_running_process.pid)
+            children = proc.children(recursive=True)
+            cpu = proc.cpu_percent(interval=0.1)
+            mem = proc.memory_info().rss
+            for ch in children:
+                try:
+                    cpu += ch.cpu_percent(interval=0)
+                    mem += ch.memory_info().rss
+                except (_psutil.NoSuchProcess, _psutil.AccessDenied):
+                    pass
+            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(mem / 1024 / 1024, 1)})
+        else:
+            cpu = _psutil.cpu_percent(interval=0.1)
+            mem = _psutil.virtual_memory()
+            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(mem.used / 1024 / 1024, 1)})
     except (_psutil.NoSuchProcess, _psutil.AccessDenied, ProcessLookupError):
         return JSONResponse({"cpu": None, "mem_mb": None})
 
