@@ -526,6 +526,45 @@ async def stop_simulation():
 
 # ─── Process stats ────────────────────────────────────────────────────────────
 
+_cpu_last_usage: float | None = None
+_cpu_last_time: float | None = None
+
+
+def _read_container_cpu() -> float | None:
+    """Read CPU usage from cgroups, returning a percentage since last call."""
+    global _cpu_last_usage, _cpu_last_time
+    import time as _time
+    now = _time.monotonic()
+    usage = None
+    # cgroups v2
+    try:
+        stat = Path("/sys/fs/cgroup/cpu.stat").read_text()
+        usage_us = next(
+            (int(l.split()[1]) for l in stat.splitlines() if l.startswith("usage_usec")), None
+        )
+        if usage_us is not None:
+            usage = usage_us / 1e6  # convert to seconds
+    except (FileNotFoundError, ValueError):
+        pass
+    # cgroups v1
+    if usage is None:
+        try:
+            usage = int(Path("/sys/fs/cgroup/cpuacct/cpuacct.usage").read_text().strip()) / 1e9
+        except (FileNotFoundError, ValueError):
+            pass
+    if usage is None:
+        return _psutil.cpu_percent() if _psutil else None
+    if _cpu_last_usage is not None and _cpu_last_time is not None:
+        elapsed = now - _cpu_last_time
+        cpu_seconds = usage - _cpu_last_usage
+        pct = round((cpu_seconds / elapsed) * 100, 1) if elapsed > 0 else 0.0
+    else:
+        pct = None
+    _cpu_last_usage = usage
+    _cpu_last_time = now
+    return pct
+
+
 def _read_container_mem_mb() -> float | None:
     """Read memory usage from cgroups (works inside Docker containers).
     Falls back to psutil virtual_memory if cgroups are not available."""
@@ -562,23 +601,10 @@ async def get_stats():
     if _psutil is None:
         return JSONResponse({"cpu": None, "mem_mb": None})
     try:
-        if _running_process is not None:
-            proc = _psutil.Process(_running_process.pid)
-            children = proc.children(recursive=True)
-            cpu = proc.cpu_percent(interval=0.1)
-            mem = proc.memory_info().rss
-            for ch in children:
-                try:
-                    cpu += ch.cpu_percent(interval=0)
-                    mem += ch.memory_info().rss
-                except (_psutil.NoSuchProcess, _psutil.AccessDenied):
-                    pass
-            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(mem / 1024 / 1024, 1)})
-        else:
-            cpu = _psutil.cpu_percent(interval=0.1)
-            mem_mb = _read_container_mem_mb()
-            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": mem_mb})
-    except (_psutil.NoSuchProcess, _psutil.AccessDenied, ProcessLookupError):
+        cpu = _read_container_cpu()
+        mem_mb = _read_container_mem_mb()
+        return JSONResponse({"cpu": cpu, "mem_mb": mem_mb})
+    except Exception:
         return JSONResponse({"cpu": None, "mem_mb": None})
 
 
