@@ -778,11 +778,13 @@ const rappture = {
     _showInitOverlay() {
         let overlay = document.getElementById('rp-init-overlay');
         if (!overlay) {
-            overlay = document.createElement('div');
+            const sidebar = document.querySelector('.rp-sidebar');
+            if (!sidebar) return;
+overlay = document.createElement('div');
             overlay.id = 'rp-init-overlay';
             overlay.setAttribute('aria-hidden', 'true');
             overlay.innerHTML = '<div class="rp-init-spinner"></div>';
-            document.body.appendChild(overlay);
+            sidebar.appendChild(overlay);
         }
         overlay.classList.remove('rp-init-overlay-hidden');
     },
