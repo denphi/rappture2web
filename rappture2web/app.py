@@ -531,14 +531,17 @@ async def stop_simulation():
 
 # ─── Process stats ────────────────────────────────────────────────────────────
 
+import threading as _threading
+import time as _time
+
 _cpu_last_usage: float | None = None
 _cpu_last_time: float | None = None
+_cpu_lock = _threading.Lock()
 
 
 def _read_container_cpu() -> float | None:
     """Read CPU usage from cgroups, returning a percentage since last call."""
     global _cpu_last_usage, _cpu_last_time
-    import time as _time
     now = _time.monotonic()
     usage = None
     # cgroups v2
@@ -559,14 +562,15 @@ def _read_container_cpu() -> float | None:
             pass
     if usage is None:
         return _psutil.cpu_percent() if _psutil else None
-    if _cpu_last_usage is not None and _cpu_last_time is not None:
-        elapsed = now - _cpu_last_time
-        cpu_seconds = usage - _cpu_last_usage
-        pct = round((cpu_seconds / elapsed) * 100, 1) if elapsed > 0 else 0.0
-    else:
-        pct = None
-    _cpu_last_usage = usage
-    _cpu_last_time = now
+    with _cpu_lock:
+        if _cpu_last_usage is not None and _cpu_last_time is not None:
+            elapsed = now - _cpu_last_time
+            cpu_seconds = usage - _cpu_last_usage
+            pct = round((cpu_seconds / elapsed) * 100, 1) if elapsed > 0 else 0.0
+        else:
+            pct = None
+        _cpu_last_usage = usage
+        _cpu_last_time = now
     return pct
 
 

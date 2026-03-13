@@ -2483,7 +2483,10 @@ overlay = document.createElement('div');
         }
     },
 
+    _cacheTogglePending: false,
     async toggleCache(btn) {
+        if (this._cacheTogglePending) return;
+        this._cacheTogglePending = true;
         try {
             const resp = await fetch(`${this._bp}/cache/toggle`, { method: 'POST' });
             const data = await resp.json();
@@ -2495,6 +2498,8 @@ overlay = document.createElement('div');
             this._setStatus(`Cache ${on ? 'enabled' : 'disabled'}.`, 'info');
         } catch (e) {
             this._setStatus('Failed to toggle cache.', 'error');
+        } finally {
+            this._cacheTogglePending = false;
         }
     },
 
@@ -3312,6 +3317,7 @@ overlay = document.createElement('div');
     _clockStart: null,
     _clockStatusText: '',
     _statsInterval: null,
+    _statsPending: false,
 
     _setRunning(running) {
         document.querySelectorAll('.rp-btn-simulate').forEach(btn => {
@@ -3337,6 +3343,8 @@ overlay = document.createElement('div');
     },
 
     async _pollStats() {
+        if (this._statsPending) return;
+        this._statsPending = true;
         try {
             const resp = await fetch(this._bp + '/stats');
             if (!resp.ok) return;
@@ -3347,7 +3355,9 @@ overlay = document.createElement('div');
             if (data.cpu !== null) parts.push(`CPU: ${data.cpu}`);
             if (data.mem_mb !== null) parts.push(`Mem: ${data.mem_mb} MB`);
             el.textContent = parts.join('  |  ');
-        } catch { /* ignore */ }
+        } catch { /* ignore */ } finally {
+            this._statsPending = false;
+        }
     },
 
     _tickClock() {

@@ -7,8 +7,12 @@ import csv
 import hashlib
 import json
 import os
+import pwd
+import re
 import shutil
+import tempfile
 import time
+import urllib.request
 import uuid
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -1033,8 +1037,7 @@ async def run_uq_simulation(
 
 async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
     """POST driver XML to cache service. Returns run.xml content on hit, else None."""
-    try:
-        import urllib.request
+    def _do_request():
         req = urllib.request.Request(
             cache_url.rstrip("/") + "/cache/request",
             data=driver_xml.encode(),
@@ -1044,18 +1047,18 @@ async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
             if resp.status == 200:
                 content = resp.read().decode()
                 return content if content.strip() else None
+        return None
+    try:
+        return await asyncio.to_thread(_do_request)
     except Exception:
-        pass
-    return None
+        return None
 
 
 _ANON_HOME = "/var/ion/runs"
 _ANON_SESSION_DIR = "/var/ion/data/sessions/0"
 
-
-def _get_real_paths() -> tuple[str, str, str]:
-    """Return (home, sessiondir, user) for the current process."""
-    import pwd
+# Computed once at import time — env vars and home dir don't change during runtime.
+def _compute_real_paths() -> tuple[str, str, str]:
     user = os.environ.get("USER", os.environ.get("LOGNAME", ""))
     if not user:
         try:
@@ -1066,17 +1069,15 @@ def _get_real_paths() -> tuple[str, str, str]:
     sessiondir = os.environ.get("SESSIONDIR", "").rstrip("/")
     return home, sessiondir, user
 
+_REAL_HOME, _REAL_SESSIONDIR, _REAL_USER = _compute_real_paths()
+
 
 def _anonymize_run_xml(run_xml: str) -> str:
     """Replace user-identifying paths and fields in run XML before remote storage."""
-    home, sessiondir, user = _get_real_paths()
-    # Replace session dir path first (more specific) then home
-    if sessiondir:
-        run_xml = run_xml.replace(sessiondir, _ANON_SESSION_DIR)
-    if home:
-        run_xml = run_xml.replace(home, _ANON_HOME)
-    # Replace metadata fields
-    import re
+    if _REAL_SESSIONDIR:
+        run_xml = run_xml.replace(_REAL_SESSIONDIR, _ANON_SESSION_DIR)
+    if _REAL_HOME:
+        run_xml = run_xml.replace(_REAL_HOME, _ANON_HOME)
     run_xml = re.sub(r'<user>[^<]*</user>', '<user>ionhelper</user>', run_xml)
     run_xml = re.sub(r'<filename>[^<]*</filename>', f'<filename>{_ANON_HOME}/run.xml</filename>', run_xml)
     return run_xml
@@ -1084,22 +1085,17 @@ def _anonymize_run_xml(run_xml: str) -> str:
 
 def _restore_run_xml(run_xml: str, filename: str) -> str:
     """Restore real paths and fields in a run XML retrieved from cache."""
-    home, sessiondir, user = _get_real_paths()
-    import re
-    # Restore metadata fields
-    if user:
-        run_xml = re.sub(r'<user>[^<]*</user>', f'<user>{user}</user>', run_xml)
+    if _REAL_USER:
+        run_xml = re.sub(r'<user>[^<]*</user>', f'<user>{_REAL_USER}</user>', run_xml)
     run_xml = re.sub(r'<filename>[^<]*</filename>', f'<filename>{filename}</filename>', run_xml)
-    # Restore paths (anon → real), session dir first then home
-    run_xml = run_xml.replace(_ANON_SESSION_DIR, sessiondir if sessiondir else _ANON_SESSION_DIR)
-    run_xml = run_xml.replace(_ANON_HOME, home if home else _ANON_HOME)
+    run_xml = run_xml.replace(_ANON_SESSION_DIR, _REAL_SESSIONDIR or _ANON_SESSION_DIR)
+    run_xml = run_xml.replace(_ANON_HOME, _REAL_HOME or _ANON_HOME)
     return run_xml
 
 
 async def _remote_cache_store(cache_url: str, run_xml: str):
     """POST anonymized run.xml content to cache service for storage."""
-    try:
-        import urllib.request
+    def _do_request():
         req = urllib.request.Request(
             cache_url.rstrip("/") + "/cache/publish",
             data=_anonymize_run_xml(run_xml).encode(),
@@ -1107,6 +1103,8 @@ async def _remote_cache_store(cache_url: str, run_xml: str):
         )
         with urllib.request.urlopen(req, timeout=10):
             pass
+    try:
+        await asyncio.to_thread(_do_request)
     except Exception:
         pass
 
