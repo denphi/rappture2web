@@ -762,18 +762,19 @@ const rappture = {
     loadExampleByName(selectElem) {
         const option = selectElem.options[selectElem.selectedIndex];
         const filename = option ? option.dataset.filename : null;
-        if (!filename) return;
+        if (!filename) return Promise.resolve();
         const widget = selectElem.closest('.rp-widget');
         const targetsAttr = widget && widget.dataset.uploadTargets;
         const targets = targetsAttr ? targetsAttr.split(',').filter(Boolean) : null;
         const pattern = (widget && widget.dataset.example) || '*.xml';
-        fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(filename) + '?pattern=' + encodeURIComponent(pattern))
+        return fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(filename) + '?pattern=' + encodeURIComponent(pattern))
             .then(r => r.json())
             .then(data => { if (data.content) this._applyExampleXml(data.content, targets); })
             .catch(() => { });
     },
 
     initLoaders() {
+        const loaderPromises = [];
         document.querySelectorAll('.rp-loader').forEach(widget => {
             const sel = widget.querySelector('.rp-loader-select');
             if (!sel || sel.dataset.rpInit === '1') return;
@@ -809,25 +810,35 @@ const rappture = {
                     }
                 }
                 if (matchedPreferred && pending) widget.dataset.pendingValue = '';
-                if (hasSelection) this.loadExampleByName(sel);
+                if (hasSelection) return this.loadExampleByName(sel);
+                return Promise.resolve();
             };
 
             // Only treat as explicit if all entries are concrete filenames (no glob chars)
             const isExplicit = explicitFiles.length > 0 && explicitFiles.every(f => !/[*?[\]{}]/.test(f));
 
+            let p;
             if (isExplicit) {
-                // Explicit filenames listed — fetch metadata for each in order
-                Promise.all(explicitFiles.map(fname =>
+                p = Promise.all(explicitFiles.map(fname =>
                     fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(fname) + '?pattern=' + encodeURIComponent(pattern))
                         .then(r => r.json())
                         .then(data => ({ filename: fname, label: data.label || fname.replace(/\.xml$/i, '') }))
                         .catch(() => ({ filename: fname, label: fname.replace(/\.xml$/i, '') }))
                 )).then(populate).catch(() => { });
             } else {
-                fetch(this._bp + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
+                p = fetch(this._bp + '/api/loader-examples?pattern=' + encodeURIComponent(pattern))
                     .then(r => r.json())
                     .then(populate)
                     .catch(() => { });
+            }
+            loaderPromises.push(p);
+        });
+
+        Promise.allSettled(loaderPromises).then(() => {
+            const overlay = document.getElementById('rp-init-overlay');
+            if (overlay) {
+                overlay.classList.add('rp-init-overlay-hidden');
+                overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
             }
         });
     },

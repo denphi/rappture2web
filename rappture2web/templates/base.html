@@ -88,6 +88,9 @@
         {% block content %}{% endblock %}
     </main>
     <div id="rp-tooltip" role="tooltip" aria-hidden="true"></div>
+    <div id="rp-init-overlay" aria-hidden="true">
+        <div class="rp-init-spinner"></div>
+    </div>
     <script src="{{ base_path }}/static/js/rappture.js?v=20260309d"></script>
     <script src="{{ base_path }}/static/js/rp-utils.js?v=20260305b"></script>
     <script src="{{ base_path }}/static/js/rp-renderers-simple.js?v=20260305a"></script>
