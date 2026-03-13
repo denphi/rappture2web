@@ -271,6 +271,7 @@ async def index(request: Request):
         "nanohub_terminate_url": _nanohub_terminate_url,
         "nanohub_about_url": _nanohub_about_url,
         "nanohub_questions_url": _nanohub_questions_url,
+        "cache_configured": bool((_cache_url or _cache_write_url) and _tool_def.tool.cache_enabled),
     })
 
 
@@ -597,6 +598,23 @@ def _read_container_mem_mb() -> float | None:
         mem = _psutil.virtual_memory()
         return round((mem.total - mem.available) / 1024 / 1024, 1)
     return None
+
+
+@app.get("/cache/status")
+async def cache_status():
+    """Return whether caching is currently enabled and configured."""
+    return JSONResponse({
+        "enabled": _use_cache,
+        "configured": bool(_cache_url or _cache_write_url),
+    })
+
+
+@app.post("/cache/toggle")
+async def cache_toggle():
+    """Toggle run caching on/off at runtime."""
+    global _use_cache
+    _use_cache = not _use_cache
+    return JSONResponse({"enabled": _use_cache})
 
 
 @app.get("/stats")

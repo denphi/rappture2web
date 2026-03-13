@@ -18,7 +18,7 @@
     {% set has_nanohub_links = nanohub_about_url or nanohub_questions_url or nanohub_support_url or
     nanohub_terminate_url %}
     {% set show_upload_menu = not is_nanohub %}
-    {% set show_toolbar = has_nanohub_links or show_upload_menu %}
+    {% set show_toolbar = has_nanohub_links or show_upload_menu or cache_configured %}
     <a href="#rp-main-content" class="rp-skip-link">Skip to main content</a>
     <header class="rp-header{% if show_toolbar %} rp-header-has-toolbar{% endif %}" role="banner">
         <div class="rp-brand-bar">
@@ -76,6 +76,14 @@
                     <li>
                         <button type="button" class="rp-toolbar-link" onclick="rappture.reloadAllRuns()">
                             Reload All Runs
+                        </button>
+                    </li>
+                    {% endif %}
+                    {% if cache_configured %}
+                    <li>
+                        <button type="button" id="rp-cache-toggle" class="rp-toolbar-link rp-cache-toggle"
+                            onclick="rappture.toggleCache(this)" title="Toggle result caching">
+                            Cache: <span id="rp-cache-state">on</span>
                         </button>
                     </li>
                     {% endif %}

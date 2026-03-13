@@ -2483,6 +2483,20 @@ overlay = document.createElement('div');
         }
     },
 
+    async toggleCache(btn) {
+        try {
+            const resp = await fetch(`${this._bp}/cache/toggle`, { method: 'POST' });
+            const data = await resp.json();
+            const on = data.enabled;
+            const stateEl = document.getElementById('rp-cache-state');
+            if (stateEl) stateEl.textContent = on ? 'on' : 'off';
+            if (btn) btn.classList.toggle('rp-cache-toggle-off', !on);
+            this._setStatus(`Cache ${on ? 'enabled' : 'disabled'}.`, 'info');
+        } catch (e) {
+            this._setStatus('Failed to toggle cache.', 'error');
+        }
+    },
+
     async reloadAllRuns() {
         try {
             const resp = await fetch(`${this._bp}/api/runs/reload-all`, { method: 'POST' });
