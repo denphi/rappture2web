@@ -9,6 +9,11 @@ import os
 import uuid
 from pathlib import Path
 
+try:
+    import psutil as _psutil
+except ImportError:
+    _psutil = None
+
 import mimetypes
 
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
@@ -58,6 +63,7 @@ _nanohub_terminate_url: str = ""
 _nanohub_about_url: str = ""
 _nanohub_questions_url: str = ""
 _timeout: int | None = None
+_cache_url: str = ""
 
 APP_DIR = Path(__file__).parent
 
@@ -94,14 +100,15 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
              nanohub_terminate_url: str = "",
              nanohub_about_url: str = "",
              nanohub_questions_url: str = "",
-             timeout: int | None = None):
+             timeout: int | None = None,
+             cache_url: str = ""):
     """Configure the tool and start-up options."""
     global _tool_def, _tool_xml_path, _history, _server_url
     global _use_library_mode, _use_cache, _base_path
     global _is_nanohub
     global _nanohub_support_url, _nanohub_terminate_url
     global _nanohub_about_url, _nanohub_questions_url
-    global _timeout
+    global _timeout, _cache_url
 
     _tool_xml_path = str(Path(xml_path).resolve())
 
@@ -114,6 +121,7 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
     _nanohub_about_url = (nanohub_about_url or "").strip()
     _nanohub_questions_url = (nanohub_questions_url or "").strip()
     _timeout = timeout
+    _cache_url = cache_url.strip()
 
     _tool_def = parse_tool_xml(_tool_xml_path, base_path=_base_path)
     _server_url = server_url
@@ -305,6 +313,9 @@ async def simulate(request: Request):
         _session["progress"] = {"percent": percent, "message": message}
         await _broadcast({"type": "progress", "percent": percent, "message": message})
 
+    async def _stream_status(message: str):
+        await _broadcast({"type": "status", "status": message})
+
     def _on_process(proc):
         global _running_process
         _running_process = proc
@@ -335,10 +346,12 @@ async def simulate(request: Request):
                 use_library_mode=_use_library_mode,
                 history=_history,
                 use_cache=_use_cache,
+                cache_url=_cache_url,
                 log_callback=_stream_log,
                 process_callback=_on_process,
                 output_callback=_stream_output,
                 progress_callback=_stream_progress,
+                status_callback=_stream_status,
                 timeout=_timeout,
             )
     except Exception as exc:
@@ -397,6 +410,99 @@ async def simulate(request: Request):
     return JSONResponse(result)
 
 
+# ─── Remote cache service endpoints ──────────────────────────────────────────
+
+@app.post("/cache/request")
+async def cache_request(request: Request):
+    """Check cache for a matching driver XML. Returns run.xml on hit (200) or 404."""
+    if _history is None:
+        return Response(status_code=404)
+    driver_xml = (await request.body()).decode("utf-8", errors="replace")
+    if not driver_xml.strip():
+        return Response(status_code=400)
+    # Parse driver XML to extract input values for cache lookup
+    try:
+        from .simulator import create_driver_xml as _cdx  # noqa: F401 — just ensure import
+        from xml.etree import ElementTree as ET
+        from .xml_parser import parse_run_xml
+        root = ET.fromstring(driver_xml)
+        # Extract current values from driver XML as a flat dict keyed by Rappture path
+        input_values: dict = {}
+        def _walk(elem, parts):
+            for child in elem:
+                if child.tag in ("about", "default"):
+                    continue
+                cid = child.get("id")
+                seg = f"{child.tag}({cid})" if cid else child.tag
+                path = ".".join([*parts, seg])
+                cur = child.find("current")
+                if cur is not None and len(cur) == 0:
+                    input_values[path] = (cur.text or "").strip()
+                _walk(child, [*parts, seg])
+        inp = root.find("input")
+        if inp is not None:
+            _walk(inp, ["input"])
+        cached_run = _history.find_cached(input_values)
+        if cached_run is None or cached_run.get("status") == "error":
+            return Response(status_code=404)
+        run_xml_path = cached_run.get("run_xml")
+        if run_xml_path and os.path.exists(run_xml_path):
+            with open(run_xml_path) as f:
+                content = f.read()
+            return Response(content=content, media_type="application/xml")
+        return Response(status_code=404)
+    except Exception:
+        return Response(status_code=404)
+
+
+@app.post("/cache/store")
+async def cache_store(request: Request):
+    """Receive a run.xml from a legacy tool and store it in run history."""
+    if _history is None or _tool_xml_path is None:
+        return Response(status_code=503)
+    run_xml_content = (await request.body()).decode("utf-8", errors="replace")
+    if not run_xml_content.strip():
+        return Response(status_code=400)
+    try:
+        import tempfile
+        from .xml_parser import parse_run_xml
+        tool_dir = str(Path(_tool_xml_path).parent)
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".xml", dir=tool_dir, delete=False
+        )
+        tmp.write(run_xml_content)
+        tmp.close()
+        outputs = parse_run_xml(tmp.name)
+        # Re-extract inputs from run.xml <input> section for the cache key
+        from xml.etree import ElementTree as ET
+        root = ET.fromstring(run_xml_content)
+        input_values: dict = {}
+        def _walk(elem, parts):
+            for child in elem:
+                if child.tag in ("about", "default"):
+                    continue
+                cid = child.get("id")
+                seg = f"{child.tag}({cid})" if cid else child.tag
+                path = ".".join([*parts, seg])
+                cur = child.find("current")
+                if cur is not None and len(cur) == 0:
+                    input_values[path] = (cur.text or "").strip()
+                _walk(child, [*parts, seg])
+        inp = root.find("input")
+        if inp is not None:
+            _walk(inp, ["input"])
+        _history.add(
+            input_values=input_values,
+            outputs=outputs,
+            log="Cached from legacy tool run.\n",
+            status="success",
+            run_xml=tmp.name,
+        )
+        return JSONResponse({"status": "stored"})
+    except Exception as exc:
+        return JSONResponse({"status": "error", "detail": str(exc)}, status_code=500)
+
+
 # ─── Stop (browser → server) ──────────────────────────────────────────────────
 
 @app.post("/stop")
@@ -416,6 +522,29 @@ async def stop_simulation():
         await _broadcast({"type": "done", "status": "stopped", "outputs": {}, "log": _session.get("log", ""),
                           "run_id": None, "run_num": None, "cached": False})
     return JSONResponse({"status": "stopped"})
+
+
+# ─── Process stats ────────────────────────────────────────────────────────────
+
+@app.get("/stats")
+async def get_stats():
+    """Return CPU and memory usage of the running simulation process."""
+    if _psutil is None or _running_process is None:
+        return JSONResponse({"cpu": None, "mem_mb": None})
+    try:
+        proc = _psutil.Process(_running_process.pid)
+        children = proc.children(recursive=True)
+        cpu = proc.cpu_percent(interval=0.1)
+        mem = proc.memory_info().rss
+        for ch in children:
+            try:
+                cpu += ch.cpu_percent(interval=0)
+                mem += ch.memory_info().rss
+            except (_psutil.NoSuchProcess, _psutil.AccessDenied):
+                pass
+        return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(mem / 1024 / 1024, 1)})
+    except (_psutil.NoSuchProcess, _psutil.AccessDenied, ProcessLookupError):
+        return JSONResponse({"cpu": None, "mem_mb": None})
 
 
 # ─── Library mode API (used by rp_library in the tool script) ─────────────────

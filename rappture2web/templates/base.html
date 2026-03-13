@@ -88,6 +88,11 @@
         {% block content %}{% endblock %}
     </main>
     <div id="rp-tooltip" role="tooltip" aria-hidden="true"></div>
+    <footer id="rp-footer" class="rp-footer" aria-live="polite" aria-atomic="true" hidden>
+        <span id="rp-footer-status" class="rp-footer-status"></span>
+        <span class="rp-footer-sep"></span>
+        <span id="rp-footer-stats" class="rp-footer-stats"></span>
+    </footer>
     <script src="{{ base_path }}/static/js/rappture.js?v=20260309d"></script>
     <script src="{{ base_path }}/static/js/rp-utils.js?v=20260305b"></script>
     <script src="{{ base_path }}/static/js/rp-renderers-simple.js?v=20260305a"></script>

@@ -34,7 +34,8 @@ class ToolInfo:
     title: str = ""
     about: str = ""
     command: str = ""
-    uq_enabled: bool = False  # True if <tool><uq>true</uq></tool>
+    uq_enabled: bool = False   # True if <tool><uq>true</uq></tool>
+    cache_enabled: bool = True  # False if <tool><cache>no</cache></tool>
 
 
 @dataclass
@@ -787,11 +788,13 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
     tool_elem = root.find("tool")
     if tool_elem is not None:
         uq_text = _get_text(tool_elem, "uq", "").lower()
+        cache_text = _get_text(tool_elem, "cache", "").lower()
         tool_def.tool = ToolInfo(
             title=_get_text(tool_elem, "title"),
             about=_get_text(tool_elem, "about"),
             command=_get_text(tool_elem, "command"),
             uq_enabled=(uq_text in ("true", "yes", "1")),
+            cache_enabled=(cache_text not in ("false", "no", "0")),
         )
 
     # Parse <input> section

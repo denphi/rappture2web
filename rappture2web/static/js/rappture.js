@@ -3293,6 +3293,11 @@ overlay = document.createElement('div');
 
     // ── Status helpers ───────────────────────────────────────────────────────
 
+    _clockInterval: null,
+    _clockStart: null,
+    _clockStatusText: '',
+    _statsInterval: null,
+
     _setRunning(running) {
         document.querySelectorAll('.rp-btn-simulate').forEach(btn => {
             btn.classList.toggle('running', running);
@@ -3304,6 +3309,54 @@ overlay = document.createElement('div');
                 btn.onclick = () => rappture.simulate();
             }
         });
+        const form = document.getElementById('rp-form');
+        if (form) form.classList.toggle('rp-running', running);
+        const footer = document.getElementById('rp-footer');
+        if (footer) footer.hidden = !running;
+        document.body.classList.toggle('rp-has-footer', running);
+        if (running) {
+            this._clockStart = Date.now();
+            if (this._clockInterval) clearInterval(this._clockInterval);
+            this._clockInterval = setInterval(() => this._tickClock(), 1000);
+            if (this._statsInterval) clearInterval(this._statsInterval);
+            this._statsInterval = setInterval(() => this._pollStats(), 2000);
+        } else {
+            if (this._clockInterval) { clearInterval(this._clockInterval); this._clockInterval = null; }
+            if (this._statsInterval) { clearInterval(this._statsInterval); this._statsInterval = null; }
+            this._clockStart = null;
+            const sel = document.getElementById('rp-footer-stats');
+            if (sel) sel.textContent = '';
+        }
+    },
+
+    async _pollStats() {
+        try {
+            const resp = await fetch(this._bp + '/stats');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const el = document.getElementById('rp-footer-stats');
+            if (!el) return;
+            const parts = [];
+            if (data.cpu !== null) parts.push(`CPU: ${data.cpu}%`);
+            if (data.mem_mb !== null) parts.push(`Mem: ${data.mem_mb} MB`);
+            el.textContent = parts.join('  |  ');
+        } catch { /* ignore */ }
+    },
+
+    _tickClock() {
+        if (!this._clockStart) return;
+        const secs = Math.floor((Date.now() - this._clockStart) / 1000);
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = secs % 60;
+        const elapsed = h > 0
+            ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+            : `${m}:${String(s).padStart(2,'0')}`;
+        const text = `${this._clockStatusText} (${elapsed})`;
+        const el = document.getElementById('rp-status');
+        if (el) el.textContent = text;
+        const fel = document.getElementById('rp-footer-status');
+        if (fel) fel.textContent = text;
     },
 
     async stop() {
@@ -3317,10 +3370,21 @@ overlay = document.createElement('div');
     },
 
     _setStatus(text, cls = '') {
+        this._clockStatusText = text;
         const el = document.getElementById('rp-status');
-        if (!el) return;
-        el.textContent = text;
-        el.className = 'rp-status' + (cls ? ' ' + cls : '');
+        if (el) {
+            el.className = 'rp-status' + (cls ? ' ' + cls : '');
+            if (this._clockStart && !cls) {
+                this._tickClock();
+            } else {
+                el.textContent = text;
+            }
+        }
+        const fel = document.getElementById('rp-footer-status');
+        if (fel) {
+            fel.className = 'rp-footer-status' + (cls ? ' ' + cls : '');
+            fel.textContent = this._clockStart && !cls ? el ? el.textContent : text : text;
+        }
     },
 
     _renderProgressStatus(percent, message = '') {

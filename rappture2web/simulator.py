@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from .xml_parser import parse_run_xml
+from .xml_parser import parse_run_xml, parse_tool_xml
 
 
 # ─── PUQ helpers ──────────────────────────────────────────────────────────────
@@ -1031,6 +1031,39 @@ async def run_uq_simulation(
 
 # ─── Main simulation entry point ─────────────────────────────────────────────
 
+async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
+    """POST driver XML to cache service. Returns run.xml content on hit, else None."""
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            cache_url.rstrip("/") + "/cache/request",
+            data=driver_xml.encode(),
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            if resp.status == 200:
+                content = resp.read().decode()
+                return content if content.strip() else None
+    except Exception:
+        pass
+    return None
+
+
+async def _remote_cache_store(cache_url: str, run_xml: str):
+    """POST run.xml content to cache service for storage."""
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            cache_url.rstrip("/") + "/cache/store",
+            data=run_xml.encode(),
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=6):
+            pass
+    except Exception:
+        pass
+
+
 async def run_simulation(
     tool_xml_path: str,
     input_values: dict,
@@ -1038,11 +1071,13 @@ async def run_simulation(
     use_library_mode: bool = False,
     history: RunHistory | None = None,
     use_cache: bool = True,
+    cache_url: str = "",
     timeout: int | None = None,
     log_callback=None,
     process_callback=None,
     output_callback=None,
     progress_callback=None,
+    status_callback=None,
 ) -> dict:
     """Run a Rappture simulation.
 
@@ -1074,7 +1109,11 @@ async def run_simulation(
             results_dir = ""
     work_dir = results_dir if (results_dir and os.path.isdir(results_dir)) else tool_dir
 
-    # ── Cache check ──────────────────────────────────────────────────────────
+    # ── Parse tool.xml ───────────────────────────────────────────────────────
+    tool_def = parse_tool_xml(tool_xml_path)
+    tool_cache_enabled = tool_def.tool.cache_enabled
+
+    # ── Local cache check ────────────────────────────────────────────────────
     if use_cache and history is not None:
         cached_run = history.find_cached(input_values)
         if cached_run is not None and cached_run.get("status") != "error":
@@ -1089,9 +1128,7 @@ async def run_simulation(
             }
 
     # ── Get command ──────────────────────────────────────────────────────────
-    tree = ET.parse(tool_xml_path)
-    root = tree.getroot()
-    command_elem = root.find("tool/command")
+    command_elem = ET.parse(tool_xml_path).getroot().find("tool/command")
     if command_elem is None or not command_elem.text:
         return {"status": "error", "log": "No <command> in tool.xml", "outputs": {}, "cached": False}
 
@@ -1113,6 +1150,56 @@ async def run_simulation(
         # Classic mode: create driver.xml, run tool script directly
         driver_path = create_driver_xml(tool_xml_path, input_values)
         command = command.replace("@driver", driver_path)
+
+    # ── Remote cache check ───────────────────────────────────────────────────
+    if use_cache and cache_url and tool_cache_enabled and driver_path and not use_library_mode:
+        driver_xml_content = ""
+        try:
+            with open(driver_path) as f:
+                driver_xml_content = f.read()
+        except OSError:
+            pass
+        if driver_xml_content:
+            if status_callback:
+                await status_callback("Searching cache...")
+            cached_run_xml = await _remote_cache_check(cache_url, driver_xml_content)
+            if cached_run_xml:
+                # Write cached run.xml to work_dir and parse it
+                import tempfile
+                tmp_run = os.path.join(work_dir, f"run_cached_{uuid.uuid4().hex[:8]}.xml")
+                try:
+                    with open(tmp_run, "w") as f:
+                        f.write(cached_run_xml)
+                    if status_callback:
+                        await status_callback("Loading cached results...")
+                    outputs = parse_run_xml(tmp_run)
+                    log = "Loading cached results from remote cache.\n"
+                    if log_callback:
+                        await log_callback(log)
+                    run_record = None
+                    if history is not None:
+                        run_record = history.add(
+                            input_values=input_values,
+                            outputs=outputs,
+                            log=log,
+                            status="success",
+                            run_xml=tmp_run,
+                        )
+                    return {
+                        "status": "success",
+                        "outputs": outputs,
+                        "log": log,
+                        "run_xml": tmp_run,
+                        "run_id": run_record["run_id"] if run_record else None,
+                        "run_num": run_record["run_num"] if run_record else None,
+                        "cached": True,
+                    }
+                except Exception:
+                    # Cache hit but parse failed — fall through to real run
+                    try:
+                        os.remove(tmp_run)
+                    except OSError:
+                        pass
 
     # On NanoHub, wrap with `submit --local` so that invoke_app/Rappture::exec
     # get the proper session context (SESSION, SESSIONDIR, HUBNAME, etc.).
@@ -1317,6 +1404,19 @@ async def run_simulation(
                 status=status,
                 run_xml=run_xml_path,
             )
+
+        # ── Remote cache store ───────────────────────────────────────────────
+        if (status == "success" and cache_url and tool_cache_enabled
+                and run_xml_path and os.path.exists(run_xml_path)
+                and not use_library_mode):
+            try:
+                if status_callback:
+                    await status_callback("Storing results in cache...")
+                with open(run_xml_path) as f:
+                    run_xml_content = f.read()
+                await _remote_cache_store(cache_url, run_xml_content)
+            except OSError:
+                pass
 
         return {
             "status": status,
