@@ -208,6 +208,17 @@ def main():
         help="Application name (used for nanoHUB URLs, e.g. 'mytool'). "
              "Overrides auto-detected tool name.",
     )
+    parser.add_argument(
+        "--cache-url",
+        default="",
+        help="Base URL of a remote cache service (e.g. http://cache-host:8080). "
+             "When set, results are looked up before running and stored after success.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose/debug logging to stdout.",
+    )
 
     args = parser.parse_args()
 
@@ -259,6 +270,19 @@ def main():
         args.host, args.port, base_path
     )
 
+    # ── Cache URL auto-detection ──────────────────────────────────────────────
+    # Manual --cache-url overrides both read and write.
+    # On nanoHUB, auto-detect from resources file if not manually set.
+    cache_url = args.cache_url.strip()
+    cache_write_url = ""
+    if not cache_url and is_nanohub:
+        _read_host = resources.get("cache_hosts", "").strip()
+        _write_host = resources.get("cache_write_host", "").strip()
+        if _read_host:
+            cache_url = "http://{}".format(_read_host)
+        if _write_host:
+            cache_write_url = "http://{}".format(_write_host)
+
     set_tool(
         xml_path=str(tool_path),
         cache_dir=cache_dir,
@@ -271,6 +295,8 @@ def main():
         nanohub_terminate_url=nanohub_terminate_url,
         nanohub_about_url=nanohub_about_url,
         nanohub_questions_url=nanohub_questions_url,
+        cache_url=cache_url,
+        cache_write_url=cache_write_url,
     )
 
     print("Loading tool: {}".format(tool_path))
@@ -278,6 +304,10 @@ def main():
     if args.library_mode:
         print("Library mode: tool scripts receive server URL instead of driver.xml")
     print("Run cache directory: {}".format(cache_dir))
+    if cache_url:
+        print("Remote cache (read):  {}".format(cache_url))
+    if cache_write_url:
+        print("Remote cache (write): {}".format(cache_write_url))
     if proxy_url:
         print("nanoHUB proxy URL: {}".format(proxy_url))
     if nanohub_about_url:
@@ -320,7 +350,8 @@ def main():
             subprocess.Popen(["bash", "-lc", cmd])
 
     import uvicorn
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info",
+    log_level = "debug" if args.verbose else "info"
+    uvicorn.run(app, host=args.host, port=args.port, log_level=log_level,
                 root_path=base_path)
 
 

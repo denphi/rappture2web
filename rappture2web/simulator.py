@@ -1049,16 +1049,63 @@ async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
     return None
 
 
+_ANON_HOME = "/var/ion/runs"
+_ANON_SESSION_DIR = "/var/ion/data/sessions/0"
+
+
+def _get_real_paths() -> tuple[str, str, str]:
+    """Return (home, sessiondir, user) for the current process."""
+    import pwd
+    user = os.environ.get("USER", os.environ.get("LOGNAME", ""))
+    if not user:
+        try:
+            user = pwd.getpwuid(os.getuid()).pw_name
+        except Exception:
+            user = ""
+    home = os.path.expanduser("~").rstrip("/")
+    sessiondir = os.environ.get("SESSIONDIR", "").rstrip("/")
+    return home, sessiondir, user
+
+
+def _anonymize_run_xml(run_xml: str) -> str:
+    """Replace user-identifying paths and fields in run XML before remote storage."""
+    home, sessiondir, user = _get_real_paths()
+    # Replace session dir path first (more specific) then home
+    if sessiondir:
+        run_xml = run_xml.replace(sessiondir, _ANON_SESSION_DIR)
+    if home:
+        run_xml = run_xml.replace(home, _ANON_HOME)
+    # Replace metadata fields
+    import re
+    run_xml = re.sub(r'<user>[^<]*</user>', '<user>ionhelper</user>', run_xml)
+    run_xml = re.sub(r'<filename>[^<]*</filename>', f'<filename>{_ANON_HOME}/run.xml</filename>', run_xml)
+    return run_xml
+
+
+def _restore_run_xml(run_xml: str, filename: str) -> str:
+    """Restore real paths and fields in a run XML retrieved from cache."""
+    home, sessiondir, user = _get_real_paths()
+    import re
+    # Restore metadata fields
+    if user:
+        run_xml = re.sub(r'<user>[^<]*</user>', f'<user>{user}</user>', run_xml)
+    run_xml = re.sub(r'<filename>[^<]*</filename>', f'<filename>{filename}</filename>', run_xml)
+    # Restore paths (anon → real), session dir first then home
+    run_xml = run_xml.replace(_ANON_SESSION_DIR, sessiondir if sessiondir else _ANON_SESSION_DIR)
+    run_xml = run_xml.replace(_ANON_HOME, home if home else _ANON_HOME)
+    return run_xml
+
+
 async def _remote_cache_store(cache_url: str, run_xml: str):
-    """POST run.xml content to cache service for storage."""
+    """POST anonymized run.xml content to cache service for storage."""
     try:
         import urllib.request
         req = urllib.request.Request(
-            cache_url.rstrip("/") + "/cache/store",
-            data=run_xml.encode(),
+            cache_url.rstrip("/") + "/cache/publish",
+            data=_anonymize_run_xml(run_xml).encode(),
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=6):
+        with urllib.request.urlopen(req, timeout=10):
             pass
     except Exception:
         pass
@@ -1072,6 +1119,7 @@ async def run_simulation(
     history: RunHistory | None = None,
     use_cache: bool = True,
     cache_url: str = "",
+    cache_write_url: str = "",
     timeout: int | None = None,
     log_callback=None,
     process_callback=None,
@@ -1118,6 +1166,7 @@ async def run_simulation(
         cached_run = history.find_cached(input_values)
         if cached_run is not None and cached_run.get("status") != "error":
             msg = f"[cache] Local cache hit (run #{cached_run['run_num']}) — skipping simulation.\n"
+            print(msg.strip(), flush=True)
             if log_callback:
                 await log_callback(msg)
             if status_callback:
@@ -1167,20 +1216,23 @@ async def run_simulation(
         if driver_xml_content:
             if status_callback:
                 await status_callback("Searching cache...")
+            _cache_msg = f"[cache] Checking remote cache at {cache_url} ..."
+            print(_cache_msg, flush=True)
             if log_callback:
-                await log_callback(f"[cache] Checking remote cache at {cache_url} ...\n")
+                await log_callback(_cache_msg + "\n")
             cached_run_xml = await _remote_cache_check(cache_url, driver_xml_content)
             if cached_run_xml:
                 # Write cached run.xml to work_dir and parse it
-                import tempfile
                 tmp_run = os.path.join(work_dir, f"run_cached_{uuid.uuid4().hex[:8]}.xml")
                 try:
+                    cached_run_xml = _restore_run_xml(cached_run_xml, tmp_run)
                     with open(tmp_run, "w") as f:
                         f.write(cached_run_xml)
                     if status_callback:
                         await status_callback("Loading cached results...")
                     outputs = parse_run_xml(tmp_run)
                     log = "[cache] Remote cache hit — loaded results without running simulation.\n"
+                    print(log.strip(), flush=True)
                     if log_callback:
                         await log_callback(log)
                     run_record = None
@@ -1203,15 +1255,19 @@ async def run_simulation(
                     }
                 except Exception:
                     # Cache hit but parse failed — fall through to real run
+                    _msg = "[cache] Remote cache hit but failed to parse result — running simulation."
+                    print(_msg, flush=True)
                     if log_callback:
-                        await log_callback("[cache] Remote cache hit but failed to parse result — running simulation.\n")
+                        await log_callback(_msg + "\n")
                     try:
                         os.remove(tmp_run)
                     except OSError:
                         pass
             else:
+                _msg = "[cache] Remote cache miss — running simulation."
+                print(_msg, flush=True)
                 if log_callback:
-                    await log_callback("[cache] Remote cache miss — running simulation.\n")
+                    await log_callback(_msg + "\n")
 
     # On NanoHub, wrap with `submit --local` so that invoke_app/Rappture::exec
     # get the proper session context (SESSION, SESSIONDIR, HUBNAME, etc.).
@@ -1418,19 +1474,24 @@ async def run_simulation(
             )
 
         # ── Remote cache store ───────────────────────────────────────────────
-        if (status == "success" and cache_url and tool_cache_enabled
+        _effective_write_url = cache_write_url or cache_url
+        if (status == "success" and _effective_write_url and tool_cache_enabled
                 and run_xml_path and os.path.exists(run_xml_path)
                 and not use_library_mode):
             try:
                 if status_callback:
                     await status_callback("Storing results in cache...")
+                _store_msg = f"[cache] Storing results in remote cache at {_effective_write_url} ..."
+                print(_store_msg, flush=True)
                 if log_callback:
-                    await log_callback(f"[cache] Storing results in remote cache at {cache_url} ...\n")
+                    await log_callback(_store_msg + "\n")
                 with open(run_xml_path) as f:
                     run_xml_content = f.read()
-                await _remote_cache_store(cache_url, run_xml_content)
+                await _remote_cache_store(_effective_write_url, run_xml_content)
+                _stored_msg = "[cache] Results stored in remote cache."
+                print(_stored_msg, flush=True)
                 if log_callback:
-                    await log_callback("[cache] Results stored in remote cache.\n")
+                    await log_callback(_stored_msg + "\n")
             except OSError:
                 pass
 
