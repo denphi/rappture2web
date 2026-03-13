@@ -767,10 +767,31 @@ const rappture = {
         const targetsAttr = widget && widget.dataset.uploadTargets;
         const targets = targetsAttr ? targetsAttr.split(',').filter(Boolean) : null;
         const pattern = (widget && widget.dataset.example) || '*.xml';
+        this._showInitOverlay();
         return fetch(this._bp + '/api/loader-examples/' + encodeURIComponent(filename) + '?pattern=' + encodeURIComponent(pattern))
             .then(r => r.json())
             .then(data => { if (data.content) this._applyExampleXml(data.content, targets); })
-            .catch(() => { });
+            .catch(() => { })
+            .finally(() => this._hideInitOverlay());
+    },
+
+    _showInitOverlay() {
+        let overlay = document.getElementById('rp-init-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'rp-init-overlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.innerHTML = '<div class="rp-init-spinner"></div>';
+            document.body.appendChild(overlay);
+        }
+        overlay.classList.remove('rp-init-overlay-hidden');
+    },
+
+    _hideInitOverlay() {
+        const overlay = document.getElementById('rp-init-overlay');
+        if (!overlay) return;
+        overlay.classList.add('rp-init-overlay-hidden');
+        overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
     },
 
     initLoaders() {
@@ -834,13 +855,7 @@ const rappture = {
             loaderPromises.push(p);
         });
 
-        Promise.allSettled(loaderPromises).then(() => {
-            const overlay = document.getElementById('rp-init-overlay');
-            if (overlay) {
-                overlay.classList.add('rp-init-overlay-hidden');
-                overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-            }
-        });
+        Promise.allSettled(loaderPromises).then(() => this._hideInitOverlay());
     },
 
     /** Load an uploaded XML file and populate input widgets from it. */
