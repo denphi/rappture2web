@@ -1035,8 +1035,8 @@ async def run_uq_simulation(
 
 # ─── Main simulation entry point ─────────────────────────────────────────────
 
-async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
-    """POST driver XML to cache service. Returns run.xml content on hit, else None."""
+async def _remote_cache_check(cache_url: str, driver_xml: str) -> tuple:
+    """POST driver XML to cache service. Returns (run_xml, squid) on hit, (None, None) on miss."""
     def _do_request():
         req = urllib.request.Request(
             cache_url.rstrip("/") + "/cache/request",
@@ -1051,14 +1051,32 @@ async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
                 return resp.status, None
         except urllib.error.HTTPError as e:
             return e.code, None
+
+    def _get_squid(run_xml):
+        """Extract SQuID by posting the returned run XML to /inspector."""
+        try:
+            req = urllib.request.Request(
+                cache_url.rstrip("/") + "/inspector",
+                data=run_xml.encode(),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                import json as _json
+                return _json.loads(resp.read().decode()).get("SQuID", "")
+        except Exception:
+            return ""
+
     try:
         loop = asyncio.get_event_loop()
         status, content = await loop.run_in_executor(None, _do_request)
         print(f"[cache] request response {status}", flush=True)
-        return content
+        if content:
+            squid = await loop.run_in_executor(None, _get_squid, content)
+            return content, squid
+        return None, None
     except Exception as e:
         print(f"[cache] request error: {e}", flush=True)
-        return None
+        return None, None
 
 
 _ANON_HOME = "/var/ion/runs"
@@ -1229,7 +1247,7 @@ async def run_simulation(
             print(_cache_msg, flush=True)
             if log_callback:
                 await log_callback(_cache_msg + "\n")
-            cached_run_xml = await _remote_cache_check(cache_url, driver_xml_content)
+            cached_run_xml, squid = await _remote_cache_check(cache_url, driver_xml_content)
             if cached_run_xml:
                 # Write cached run.xml to work_dir and parse it
                 tmp_run = os.path.join(work_dir, f"run_cached_{uuid.uuid4().hex[:8]}.xml")
@@ -1240,7 +1258,7 @@ async def run_simulation(
                     if status_callback:
                         await status_callback("Loading cached results...")
                     outputs = parse_run_xml(tmp_run)
-                    log = "[cache] Remote cache hit — loaded results without running simulation.\n"
+                    log = f"[cache] Remote cache hit — loaded results without running simulation. SQuID: {squid}\n" if squid else "[cache] Remote cache hit — loaded results without running simulation.\n"
                     print(log.strip(), flush=True)
                     if log_callback:
                         await log_callback(log)
