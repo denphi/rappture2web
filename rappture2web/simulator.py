@@ -1100,8 +1100,8 @@ def _restore_run_xml(run_xml: str, filename: str) -> str:
     return run_xml
 
 
-async def _remote_cache_store(cache_url: str, run_xml: str):
-    """POST anonymized run.xml content to cache service for storage."""
+async def _remote_cache_store(cache_url: str, run_xml: str) -> str:
+    """POST anonymized run.xml to cache service. Returns squid (queryKey) or empty string."""
     def _do_request():
         req = urllib.request.Request(
             cache_url.rstrip("/") + "/cache/publish",
@@ -1109,15 +1109,15 @@ async def _remote_cache_store(cache_url: str, run_xml: str):
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-            return resp.status, body
-        return None, None
+            return resp.read().decode("utf-8", errors="replace")
     try:
         loop = asyncio.get_event_loop()
-        status, body = await loop.run_in_executor(None, _do_request)
-        print(f"[cache] publish response {status}: {body}", flush=True)
+        body = await loop.run_in_executor(None, _do_request)
+        import json as _json
+        return _json.loads(body).get("queryKey", "")
     except Exception as e:
         print(f"[cache] publish error: {e}", flush=True)
+        return ""
 
 
 async def run_simulation(
@@ -1496,8 +1496,8 @@ async def run_simulation(
                     await log_callback(_store_msg + "\n")
                 with open(run_xml_path) as f:
                     run_xml_content = f.read()
-                await _remote_cache_store(_effective_write_url, run_xml_content)
-                _stored_msg = "[cache] Results stored in remote cache."
+                squid = await _remote_cache_store(_effective_write_url, run_xml_content)
+                _stored_msg = f"[cache] Results stored in remote cache. SQuID: {squid}" if squid else "[cache] Results stored in remote cache."
                 print(_stored_msg, flush=True)
                 if log_callback:
                     await log_callback(_stored_msg + "\n")
