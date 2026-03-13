@@ -1043,14 +1043,20 @@ async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
             data=driver_xml.encode(),
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=6) as resp:
-            if resp.status == 200:
-                content = resp.read().decode()
-                return content if content.strip() else None
-        return None
+        try:
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                if resp.status == 200:
+                    content = resp.read().decode()
+                    return resp.status, content if content.strip() else None
+                return resp.status, None
+        except urllib.error.HTTPError as e:
+            return e.code, None
     try:
-        return await asyncio.to_thread(_do_request)
-    except Exception:
+        status, content = await asyncio.to_thread(_do_request)
+        print(f"[cache] request response {status}", flush=True)
+        return content
+    except Exception as e:
+        print(f"[cache] request error: {e}", flush=True)
         return None
 
 
@@ -1101,12 +1107,15 @@ async def _remote_cache_store(cache_url: str, run_xml: str):
             data=_anonymize_run_xml(run_xml).encode(),
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=10):
-            pass
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return resp.status, body
+        return None, None
     try:
-        await asyncio.to_thread(_do_request)
-    except Exception:
-        pass
+        status, body = await asyncio.to_thread(_do_request)
+        print(f"[cache] publish response {status}: {body}", flush=True)
+    except Exception as e:
+        print(f"[cache] publish error: {e}", flush=True)
 
 
 async def run_simulation(
