@@ -1057,8 +1057,8 @@ async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
 _ANON_HOME = "/var/ion/runs"
 _ANON_SESSION_DIR = "/var/ion/data/sessions/0"
 
-# Computed once at import time — env vars and home dir don't change during runtime.
-def _compute_real_paths() -> tuple[str, str, str]:
+def _get_real_paths() -> tuple[str, str, str]:
+    """Return (home, sessiondir, user) for the current process."""
     user = os.environ.get("USER", os.environ.get("LOGNAME", ""))
     if not user:
         try:
@@ -1069,15 +1069,14 @@ def _compute_real_paths() -> tuple[str, str, str]:
     sessiondir = os.environ.get("SESSIONDIR", "").rstrip("/")
     return home, sessiondir, user
 
-_REAL_HOME, _REAL_SESSIONDIR, _REAL_USER = _compute_real_paths()
-
 
 def _anonymize_run_xml(run_xml: str) -> str:
     """Replace user-identifying paths and fields in run XML before remote storage."""
-    if _REAL_SESSIONDIR:
-        run_xml = run_xml.replace(_REAL_SESSIONDIR, _ANON_SESSION_DIR)
-    if _REAL_HOME:
-        run_xml = run_xml.replace(_REAL_HOME, _ANON_HOME)
+    home, sessiondir, user = _get_real_paths()
+    if sessiondir:
+        run_xml = run_xml.replace(sessiondir, _ANON_SESSION_DIR)
+    if home:
+        run_xml = run_xml.replace(home, _ANON_HOME)
     run_xml = re.sub(r'<user>[^<]*</user>', '<user>ionhelper</user>', run_xml)
     run_xml = re.sub(r'<filename>[^<]*</filename>', f'<filename>{_ANON_HOME}/run.xml</filename>', run_xml)
     return run_xml
@@ -1085,11 +1084,12 @@ def _anonymize_run_xml(run_xml: str) -> str:
 
 def _restore_run_xml(run_xml: str, filename: str) -> str:
     """Restore real paths and fields in a run XML retrieved from cache."""
-    if _REAL_USER:
-        run_xml = re.sub(r'<user>[^<]*</user>', f'<user>{_REAL_USER}</user>', run_xml)
+    home, sessiondir, user = _get_real_paths()
+    if user:
+        run_xml = re.sub(r'<user>[^<]*</user>', f'<user>{user}</user>', run_xml)
     run_xml = re.sub(r'<filename>[^<]*</filename>', f'<filename>{filename}</filename>', run_xml)
-    run_xml = run_xml.replace(_ANON_SESSION_DIR, _REAL_SESSIONDIR or _ANON_SESSION_DIR)
-    run_xml = run_xml.replace(_ANON_HOME, _REAL_HOME or _ANON_HOME)
+    run_xml = run_xml.replace(_ANON_SESSION_DIR, sessiondir or _ANON_SESSION_DIR)
+    run_xml = run_xml.replace(_ANON_HOME, home or _ANON_HOME)
     return run_xml
 
 
