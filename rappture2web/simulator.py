@@ -1117,10 +1117,15 @@ async def run_simulation(
     if use_cache and history is not None:
         cached_run = history.find_cached(input_values)
         if cached_run is not None and cached_run.get("status") != "error":
+            msg = f"[cache] Local cache hit (run #{cached_run['run_num']}) — skipping simulation.\n"
+            if log_callback:
+                await log_callback(msg)
+            if status_callback:
+                await status_callback("Loading cached results...")
             return {
                 "status": cached_run["status"],
                 "outputs": cached_run["outputs"],
-                "log": cached_run["log"],
+                "log": msg + cached_run["log"],
                 "run_xml": cached_run.get("run_xml"),
                 "run_id": cached_run["run_id"],
                 "run_num": cached_run["run_num"],
@@ -1162,6 +1167,8 @@ async def run_simulation(
         if driver_xml_content:
             if status_callback:
                 await status_callback("Searching cache...")
+            if log_callback:
+                await log_callback(f"[cache] Checking remote cache at {cache_url} ...\n")
             cached_run_xml = await _remote_cache_check(cache_url, driver_xml_content)
             if cached_run_xml:
                 # Write cached run.xml to work_dir and parse it
@@ -1173,7 +1180,7 @@ async def run_simulation(
                     if status_callback:
                         await status_callback("Loading cached results...")
                     outputs = parse_run_xml(tmp_run)
-                    log = "Loading cached results from remote cache.\n"
+                    log = "[cache] Remote cache hit — loaded results without running simulation.\n"
                     if log_callback:
                         await log_callback(log)
                     run_record = None
@@ -1196,10 +1203,15 @@ async def run_simulation(
                     }
                 except Exception:
                     # Cache hit but parse failed — fall through to real run
+                    if log_callback:
+                        await log_callback("[cache] Remote cache hit but failed to parse result — running simulation.\n")
                     try:
                         os.remove(tmp_run)
                     except OSError:
                         pass
+            else:
+                if log_callback:
+                    await log_callback("[cache] Remote cache miss — running simulation.\n")
 
     # On NanoHub, wrap with `submit --local` so that invoke_app/Rappture::exec
     # get the proper session context (SESSION, SESSIONDIR, HUBNAME, etc.).
@@ -1412,9 +1424,13 @@ async def run_simulation(
             try:
                 if status_callback:
                     await status_callback("Storing results in cache...")
+                if log_callback:
+                    await log_callback(f"[cache] Storing results in remote cache at {cache_url} ...\n")
                 with open(run_xml_path) as f:
                     run_xml_content = f.read()
                 await _remote_cache_store(cache_url, run_xml_content)
+                if log_callback:
+                    await log_callback("[cache] Results stored in remote cache.\n")
             except OSError:
                 pass
 
