@@ -1052,7 +1052,8 @@ async def _remote_cache_check(cache_url: str, driver_xml: str) -> str | None:
         except urllib.error.HTTPError as e:
             return e.code, None
     try:
-        status, content = await asyncio.to_thread(_do_request)
+        loop = asyncio.get_event_loop()
+        status, content = await loop.run_in_executor(None, _do_request)
         print(f"[cache] request response {status}", flush=True)
         return content
     except Exception as e:
@@ -1112,7 +1113,8 @@ async def _remote_cache_store(cache_url: str, run_xml: str):
             return resp.status, body
         return None, None
     try:
-        status, body = await asyncio.to_thread(_do_request)
+        loop = asyncio.get_event_loop()
+        status, body = await loop.run_in_executor(None, _do_request)
         print(f"[cache] publish response {status}: {body}", flush=True)
     except Exception as e:
         print(f"[cache] publish error: {e}", flush=True)
