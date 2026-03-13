@@ -547,7 +547,8 @@ async def get_stats():
         else:
             cpu = _psutil.cpu_percent(interval=0.1)
             mem = _psutil.virtual_memory()
-            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(mem.used / 1024 / 1024, 1)})
+            used = mem.total - mem.available
+            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(used / 1024 / 1024, 1)})
     except (_psutil.NoSuchProcess, _psutil.AccessDenied, ProcessLookupError):
         return JSONResponse({"cpu": None, "mem_mb": None})
 
