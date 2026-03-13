@@ -526,6 +526,36 @@ async def stop_simulation():
 
 # ─── Process stats ────────────────────────────────────────────────────────────
 
+def _read_container_mem_mb() -> float | None:
+    """Read memory usage from cgroups (works inside Docker containers).
+    Falls back to psutil virtual_memory if cgroups are not available."""
+    # cgroups v2
+    try:
+        current = int(Path("/sys/fs/cgroup/memory.current").read_text().strip())
+        stat = Path("/sys/fs/cgroup/memory.stat").read_text()
+        inactive_file = next(
+            (int(l.split()[1]) for l in stat.splitlines() if l.startswith("inactive_file")), 0
+        )
+        return round((current - inactive_file) / 1024 / 1024, 1)
+    except (FileNotFoundError, ValueError):
+        pass
+    # cgroups v1
+    try:
+        usage = int(Path("/sys/fs/cgroup/memory/memory.usage_in_bytes").read_text().strip())
+        stat = Path("/sys/fs/cgroup/memory/memory.stat").read_text()
+        inactive_file = next(
+            (int(l.split()[1]) for l in stat.splitlines() if l.startswith("total_inactive_file")), 0
+        )
+        return round((usage - inactive_file) / 1024 / 1024, 1)
+    except (FileNotFoundError, ValueError):
+        pass
+    # fallback
+    if _psutil is not None:
+        mem = _psutil.virtual_memory()
+        return round((mem.total - mem.available) / 1024 / 1024, 1)
+    return None
+
+
 @app.get("/stats")
 async def get_stats():
     """Return CPU and memory usage — process stats when running, system stats otherwise."""
@@ -546,9 +576,8 @@ async def get_stats():
             return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(mem / 1024 / 1024, 1)})
         else:
             cpu = _psutil.cpu_percent(interval=0.1)
-            mem = _psutil.virtual_memory()
-            used = mem.total - mem.available
-            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": round(used / 1024 / 1024, 1)})
+            mem_mb = _read_container_mem_mb()
+            return JSONResponse({"cpu": round(cpu, 1), "mem_mb": mem_mb})
     except (_psutil.NoSuchProcess, _psutil.AccessDenied, ProcessLookupError):
         return JSONResponse({"cpu": None, "mem_mb": None})
 
