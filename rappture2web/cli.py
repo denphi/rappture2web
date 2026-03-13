@@ -125,12 +125,27 @@ def _nanohub_urls():
     return support_url, terminate_url
 
 
-def _resolve_nanohub_tool_name(resources: dict | None = None):
+def _tool_name_from_path(tool_xml_path: str) -> str:
+    """Extract tool name from /apps/<toolname>/<revision>/... path pattern."""
+    parts = Path(tool_xml_path).resolve().parts
+    # Find /apps and take the next component as the tool name
+    for i, part in enumerate(parts):
+        if part == "apps" and i + 1 < len(parts):
+            return parts[i + 1].lower()
+    return ""
+
+
+def _resolve_nanohub_tool_name(tool_xml_path: str = "", resources: dict | None = None):
     """Return normalized nanoHUB tool name used in /tools/* and /resources/* URLs."""
     env_name = os.environ.get("NANOHUB_TOOL_NAME")
     if env_name:
         name = env_name.strip().lower()
         return name[4:] if name.startswith("app-") else name
+
+    if tool_xml_path:
+        name = _tool_name_from_path(tool_xml_path)
+        if name:
+            return name
 
     resources = resources or _parse_nanohub_resources()
     app_name = (resources.get("application_name") or resources.get("appname") or "").strip().lower()
@@ -256,7 +271,7 @@ def main():
         use_wrwroxy = wrwroxy_pkg is not None
     resources = _parse_nanohub_resources()
     is_nanohub = bool(resources)
-    nanohub_tool_name = args.app_name or _resolve_nanohub_tool_name(resources)
+    nanohub_tool_name = args.app_name or _resolve_nanohub_tool_name(str(tool_path), resources)
     nanohub_about_url = ""
     nanohub_questions_url = ""
     if is_nanohub and nanohub_tool_name:
