@@ -923,22 +923,26 @@ overlay = document.createElement('div');
             });
             const result = await response.json();
 
-            const cached = result.cached ? ' (cached)' : '';
-            const runLabel = result.run_num ? ` Run #${result.run_num}` : '';
-            this._setStatus(`Complete${runLabel}${cached}`, result.status === 'success' ? 'success' : 'error');
-            if (result.status !== 'success' && result.log) {
-                const container = document.getElementById('rp-results');
-                if (container) {
-                    container.innerHTML = `<div class="rp-results-placeholder" style="color:#b91c1c;text-align:left;padding:16px;"><strong>Simulation error</strong><pre style="margin-top:8px;white-space:pre-wrap;font-size:12px;">${result.log}</pre></div>`;
+            // The WebSocket 'done' message is the authoritative signal that the
+            // run finished and will call _setRunning(false).  Only fall back to
+            // calling it here when the HTTP response itself signals an error,
+            // meaning the server never sent (or won't send) a 'done' message.
+            if (result.status !== 'success') {
+                this._setRunning(false);
+                if (result.log) {
+                    const container = document.getElementById('rp-results');
+                    if (container) {
+                        container.innerHTML = `<div class="rp-results-placeholder" style="color:#b91c1c;text-align:left;padding:16px;"><strong>Simulation error</strong><pre style="margin-top:8px;white-space:pre-wrap;font-size:12px;">${result.log}</pre></div>`;
+                    }
                 }
             }
             this._preferFirstOutputOnNextRender = true;
             this._fetchRunHistory(true);
 
         } catch (err) {
-            this._setStatus('Request failed: ' + err.message, 'error');
-        } finally {
+            // Network failure — no WebSocket 'done' will arrive.
             this._setRunning(false);
+            this._setStatus('Request failed: ' + err.message, 'error');
         }
     },
 
