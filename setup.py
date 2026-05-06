@@ -1,12 +1,7 @@
-"""setup.py for compatibility with pip < 21.3 (pre-PEP-517 builds).
-
-Modern pip reads everything from pyproject.toml. This file duplicates
-the essential metadata so that older pip can still install the package.
-"""
+"""setup.py for compatibility with pip < 21.3 (pre-PEP-517 builds)."""
 import os
 from setuptools import setup, find_packages
 
-# Read version without importing the package
 version = {}
 with open(os.path.join("rappture2web", "_version.py")) as f:
     exec(f.read(), version)
@@ -43,27 +38,14 @@ setup(
         "lxml>=4.9.0",
     ],
     extras_require={
-        "dev": [
-            "pytest>=7.0",
-            "httpx>=0.24.0",
-        ]
+        "dev": ["pytest>=7.0", "httpx>=0.24.0"],
     },
     entry_points={
-        "console_scripts": [
-            "rappture2web=rappture2web.cli:main",
-        ]
+        "console_scripts": ["rappture2web=rappture2web.cli:main"],
     },
     classifiers=[
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: Science/Research",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Topic :: Scientific/Engineering :: Visualization",
-        "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
     ],
 )

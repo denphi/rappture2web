@@ -45,14 +45,20 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from typing import Any
+
+from .xml_parser import parse_rappture_path as _parse_path_segments
 
 # Active library handle used by module-level compatibility helpers (Utils.*).
 _active_library = None
+
+_ELEM_ID_RE = re.compile(r'^([A-Za-z_][A-Za-z0-9_.-]*)\(([^)]+)\)$')
 
 # ─── URL / file detection ──────────────────────────────────────────────────────
 
@@ -61,19 +67,6 @@ def _is_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
 
 # ─── Output path parser ───────────────────────────────────────────────────────
-
-def _parse_path_segments(path: str) -> list[tuple[str, str]]:
-    """Split 'a.b(id).c' into [('a',''), ('b','id'), ('c','')]."""
-    parts = []
-    for seg in path.split("."):
-        if "(" in seg and seg.endswith(")"):
-            tag = seg[:seg.index("(")]
-            eid = seg[seg.index("(") + 1:-1]
-            parts.append((tag, eid))
-        else:
-            parts.append((seg, ""))
-    return parts
-
 
 def _path_section(path: str) -> str:
     """Return the top-level section of a path: 'input', 'output', etc."""
@@ -433,7 +426,6 @@ class _OutputStore:
                 # Resolve mesh reference from sibling outputs
                 mesh_data = None
                 if mesh_ref:
-                    import re
                     m = re.search(r'\(([^)]+)\)', mesh_ref)
                     mesh_key = m.group(1) if m else mesh_ref.split(".")[-1]
                     raw_mesh = self._outputs.get(mesh_key)
@@ -537,7 +529,6 @@ class _OutputStore:
     def _write_xml_outputs(self):
         """Write accumulated raw outputs back into the driver XML file."""
         try:
-            import xml.etree.ElementTree as ET
             ET.register_namespace("", "")
             tree = ET.parse(self._file_path)
             root = tree.getroot()
@@ -562,16 +553,13 @@ class _OutputStore:
                         child = ET.SubElement(parent, tag)
                 _set_path(child, parts[1:], value)
 
-            import re as _re
-            _ID_RE = _re.compile(r'^([A-Za-z_][A-Za-z0-9_.-]*)\(([^)]+)\)$')
-
             def _find_or_create(parent, key):
                 """Find or create a child element.
 
                 Keys like 'particles(p1)' become <particles id="p1">;
                 plain keys become the literal tag name.
                 """
-                m = _ID_RE.match(key)
+                m = _ELEM_ID_RE.match(key)
                 if m:
                     tag, eid = m.group(1), m.group(2)
                     child = parent.find(f"{tag}[@id='{eid}']")
@@ -673,7 +661,6 @@ class _InputStore:
     def _load_from_xml(self) -> dict:
         """Parse driver XML and return {path: current_value} for all inputs."""
         try:
-            import xml.etree.ElementTree as ET
             tree = ET.parse(self._file_path)
             root = tree.getroot()
             values = {}
@@ -956,7 +943,6 @@ class _UnitConverter:
             to:      target unit keyword arg (ignored in stub)
             units:   'off' → return float, else return numeric string
         """
-        import re
         target_units = kwargs.get("units", "with")
         m = re.match(r"^([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*(.*)$", str(value).strip())
         if m:

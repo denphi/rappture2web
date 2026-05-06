@@ -6,6 +6,7 @@ Rappture uses special markers for encoded data:
 """
 
 import base64
+import re
 import zlib
 
 
@@ -63,5 +64,6 @@ def to_data_uri(data: str, mime_type: str = "image/png") -> str:
         return f"data:{mime_type};base64,{b64}"
     elif data.strip():
         # Assume raw base64 — strip all whitespace (line-wrapped base64 is common)
-        return f"data:{mime_type};base64,{data.strip().replace(chr(10), '').replace(chr(13), '').replace(' ', '')}"
+        clean = re.sub(r'\s+', '', data)
+        return f"data:{mime_type};base64,{clean}"
     return ""

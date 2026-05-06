@@ -9,8 +9,7 @@ import sys
 from pathlib import Path
 
 
-def _find_wrwroxy():
-    # type: () -> str or None
+def _find_wrwroxy() -> str | None:
     """
     Find an available wrwroxy version using 'use'.
 
@@ -236,6 +235,12 @@ def main():
     )
 
     args = parser.parse_args()
+
+    import logging as _logging
+    _logging.basicConfig(
+        level=_logging.DEBUG if args.verbose else _logging.WARNING,
+        format="%(name)s %(levelname)s: %(message)s",
+    )
 
     tool_path = Path(args.tool_xml).resolve()
     if not tool_path.exists():

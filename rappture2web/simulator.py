@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import csv
 import hashlib
+import io
 import json
+import logging
 import os
 import pwd
 import re
@@ -17,7 +20,9 @@ import uuid
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from .xml_parser import parse_run_xml, parse_tool_xml
+logger = logging.getLogger(__name__)
+
+from .xml_parser import parse_run_xml, parse_tool_xml, parse_rappture_path, strip_units
 
 
 # ─── PUQ helpers ──────────────────────────────────────────────────────────────
@@ -44,15 +49,6 @@ def _jpickle_dumps(obj) -> str:
     """Serialize obj to PUQ jpickle format (simple JSON wrapping)."""
     # PUQ's jpickle format for plain lists/tuples/strings/numbers is just JSON.
     return json.dumps(obj)
-
-
-def _strip_units_value(value: str) -> float:
-    """Extract the numeric part from a Rappture value string like '300K' → 300.0."""
-    import re
-    if not value:
-        return 0.0
-    m = re.match(r'^([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)', value.strip())
-    return float(m.group(1)) if m else 0.0
 
 
 # ─── Rappture binary detection ────────────────────────────────────────────────
@@ -85,20 +81,23 @@ def _get_rappture_env_file() -> str | None:
 
 # ─── Driver XML helpers ───────────────────────────────────────────────────────
 
-def build_driver_xml_string(tool_xml_path: str, input_values: dict) -> str:
-    """Build driver XML with input values filled in and return it as a string."""
+def _build_driver_xml_tree(tool_xml_path: str, input_values: dict) -> ET.ElementTree:
+    """Parse tool.xml, apply input values and defaults, return the ready tree."""
     tree = ET.parse(tool_xml_path)
     root = tree.getroot()
-
     for path, value in input_values.items():
         _set_xml_value(root, path, str(value))
-
     _apply_loader_defaults(root, tool_xml_path, input_values)
     _fill_defaults_in_tree(root)
+    return tree
 
-    import io
+
+def build_driver_xml_string(tool_xml_path: str, input_values: dict) -> str:
+    """Build driver XML with input values filled in and return it as a string."""
     buf = io.StringIO()
-    tree.write(buf, encoding="unicode", xml_declaration=True)
+    _build_driver_xml_tree(tool_xml_path, input_values).write(
+        buf, encoding="unicode", xml_declaration=True
+    )
     return buf.getvalue()
 
 
@@ -107,19 +106,7 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
 
     Returns the path to the created driver file.
     """
-    tree = ET.parse(tool_xml_path)
-    root = tree.getroot()
-
-    for path, value in input_values.items():
-        _set_xml_value(root, path, str(value))
-
-    # Apply loader default examples for any <loader> whose target <structure>
-    # has not already been set by input_values (i.e. user didn't supply it).
-    _apply_loader_defaults(root, tool_xml_path, input_values)
-
-    # Ensure any <current> that is still empty/missing gets its <default> value
-    # (handles disabled widgets like workf that collectInputs skips).
-    _fill_defaults_in_tree(root)
+    tree = _build_driver_xml_tree(tool_xml_path, input_values)
 
     # Prefer $RESULTSDIR (writable on nanoHUB), then tool dir, then temp.
     results_dir = os.environ.get("RESULTSDIR", "").strip()
@@ -131,7 +118,6 @@ def create_driver_xml(tool_xml_path: str, input_values: dict) -> str:
             return driver_path
         except (PermissionError, OSError):
             continue
-    import tempfile
     tmp = tempfile.NamedTemporaryFile(
         prefix="driver_", suffix=".xml", delete=False, mode="w"
     )
@@ -151,14 +137,11 @@ def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None
     structure path.  Without this, driver.xml is missing all structure parameters
     (geometry, doping, etc.) that the binary tool reads at runtime.
     """
-    import glob as _glob
-    from pathlib import Path as _Path
-
     input_elem = root.find("input")
     if input_elem is None:
         return
 
-    tool_dir = _Path(tool_xml_path).parent
+    tool_dir = Path(tool_xml_path).parent
 
     # Build the set of structure paths already set by the user
     user_structure_paths = {p for p in input_values if "structure" in p.lower()}
@@ -203,7 +186,8 @@ def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None
         # Parse the example XML
         try:
             ex_tree = ET.parse(str(example_path))
-        except Exception:
+        except Exception as exc:
+            logger.warning("Could not parse loader example %s: %s", example_path, exc)
             continue
         ex_root = ex_tree.getroot()
 
@@ -236,9 +220,7 @@ def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None
                     break
                 idx = list(parent).index(driver_struct)
                 parent.remove(driver_struct)
-                # Deep copy the example structure element
-                import copy as _copy
-                new_struct = _copy.deepcopy(ex_struct)
+                new_struct = copy.deepcopy(ex_struct)
                 parent.insert(idx, new_struct)
                 break
 
@@ -287,11 +269,10 @@ def _fill_defaults_in_tree(root) -> None:
         # sentinel. The JS frontend appends units before submitting (e.g. "0nm"),
         # so we must match both "0" and "0<units>" forms.
         if current_text and elem.tag == "number":
-            import re as _re
             # Match bare zero or zero-with-units: "0", "0nm", "0.0nm", "0.0e0nm", etc.
             # Extract the leading numeric part (int/float/sci) and check it is exactly zero.
             # "0.565nm" must NOT match because its numeric part is 0.565, not 0.
-            m_num = _re.match(r'^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\S*$', current_text)
+            m_num = re.match(r'^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\S*$', current_text)
             if m_num:
                 try:
                     num_val = float(m_num.group(1))
@@ -300,7 +281,7 @@ def _fill_defaults_in_tree(root) -> None:
                 if num_val == 0.0:
                     default_text = default_el.text.strip()
                     # Check if default is numerically non-zero
-                    m_def = _re.match(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?', default_text)
+                    m_def = re.match(r'[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?', default_text)
                     if m_def and float(m_def.group(0)) != 0.0:
                         current_text = ""  # treat as unset; fall through to use default
         if current_text:
@@ -350,7 +331,7 @@ def _set_xml_value(root, rappture_path: str, value: str):
     """
     if not rappture_path or not rappture_path.strip():
         return
-    parts = _parse_path(rappture_path)
+    parts = parse_rappture_path(rappture_path)
     if not parts:
         return
 
@@ -359,7 +340,8 @@ def _set_xml_value(root, rappture_path: str, value: str):
         raw_xml = value[len('@@RP-XML:'):]
         try:
             new_elem = ET.fromstring(raw_xml)
-        except Exception:
+        except Exception as exc:
+            logger.warning("@@RP-XML replacement failed (invalid XML): %s", exc)
             return
         parent = _walk_path(root, parts[:-1])
         if parent is None:
@@ -527,7 +509,6 @@ def _set_structure_param(struct_elem, param_tag: str, param_id: str, value: str)
             for meta_tag in ("about", "units", "min", "max", "default", "color"):
                 meta = source_elem.find(meta_tag)
                 if meta is not None:
-                    import copy
                     param_elem.append(copy.deepcopy(meta))
 
     # --- Write the <current> value ---
@@ -540,22 +521,6 @@ def _set_structure_param(struct_elem, param_tag: str, param_id: str, value: str)
     cur.text = _append_units_if_needed(param_elem, v)
 
 
-def _parse_path(path: str) -> list[tuple[str, str]]:
-    """'input.number(temperature)' → [('input',''), ('number','temperature')]"""
-    parts = []
-    for seg in path.split("."):
-        if not seg:  # skip empty segments (e.g. from double-dots)
-            continue
-        if "(" in seg and seg.endswith(")"):
-            tag = seg[: seg.index("(")]
-            eid = seg[seg.index("(") + 1: -1]
-            if tag:  # only add if tag is non-empty
-                parts.append((tag, eid))
-        else:
-            parts.append((seg, ""))
-    return parts
-
-
 # ─── Run history and cache ────────────────────────────────────────────────────
 
 class RunHistory:
@@ -565,17 +530,34 @@ class RunHistory:
     multiple numbered runs (#1, #2, ...) so the UI can browse them.
     """
 
-    def __init__(self, cache_dir: str | None = None):
+    def __init__(self, cache_dir: str | None = None, tool_xml_path: str | None = None):
         self._runs: list[dict] = []   # ordered list, newest last
         self._cache_dir = cache_dir
+        self._tool_xml_path = tool_xml_path
 
     @property
     def runs(self) -> list[dict]:
         return self._runs
 
+    def _tool_xml_mtime(self) -> float:
+        """Return mtime of tool.xml so the cache is invalidated on edits."""
+        if self._tool_xml_path:
+            try:
+                return os.path.getmtime(self._tool_xml_path)
+            except OSError:
+                pass
+        return 0.0
+
     def _input_hash(self, input_values: dict) -> str:
-        """Stable hash of input values — used as cache key."""
-        canonical = json.dumps(input_values, sort_keys=True)
+        """Stable hash of (input values, tool.xml mtime) — used as cache key.
+
+        Including the tool.xml mtime means that editing tool.xml (e.g. changing
+        defaults or the command) automatically invalidates all prior cached runs.
+        """
+        canonical = json.dumps(
+            {"inputs": input_values, "tool_mtime": self._tool_xml_mtime()},
+            sort_keys=True,
+        )
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
     def find_cached(self, input_values: dict) -> dict | None:
@@ -735,6 +717,8 @@ async def run_uq_simulation(
             "cached": False,
         }
 
+    tool_def = parse_tool_xml(tool_xml_path)
+
     pid = uuid.uuid4().hex[:8]
     uq_work_dir = os.path.join(work_dir, f"uq_{pid}")
     os.makedirs(uq_work_dir, exist_ok=True)
@@ -754,9 +738,8 @@ async def run_uq_simulation(
         uq_param_names = {}  # path → sanitized name
         for path, spec in uq_inputs.items():
             # Sanitize name: use the id part of the path e.g. input.number(temp) → temp
-            import re as _re
-            m = _re.search(r'\(([^)]+)\)', path)
-            name = m.group(1) if m else _re.sub(r'\W+', '_', path)
+            m = re.search(r'\(([^)]+)\)', path)
+            name = m.group(1) if m else re.sub(r'\W+', '_', path)
             uq_param_names[path] = name
 
             units = spec.get("units", "")
@@ -836,18 +819,14 @@ async def run_uq_simulation(
         await _log(f"[UQ] {len(collocation_rows)} collocation points to evaluate\n")
 
         # ── 4. Run tool for each collocation point ─────────────────────────────
-        tree = ET.parse(tool_xml_path)
-        root = tree.getroot()
-        command_elem = root.find("tool/command")
-        if command_elem is None or not command_elem.text:
+        if not tool_def.tool.command:
             return {"status": "error", "log": "No <command> in tool.xml", "outputs": {}, "cached": False}
 
-        base_command = command_elem.text.strip().replace("@tool", tool_dir)
+        base_command = tool_def.tool.command.replace("@tool", tool_dir)
 
         # Normalise python → python3 when python is not available
         if shutil.which("python") is None and shutil.which("python3") is not None:
-            import re as _re2
-            base_command = _re2.sub(r'\bpython\b', 'python3', base_command)
+            base_command = re.sub(r'\bpython\b', 'python3', base_command)
 
         run_xmls: list[str] = []  # paths to run.xml files for each collocation point
 
@@ -928,8 +907,7 @@ async def run_uq_simulation(
             # Copy run.xml to uq_work_dir with indexed name
             indexed_run_xml = os.path.join(uq_work_dir, f"run{i}.xml")
             if run_xml_path and os.path.exists(run_xml_path):
-                import shutil as _sh
-                _sh.copy(run_xml_path, indexed_run_xml)
+                shutil.copy(run_xml_path, indexed_run_xml)
             run_xmls.append(indexed_run_xml)
 
             # Clean up driver xml
@@ -1061,21 +1039,21 @@ async def _remote_cache_check(cache_url: str, driver_xml: str) -> tuple:
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=6) as resp:
-                import json as _json
-                return _json.loads(resp.read().decode()).get("SQuID", "")
-        except Exception:
+                return json.loads(resp.read().decode()).get("SQuID", "")
+        except Exception as exc:
+            logger.debug("[cache] SQuID lookup failed: %s", exc)
             return ""
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         status, content = await loop.run_in_executor(None, _do_request)
-        print(f"[cache] request response {status}", flush=True)
+        logger.debug("[cache] request response %s", status)
         if content:
             squid = await loop.run_in_executor(None, _get_squid, content)
             return content, squid
         return None, None
     except Exception as e:
-        print(f"[cache] request error: {e}", flush=True)
+        logger.warning("[cache] request error: %s", e)
         return None, None
 
 
@@ -1129,12 +1107,11 @@ async def _remote_cache_store(cache_url: str, run_xml: str) -> str:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.read().decode("utf-8", errors="replace")
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         body = await loop.run_in_executor(None, _do_request)
-        import json as _json
-        return _json.loads(body).get("queryKey", "")
+        return json.loads(body).get("queryKey", "")
     except Exception as e:
-        print(f"[cache] publish error: {e}", flush=True)
+        logger.warning("[cache] publish error: %s", e)
         return ""
 
 
@@ -1184,7 +1161,7 @@ async def run_simulation(
             results_dir = ""
     work_dir = results_dir if (results_dir and os.path.isdir(results_dir)) else tool_dir
 
-    # ── Parse tool.xml ───────────────────────────────────────────────────────
+    # ── Parse tool.xml (single parse; reuse result throughout) ───────────────
     tool_def = parse_tool_xml(tool_xml_path)
     tool_cache_enabled = tool_def.tool.cache_enabled
 
@@ -1193,7 +1170,7 @@ async def run_simulation(
         cached_run = history.find_cached(input_values)
         if cached_run is not None and cached_run.get("status") != "error":
             msg = f"[cache] Local cache hit (run #{cached_run['run_num']}) — skipping simulation.\n"
-            print(msg.strip(), flush=True)
+            logger.info(msg.strip())
             if log_callback:
                 await log_callback(msg)
             if status_callback:
@@ -1208,18 +1185,15 @@ async def run_simulation(
                 "cached": True,
             }
 
-    # ── Get command ──────────────────────────────────────────────────────────
-    command_elem = ET.parse(tool_xml_path).getroot().find("tool/command")
-    if command_elem is None or not command_elem.text:
+    # ── Get command (from already-parsed tool_def — no second parse needed) ──
+    if not tool_def.tool.command:
         return {"status": "error", "log": "No <command> in tool.xml", "outputs": {}, "cached": False}
 
-    command = command_elem.text.strip()
-    command = command.replace("@tool", tool_dir)
+    command = tool_def.tool.command.replace("@tool", tool_dir)
 
     # Normalise python → python3 when python is not available
     if shutil.which("python") is None and shutil.which("python3") is not None:
-        import re as _re
-        command = _re.sub(r'\bpython\b', 'python3', command)
+        command = re.sub(r'\bpython\b', 'python3', command)
 
     driver_path = None
     wrapper_path = None
@@ -1244,7 +1218,7 @@ async def run_simulation(
             if status_callback:
                 await status_callback("Searching cache...")
             _cache_msg = "[cache] Checking remote cache ..."
-            print(_cache_msg, flush=True)
+            logger.info(_cache_msg)
             if log_callback:
                 await log_callback(_cache_msg + "\n")
             cached_run_xml, squid = await _remote_cache_check(cache_url, driver_xml_content)
@@ -1259,7 +1233,7 @@ async def run_simulation(
                         await status_callback("Loading cached results...")
                     outputs = parse_run_xml(tmp_run)
                     log = f"[cache] Remote cache hit — loaded results without running simulation. SQuID: {squid}\n" if squid else "[cache] Remote cache hit — loaded results without running simulation.\n"
-                    print(log.strip(), flush=True)
+                    logger.info(log.strip())
                     if log_callback:
                         await log_callback(log)
                     run_record = None
@@ -1280,10 +1254,10 @@ async def run_simulation(
                         "run_num": run_record["run_num"] if run_record else None,
                         "cached": True,
                     }
-                except Exception:
+                except Exception as exc:
                     # Cache hit but parse failed — fall through to real run
                     _msg = "[cache] Remote cache hit but failed to parse result — running simulation."
-                    print(_msg, flush=True)
+                    logger.warning("%s: %s", _msg, exc)
                     if log_callback:
                         await log_callback(_msg + "\n")
                     try:
@@ -1292,7 +1266,7 @@ async def run_simulation(
                         pass
             else:
                 _msg = "[cache] Remote cache miss — running simulation."
-                print(_msg, flush=True)
+                logger.info(_msg)
                 if log_callback:
                     await log_callback(_msg + "\n")
 
@@ -1369,8 +1343,8 @@ async def run_simulation(
                         pct = float(parts[0])
                         msg = parts[1].strip() if len(parts) > 1 else ""
                         await progress_callback(pct, msg)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Could not parse progress marker: %s", exc)
                 elif log_callback is not None:
                     await log_callback(text)
 
@@ -1400,7 +1374,8 @@ async def run_simulation(
                         break
                     try:
                         partial_outputs = parse_run_xml(candidate)
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("Incremental run.xml parse failed: %s", exc)
                         break
                     for oid, odata in partial_outputs.items():
                         if oid in _streamed_outputs:
@@ -1509,14 +1484,14 @@ async def run_simulation(
                 if status_callback:
                     await status_callback("Storing results in cache...")
                 _store_msg = "[cache] Storing results in remote cache ..."
-                print(_store_msg, flush=True)
+                logger.info(_store_msg)
                 if log_callback:
                     await log_callback(_store_msg + "\n")
                 with open(run_xml_path) as f:
                     run_xml_content = f.read()
                 squid = await _remote_cache_store(_effective_write_url, run_xml_content)
                 _stored_msg = f"[cache] Results stored in remote cache. SQuID: {squid}" if squid else "[cache] Results stored in remote cache."
-                print(_stored_msg, flush=True)
+                logger.info(_stored_msg)
                 if log_callback:
                     await log_callback(_stored_msg + "\n")
             except OSError:

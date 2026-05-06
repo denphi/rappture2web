@@ -2,10 +2,46 @@
 
 import base64
 import copy
+import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 from xml.etree import ElementTree as ET
+
+logger = logging.getLogger(__name__)
+
+
+def strip_units(value: str) -> str:
+    """Strip trailing unit suffix from a Rappture value string.
+
+    '300K' → '300', '2eV' → '2', '-5eV' → '-5', '2e15/cm3' → '2e15'.
+    Returns the original string unchanged if no numeric prefix is found.
+    """
+    if not value:
+        return value
+    m = re.match(r'^([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)', value.strip())
+    return m.group(1) if m else value
+
+
+def parse_rappture_path(path: str) -> list[tuple[str, str]]:
+    """Split a Rappture path into (tag, id) segments.
+
+    'input.number(temperature)' → [('input',''), ('number','temperature')]
+    '(temperature)' → [('','temperature')]  (bare-id wildcard for fuzzy matching)
+    Empty segments (from double dots) are skipped.
+    """
+    parts = []
+    for seg in path.split("."):
+        if not seg:
+            continue
+        if "(" in seg and seg.endswith(")"):
+            tag = seg[: seg.index("(")]
+            eid = seg[seg.index("(") + 1: -1]
+            parts.append((tag, eid))  # tag may be '' for bare-id wildcard
+        else:
+            parts.append((seg, ""))
+    return parts
 
 
 # Input widget types that contain child widgets
@@ -1194,7 +1230,10 @@ def _parse_table_output(elem):
 def _parse_mesh_element(elem):
     """Parse a <mesh> element into a dict with points and optional cells."""
     about = elem.find("about")
-    dim = int(float(_get_text(elem, "dim") or "3"))
+    try:
+        dim = int(float(_get_text(elem, "dim") or "3"))
+    except (ValueError, OverflowError):
+        dim = 3
     units = _get_text(elem, "units")
     hide = _get_text(elem, "hide") == "yes"
 
@@ -1212,7 +1251,10 @@ def _parse_mesh_element(elem):
         for line in pts_text.strip().splitlines():
             coords = line.split()
             if len(coords) >= dim:
-                points.append([float(c) for c in coords[:dim]])
+                try:
+                    points.append([float(c) for c in coords[:dim]])
+                except ValueError:
+                    logger.warning("Skipping malformed mesh point: %r", line)
         result["mesh_type"] = "unstructured"
         result["points"] = points
 
@@ -1221,7 +1263,11 @@ def _parse_mesh_element(elem):
         if cells_text and cells_text.strip():
             cells = []
             for line in cells_text.strip().splitlines():
-                idxs = [int(x) for x in line.split()]
+                try:
+                    idxs = [int(x) for x in line.split()]
+                except ValueError:
+                    logger.warning("Skipping malformed mesh cell: %r", line)
+                    continue
                 if idxs:
                     cells.append(idxs)
             result["cells"] = cells
@@ -1233,13 +1279,19 @@ def _parse_mesh_element(elem):
         for axis_tag in ("xaxis", "yaxis", "zaxis"):
             ax = grid.find(axis_tag)
             if ax is not None:
-                numpts = int(float(_get_text(ax, "numpoints") or "0"))
-                lo = float(_get_text(ax, "min") or "0")
-                hi = float(_get_text(ax, "max") or "1")
+                try:
+                    numpts = int(float(_get_text(ax, "numpoints") or "0"))
+                    lo = float(_get_text(ax, "min") or "0")
+                    hi = float(_get_text(ax, "max") or "1")
+                except (ValueError, OverflowError):
+                    numpts, lo, hi = 0, 0.0, 1.0
                 axes[axis_tag[0]] = {"min": lo, "max": hi, "numpoints": numpts}
                 coords_text = ax.text.strip() if ax.text else ""
                 if coords_text:
-                    axes[axis_tag[0]]["coords"] = [float(v) for v in coords_text.split()]
+                    try:
+                        axes[axis_tag[0]]["coords"] = [float(v) for v in coords_text.split()]
+                    except ValueError:
+                        logger.warning("Skipping malformed axis coords in %s", axis_tag)
         result["axes"] = axes
 
     return result
@@ -1251,6 +1303,8 @@ def _interpolate_to_grid(points, values, grid_n=20):
     Returns a dict with flat x/y/z/value arrays ready for Plotly isosurface,
     or None if scipy is not available or interpolation fails.
     """
+    if len(points) < 4:
+        return None
     try:
         import numpy as np
         from scipy.interpolate import griddata

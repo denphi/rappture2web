@@ -5,27 +5,44 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import logging
 import os
+import re
+import tempfile
+import threading as _threading
+import time as _time
 import uuid
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 try:
     import psutil as _psutil
 except ImportError:
     _psutil = None
 
-import mimetypes
-
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .xml_parser import ToolDef, parse_tool_xml
+from .xml_parser import ToolDef, parse_tool_xml, strip_units as _strip_units_impl
 from .simulator import RunHistory, run_simulation, run_uq_simulation, build_driver_xml_string
 from .encoding import to_data_uri, is_encoded
 
+logger = logging.getLogger(__name__)
+
 # ─── Global state ────────────────────────────────────────────────────────────
+#
+# Design note: this server is intentionally single-tool, single-simulation.
+# One tool.xml is loaded at start-up (via set_tool) and all globals below are
+# set once and treated as read-only thereafter, with the exception of _session
+# and _running_process which are reset on each /simulate request.
+#
+# This means concurrent /simulate requests are not safe: the second would
+# clobber _session while the first is still running.  The frontend prevents
+# this by disabling the Simulate button while a run is in progress.  No server-
+# side mutex is used intentionally — adding one would queue rather than reject
+# concurrent runs, which is a worse user experience for a single-user tool.
 
 _tool_def: ToolDef | None = None
 _tool_xml_path: str = ""
@@ -34,9 +51,10 @@ _tool_xml_path: str = ""
 _history = RunHistory()
 
 # Current simulation session (reset on each Simulate click)
+# Initialised via _new_session(); idle state uses job_id=None.
 _session: dict = {
     "job_id": None,
-    "status": "idle",     # idle | running | done | error
+    "status": "idle",
     "inputs": {},
     "outputs": {},
     "log": "",
@@ -77,15 +95,7 @@ templates.env.globals["is_encoded"] = is_encoded
 
 
 def _strip_units(value: str) -> str:
-    """Strip trailing unit suffix from a Rappture value string.
-
-    '300K' → '300', '2eV' → '2', '-5eV' → '-5', '300' → '300'.
-    """
-    import re
-    if not value:
-        return value
-    m = re.match(r'^([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)', value.strip())
-    return m.group(1) if m else value
+    return _strip_units_impl(value)
 
 
 templates.env.filters["strip_units"] = _strip_units
@@ -129,7 +139,7 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
     _tool_def = parse_tool_xml(_tool_xml_path, base_path=_base_path)
     _server_url = server_url
 
-    _history = RunHistory(cache_dir=cache_dir)
+    _history = RunHistory(cache_dir=cache_dir, tool_xml_path=_tool_xml_path)
     if cache_dir:
         _history.load_from_disk()
 
@@ -137,11 +147,14 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
 # ─── Broadcast helpers ────────────────────────────────────────────────────────
 
 async def _broadcast(message: dict):
+    # _ws_clients is only mutated in asyncio tasks — safe because Python's
+    # cooperative scheduler cannot switch during a non-await statement.
     dead = []
     for ws in _ws_clients:
         try:
             await ws.send_json(message)
-        except Exception:
+        except Exception as exc:
+            logger.debug("WebSocket send failed (client disconnected): %s", exc)
             dead.append(ws)
     for ws in dead:
         _ws_clients.remove(ws)
@@ -197,18 +210,35 @@ def _build_driver_xml_output(input_values: dict) -> dict | None:
             "about": {"label": "Driver XML"},
             "current": xml_str,
         }
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to build driver XML output: %s", exc)
         return None
 
 
 def _serialize(obj):
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {k: _serialize(v) for k, v in dataclasses.asdict(obj).items()}
+        # asdict() already recurses through nested dataclasses, lists, and dicts
+        return dataclasses.asdict(obj)
     if isinstance(obj, list):
         return [_serialize(v) for v in obj]
     if isinstance(obj, dict):
         return {k: _serialize(v) for k, v in obj.items()}
     return obj
+
+
+def _new_session(job_id, inputs: dict) -> dict:
+    """Factory for the per-simulation session dict — single source of truth for its shape."""
+    return {
+        "job_id": job_id,
+        "status": "running" if job_id else "idle",
+        "inputs": dict(inputs),
+        "outputs": {},
+        "log": "",
+        "progress": {"percent": 0 if job_id else None, "message": "Simulation started" if job_id else ""},
+        "run_id": None,
+        "run_num": None,
+        "cached": False,
+    }
 
 
 # ─── Tool static files ───────────────────────────────────────────────────────
@@ -290,17 +320,7 @@ async def simulate(request: Request):
     uq_inputs = data.get("uq_inputs", {})  # UQ distribution specs keyed by Rappture path
     job_id = uuid.uuid4().hex[:8]
 
-    _session = {
-        "job_id": job_id,
-        "status": "running",
-        "inputs": input_values,
-        "outputs": {},
-        "log": "",
-        "progress": {"percent": 0, "message": "Simulation started"},
-        "run_id": None,
-        "run_num": None,
-        "cached": False,
-    }
+    _session = _new_session(job_id, input_values)
     _running_process = None
     await _broadcast({"type": "status", "status": "running", "job_id": job_id})
     await _broadcast({"type": "progress", "percent": 0, "message": "Simulation started"})
@@ -362,7 +382,7 @@ async def simulate(request: Request):
     except Exception as exc:
         import traceback
         tb = traceback.format_exc()
-        print(tb)
+        logger.error(tb)
         _running_process = None
         _session.update({"status": "error", "log": tb})
         await _broadcast({"type": "status", "status": "error", "log": tb})
@@ -417,36 +437,41 @@ async def simulate(request: Request):
 
 # ─── Remote cache service endpoints ──────────────────────────────────────────
 
+def _extract_input_values(xml_str: str) -> dict:
+    """Extract flat input current-values from a Rappture driver/run XML string.
+
+    Returns a dict keyed by Rappture path (e.g. 'input.number(temperature)').
+    Only leaf <current> elements (no child elements) are captured.
+    """
+    root = ET.fromstring(xml_str)
+    input_values: dict = {}
+
+    def _walk(elem, parts):
+        for child in elem:
+            if child.tag in ("about", "default"):
+                continue
+            cid = child.get("id")
+            seg = f"{child.tag}({cid})" if cid else child.tag
+            path = ".".join([*parts, seg])
+            cur = child.find("current")
+            if cur is not None and len(cur) == 0:
+                input_values[path] = (cur.text or "").strip()
+            _walk(child, [*parts, seg])
+
+    inp = root.find("input")
+    if inp is not None:
+        _walk(inp, ["input"])
+    return input_values
+
+
 @app.post("/cache/request")
 async def cache_request(request: Request):
     """Check cache for a matching driver XML. Returns run.xml on hit (200) or 404."""
-    if _history is None:
-        return Response(status_code=404)
     driver_xml = (await request.body()).decode("utf-8", errors="replace")
     if not driver_xml.strip():
         return Response(status_code=400)
-    # Parse driver XML to extract input values for cache lookup
     try:
-        from .simulator import create_driver_xml as _cdx  # noqa: F401 — just ensure import
-        from xml.etree import ElementTree as ET
-        from .xml_parser import parse_run_xml
-        root = ET.fromstring(driver_xml)
-        # Extract current values from driver XML as a flat dict keyed by Rappture path
-        input_values: dict = {}
-        def _walk(elem, parts):
-            for child in elem:
-                if child.tag in ("about", "default"):
-                    continue
-                cid = child.get("id")
-                seg = f"{child.tag}({cid})" if cid else child.tag
-                path = ".".join([*parts, seg])
-                cur = child.find("current")
-                if cur is not None and len(cur) == 0:
-                    input_values[path] = (cur.text or "").strip()
-                _walk(child, [*parts, seg])
-        inp = root.find("input")
-        if inp is not None:
-            _walk(inp, ["input"])
+        input_values = _extract_input_values(driver_xml)
         cached_run = _history.find_cached(input_values)
         if cached_run is None or cached_run.get("status") == "error":
             return Response(status_code=404)
@@ -456,56 +481,50 @@ async def cache_request(request: Request):
                 content = f.read()
             return Response(content=content, media_type="application/xml")
         return Response(status_code=404)
-    except Exception:
+    except Exception as exc:
+        logger.warning("cache/request failed: %s", exc)
         return Response(status_code=404)
+
+
+_UPLOAD_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @app.post("/cache/store")
 async def cache_store(request: Request):
     """Receive a run.xml from a legacy tool and store it in run history."""
-    if _history is None or _tool_xml_path is None:
+    from .xml_parser import parse_run_xml
+
+    if not _tool_xml_path:
         return Response(status_code=503)
     run_xml_content = (await request.body()).decode("utf-8", errors="replace")
     if not run_xml_content.strip():
         return Response(status_code=400)
+    if len(run_xml_content.encode()) > _UPLOAD_MAX_BYTES:
+        return Response(status_code=413)
+    tmp_path = None
     try:
-        import tempfile
-        from .xml_parser import parse_run_xml
-        tool_dir = str(Path(_tool_xml_path).parent)
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".xml", dir=tool_dir, delete=False
-        )
-        tmp.write(run_xml_content)
-        tmp.close()
-        outputs = parse_run_xml(tmp.name)
-        # Re-extract inputs from run.xml <input> section for the cache key
-        from xml.etree import ElementTree as ET
-        root = ET.fromstring(run_xml_content)
-        input_values: dict = {}
-        def _walk(elem, parts):
-            for child in elem:
-                if child.tag in ("about", "default"):
-                    continue
-                cid = child.get("id")
-                seg = f"{child.tag}({cid})" if cid else child.tag
-                path = ".".join([*parts, seg])
-                cur = child.find("current")
-                if cur is not None and len(cur) == 0:
-                    input_values[path] = (cur.text or "").strip()
-                _walk(child, [*parts, seg])
-        inp = root.find("input")
-        if inp is not None:
-            _walk(inp, ["input"])
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".xml", dir=tempfile.gettempdir(), delete=False
+        ) as tmp:
+            tmp.write(run_xml_content)
+            tmp_path = tmp.name
+        outputs = parse_run_xml(tmp_path)
+        input_values = _extract_input_values(run_xml_content)
         _history.add(
             input_values=input_values,
             outputs=outputs,
             log="Cached from legacy tool run.\n",
             status="success",
-            run_xml=tmp.name,
+            run_xml=tmp_path,
         )
+        tmp_path = None  # ownership transferred to history; don't delete
         return JSONResponse({"status": "stored"})
     except Exception as exc:
+        logger.warning("cache/store failed: %s", exc)
         return JSONResponse({"status": "error", "detail": str(exc)}, status_code=500)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 # ─── Stop (browser → server) ──────────────────────────────────────────────────
@@ -518,8 +537,8 @@ async def stop_simulation():
     if proc is not None:
         try:
             proc.kill()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not kill simulation process: %s", exc)
         _running_process = None
     if _session.get("status") == "running":
         _session["status"] = "stopped"
@@ -530,9 +549,6 @@ async def stop_simulation():
 
 
 # ─── Process stats ────────────────────────────────────────────────────────────
-
-import threading as _threading
-import time as _time
 
 _cpu_last_usage: float | None = None
 _cpu_last_time: float | None = None
@@ -630,7 +646,8 @@ async def get_stats():
         cpu = _read_container_cpu()
         mem_mb = _read_container_mem_mb()
         return JSONResponse({"cpu": cpu, "mem_mb": mem_mb})
-    except Exception:
+    except Exception as exc:
+        logger.debug("stats read failed: %s", exc)
         return JSONResponse({"cpu": None, "mem_mb": None})
 
 
@@ -644,17 +661,7 @@ async def api_simulate_start(request: Request):
     input_values = data.get("inputs", {})
     job_id = uuid.uuid4().hex[:8]
 
-    _session = {
-        "job_id": job_id,
-        "status": "running",
-        "inputs": input_values,
-        "outputs": {},
-        "log": "",
-        "progress": {"percent": 0, "message": "Simulation started"},
-        "run_id": None,
-        "run_num": None,
-        "cached": False,
-    }
+    _session = _new_session(job_id, input_values)
     await _broadcast({"type": "status", "status": "running", "job_id": job_id})
     await _broadcast({"type": "progress", "percent": 0, "message": "Simulation started"})
     return JSONResponse({"job_id": job_id})
@@ -778,7 +785,13 @@ def _resolve_loader_examples(tool_dir: Path, pattern: str):
 
     def _add(p: Path):
         rp = p.resolve()
-        if rp in seen or not str(rp).startswith(str(tool_dir)):
+        if rp in seen:
+            return
+        # Use Path.is_relative_to / relative_to to avoid the str.startswith
+        # prefix-confusion bug (e.g. /tmp/tool-evil starts with /tmp/tool).
+        try:
+            rp.relative_to(tool_dir)
+        except ValueError:
             return
         if rp.name == "tool.xml" or not rp.is_file():
             return
@@ -798,9 +811,8 @@ def _resolve_loader_examples(tool_dir: Path, pattern: str):
             for p in sorted(tool_dir.glob(pattern)):
                 _add(p)
     else:
-        if not pattern.startswith("examples/"):
-            pattern = "examples/" + pattern
-        for p in sorted(tool_dir.glob(pattern)):
+        glob_pattern = pattern if pattern.startswith("examples/") else "examples/" + pattern
+        for p in sorted(tool_dir.glob(glob_pattern)):
             _add(p)
 
     return results
@@ -812,7 +824,6 @@ async def api_loader_examples(pattern: str = "*.xml"):
     if _tool_xml_path is None:
         return JSONResponse([])
     tool_dir = Path(_tool_xml_path).parent
-    from xml.etree import ElementTree as ET
     results = []
     for fpath in _resolve_loader_examples(tool_dir, pattern):
         # Use path relative to tool_dir as the filename key so subdirs are preserved
@@ -829,8 +840,8 @@ async def api_loader_examples(pattern: str = "*.xml"):
                 lbl = about.findtext("label")
                 if lbl:
                     label = lbl.strip()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not read label from %s: %s", fpath, exc)
         results.append({"filename": str(rel), "label": label})
     return JSONResponse(results)
 
@@ -841,25 +852,36 @@ async def api_loader_example_file(filename: str, pattern: str = "*.xml"):
     if _tool_xml_path is None:
         return JSONResponse({"error": "No tool loaded"}, status_code=404)
     tool_dir = Path(_tool_xml_path).parent.resolve()
-    # filename may be a relative path like 'examples/asd/example1.xml'
+
+    # Try the literal path first (e.g. 'examples/scap.xml' from the listing).
     fpath = (tool_dir / filename).resolve()
-    # Safety: ensure file is within tool_dir
-    if not str(fpath).startswith(str(tool_dir)):
+    try:
+        fpath.relative_to(tool_dir)
+    except ValueError:
         return JSONResponse({"error": "Invalid path"}, status_code=403)
+
+    # If the literal path doesn't exist, the browser sent just the basename
+    # (e.g. 'scap.xml') but the file lives under examples/ or a subdirectory.
+    # Re-use _resolve_loader_examples with the basename as the search pattern
+    # so we find it the same way the listing endpoint does.
     if not fpath.exists():
-        return JSONResponse({"error": "Not found"}, status_code=404)
+        basename = Path(filename).name
+        candidates = _resolve_loader_examples(tool_dir, basename)
+        if not candidates:
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        fpath = candidates[0]
+
     content = fpath.read_text()
     label = fpath.stem
     try:
-        from xml.etree import ElementTree as ET
         root = ET.fromstring(content)
         about = root.find(".//about")
         if about is not None:
             lbl = about.findtext("label")
             if lbl:
                 label = lbl.strip()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Could not parse label from %s: %s", filename, exc)
     return JSONResponse({"content": content, "label": label})
 
 
@@ -948,7 +970,8 @@ async def api_reload_all_runs():
             outputs = parse_run_xml(xml_path)
             _history.update_run(run["run_id"], outputs=outputs)
             reloaded += 1
-        except Exception:
+        except Exception as exc:
+            logger.warning("Skipping reload of run %s: %s", run["run_id"], exc)
             skipped += 1
     return JSONResponse({"ok": True, "reloaded": reloaded, "skipped": skipped})
 
@@ -967,36 +990,43 @@ async def api_reorder_runs(request: Request):
 @app.post("/api/upload-run")
 async def api_upload_run(file: UploadFile = File(...)):
     """Accept an uploaded run.xml, parse its outputs, and add to history."""
-    import tempfile
     from .xml_parser import parse_run_xml
 
     if _is_nanohub:
         return JSONResponse({"error": "Upload XML is disabled on nanoHUB"}, status_code=403)
 
     content = await file.read()
-    with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
+    if len(content) > _UPLOAD_MAX_BYTES:
+        return JSONResponse({"error": "File too large"}, status_code=413)
 
+    tmp_path = None
     try:
-        outputs = parse_run_xml(tmp_path)
-    except Exception as exc:
-        os.unlink(tmp_path)
-        return JSONResponse({"error": f"Failed to parse XML: {exc}"}, status_code=400)
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
 
-    # Persist the XML so it can be re-parsed on reload; store in cache_dir if available
-    label = Path(file.filename).stem if file.filename else "uploaded"
-    saved_xml_path = None
-    if _history._cache_dir:
-        os.makedirs(_history._cache_dir, exist_ok=True)
-        saved_xml_path = os.path.join(_history._cache_dir, f"upload_{label}_{os.path.basename(tmp_path)}")
         try:
-            os.rename(tmp_path, saved_xml_path)
-        except OSError:
-            os.unlink(tmp_path)
+            outputs = parse_run_xml(tmp_path)
+        except Exception as exc:
+            return JSONResponse({"error": f"Failed to parse XML: {exc}"}, status_code=400)
+
+        # Persist the XML so it can be re-parsed on reload; store in cache_dir if available
+        label = Path(file.filename).stem if file.filename else "uploaded"
+        saved_xml_path = None
+        if _history._cache_dir:
+            os.makedirs(_history._cache_dir, exist_ok=True)
+            saved_xml_path = os.path.join(_history._cache_dir, f"upload_{label}_{os.path.basename(tmp_path)}")
+            try:
+                os.rename(tmp_path, saved_xml_path)
+                tmp_path = None  # ownership transferred; don't delete in finally
+            except OSError as exc:
+                logger.warning("Could not persist uploaded XML: %s", exc)
+                saved_xml_path = None
+        else:
             saved_xml_path = None
-    else:
-        os.unlink(tmp_path)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
     run_record = _history.add(
         input_values={},
