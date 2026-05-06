@@ -30,7 +30,11 @@ setup(
     },
     include_package_data=True,
     install_requires=[
-        "fastapi>=0.95.2,<=0.103.2",
+        # pydantic v2 requires pydantic-core (Rust, Python>=3.8).
+        # Pin to pydantic v1 + the last FastAPI that supports it so the package
+        # installs on Python 3.7 and on platforms without a Rust toolchain.
+        "pydantic>=1.10.0,<2.0",
+        "fastapi>=0.95.2,<0.100.0",
         "uvicorn>=0.20.0",
         "websockets>=10.0",
         "jinja2>=3.1.0",
