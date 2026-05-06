@@ -167,7 +167,7 @@ def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None
             example_path = candidate_direct
         else:
             # Derive search dir from pattern parent
-            pattern_parent = str(_Path(pattern).parent)
+            pattern_parent = str(Path(pattern).parent)
             if pattern_parent and pattern_parent != ".":
                 search_dir = tool_dir / pattern_parent
                 if not search_dir.is_dir():
@@ -176,7 +176,7 @@ def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None
                 search_dir = tool_dir / "examples"
             else:
                 search_dir = tool_dir
-            candidate = search_dir / _Path(default_file).name
+            candidate = search_dir / Path(default_file).name
             if candidate.exists():
                 example_path = candidate
 
