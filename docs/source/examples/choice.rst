@@ -1,7 +1,7 @@
 Choice Input Example
 ====================
 
-Location: ``examples/webapp/choice/``
+Location: ``examples/rappture2/choice/``
 
 This example demonstrates the ``<choice>`` input type -- a dropdown selector
 for mutually exclusive options.
@@ -9,44 +9,8 @@ for mutually exclusive options.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>choice (rappture2web)</title>
-     <command>python3 @tool/choice.py @driver</command>
-   </tool>
-   <input>
-     <choice id="stats">
-       <about>
-         <label>Carrier Statistics</label>
-         <description>Model for carrier statistics in bandgap narrowing.</description>
-       </about>
-       <option>
-         <about>
-           <label>Boltzmann</label>
-           <description>From the Boltzmann transport equation</description>
-         </about>
-         <value>bte</value>
-       </option>
-       <option>
-         <about>
-           <label>Fermi</label>
-           <description>Fermi-Dirac statistics</description>
-         </about>
-       </option>
-       <option>
-         <about>
-           <label>2D Gas</label>
-           <description>Includes confinement at material interface</description>
-         </about>
-         <value>2deg</value>
-       </option>
-       <default>Boltzmann</default>
-     </choice>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/choice/tool.xml
+   :language: xml
 
 Script
 ------
@@ -77,4 +41,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/choice/
+   rappture2web examples/rappture2/choice/

@@ -1,7 +1,7 @@
 Field Output Example
 ====================
 
-Location: ``examples/webapp/field/``
+Location: ``examples/rappture2/field/``
 
 Demonstrates 2D and 3D scalar fields. The 2D field renders as a heatmap;
 the 3D field renders as isosurfaces or a point cloud depending on the
@@ -63,9 +63,15 @@ A field requires two parts: a **mesh** definition and **field values**.
 The heatmap viewer supports colorscale selection, zoom/pan, heightmap view,
 and download as PNG/SVG.
 
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/field/tool.xml
+   :language: xml
+
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/field/
+   rappture2web examples/rappture2/field/

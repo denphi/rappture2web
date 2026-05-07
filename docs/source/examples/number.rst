@@ -1,7 +1,7 @@
 Number Input Example
 ====================
 
-Location: ``examples/webapp/number/``
+Location: ``examples/rappture2/number/``
 
 This example demonstrates the ``<number>`` input type with units, min/max
 bounds, presets, and a color bar.
@@ -9,36 +9,8 @@ bounds, presets, and a color bar.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>number (rappture2web)</title>
-     <command>python3 @tool/number.py @driver</command>
-   </tool>
-   <input>
-     <number id="temperature">
-       <about>
-         <label>Ambient temperature</label>
-         <description>Temperature of the environment.</description>
-       </about>
-       <units>K</units>
-       <min>50K</min>
-       <max>1000K</max>
-       <default>300K</default>
-       <color>purple</color>
-       <preset>
-         <value>300K</value>
-         <label>Room temperature</label>
-       </preset>
-       <preset>
-         <value>77K</value>
-         <label>Liquid nitrogen</label>
-       </preset>
-     </number>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/number/tool.xml
+   :language: xml
 
 script
 ------
@@ -64,4 +36,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/number/
+   rappture2web examples/rappture2/number/

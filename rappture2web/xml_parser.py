@@ -13,6 +13,34 @@ from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
+# Bundled XSD shipped with the package
+_BUNDLED_XSD = Path(__file__).parent / "contract.xsd"
+
+# XSI namespace used for schemaLocation attributes
+_XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
+
+
+def _validate_against_schema(xml_path: Path, xsd_path: Path) -> None:
+    """Validate *xml_path* against *xsd_path* using lxml.
+
+    Raises ValueError listing all validation errors if the document is invalid.
+    Raises ImportError if lxml is not installed (validation is skipped).
+    """
+    try:
+        from lxml import etree
+    except ImportError:
+        logger.debug("lxml not available — skipping schema validation of %s", xml_path)
+        return
+
+    with xsd_path.open() as f:
+        schema = etree.XMLSchema(etree.parse(f))
+    doc = etree.parse(str(xml_path))
+    if not schema.validate(doc):
+        errors = "\n".join(str(e) for e in schema.error_log)
+        raise ValueError(
+            f"Schema validation failed for {xml_path}:\n{errors}"
+        )
+
 
 def strip_units(value: str) -> str:
     """Strip trailing unit suffix from a Rappture value string.
@@ -125,8 +153,9 @@ class OutputNode:
 class ToolDef:
     """Complete parsed tool definition."""
     tool: ToolInfo = field(default_factory=ToolInfo)
-    inputs: list = field(default_factory=list)  # List of WidgetNode
+    inputs: list = field(default_factory=list)   # List of WidgetNode
     outputs: list = field(default_factory=list)  # List of OutputNode
+    contract: dict = field(default_factory=dict) # Parsed contract block (inputs/outputs)
     xml_path: str = ""  # Path to the tool.xml file
     tool_dir: str = ""  # Directory containing tool.xml
 
@@ -804,6 +833,11 @@ def _parse_output_children(parent_elem, parent_path):
 def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path kept for API compat
     """Parse a Rappture tool.xml file into a ToolDef structure.
 
+    If the root <run> element carries an xsi:noNamespaceSchemaLocation attribute
+    the document is validated against that XSD before parsing.  If no schema
+    location is declared but the tool contains a <contract> block, the bundled
+    contract.xsd is used instead.  Validation failures raise ValueError.
+
     Args:
         xml_path: Path to the tool.xml file.
 
@@ -811,12 +845,42 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
         ToolDef with parsed tool definition.
     """
     xml_path = Path(xml_path).resolve()
+
+    # ── Schema validation ─────────────────────────────────────────────────────
+    # Parse with stdlib ET first (cheap) to inspect the root attributes.
     tree = ET.parse(str(xml_path))
     root = tree.getroot()
 
     if root.tag != "run":
         raise ValueError(f"Expected <run> root element, got <{root.tag}>")
 
+    schema_loc = root.get(f"{{{_XSI_NS}}}noNamespaceSchemaLocation")
+    has_contract = root.find("tool/contract") is not None
+
+    # A tool is considered "new-format" when it explicitly declares a schema
+    # location.  New-format tools MUST include a <contract> block — omitting
+    # it is an error so that newer tools cannot silently bypass enforcement.
+    is_new_format = bool(schema_loc)
+
+    if is_new_format and not has_contract:
+        raise ValueError(
+            f"{xml_path.name}: tool declares schema {schema_loc!r} but is missing "
+            f"<tool><contract>.  New-format tools must include a contract."
+        )
+
+    if schema_loc:
+        xsd_path = (xml_path.parent / schema_loc).resolve()
+        if not xsd_path.exists():
+            raise ValueError(
+                f"Declared schema not found: {xsd_path} (from {schema_loc!r})"
+            )
+        logger.debug("Validating %s against declared schema %s", xml_path.name, xsd_path)
+        _validate_against_schema(xml_path, xsd_path)
+    elif has_contract and _BUNDLED_XSD.exists():
+        logger.debug("Validating %s against bundled contract.xsd", xml_path.name)
+        _validate_against_schema(xml_path, _BUNDLED_XSD)
+
+    # ── Build ToolDef ─────────────────────────────────────────────────────────
     tool_def = ToolDef(
         xml_path=str(xml_path),
         tool_dir=str(xml_path.parent),
@@ -834,6 +898,11 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
             uq_enabled=(uq_text in ("true", "yes", "1")),
             cache_enabled=(cache_text not in ("false", "no", "0")),
         )
+        # Parse <contract> block if present
+        contract_elem = tool_elem.find("contract")
+        if contract_elem is not None:
+            tool_def.contract = _parse_contract(contract_elem)
+            _validate_contract_semantics(tool_def.contract, xml_path)
 
     # Parse <input> section
     input_elem = root.find("input")
@@ -845,10 +914,171 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
     if output_elem is not None:
         tool_def.outputs = _parse_output_children(output_elem, "output")
 
+    # Cross-check runtime widget IDs against the contract (when present)
+    if tool_def.contract:
+        _validate_contract_vs_runtime(tool_def, xml_path)
+
     # Resolve file:// references in note widgets
     _resolve_note_contents(tool_def.inputs, xml_path.parent, base_path=base_path)
 
     return tool_def
+
+
+def _parse_contract(contract_elem) -> dict:
+    """Return a lightweight dict representation of <contract><input>/<output>."""
+    result: dict = {"inputs": {}, "outputs": {}}
+
+    input_elem = contract_elem.find("input")
+    if input_elem is not None:
+        for child in input_elem:
+            widget_id = child.get("id")
+            if not widget_id:
+                continue
+            about = child.find("about")
+            result["inputs"][widget_id] = {
+                "type":        child.tag,
+                "label":       _get_text(about, "label")       if about is not None else "",
+                "description": _get_text(about, "description") if about is not None else "",
+                "default":     _get_text(child, "default"),
+                "units":       _get_text(child, "units"),
+                "min":         _get_text(child, "min"),
+                "max":         _get_text(child, "max"),
+            }
+
+    output_elem = contract_elem.find("output")
+    if output_elem is not None:
+        for child in output_elem:
+            widget_id = child.get("id")
+            if not widget_id:
+                continue
+            about = child.find("about")
+            result["outputs"][widget_id] = {
+                "type":        child.tag,
+                "label":       _get_text(about, "label")       if about is not None else "",
+                "description": _get_text(about, "description") if about is not None else "",
+                "units":       _get_text(child, "units"),
+            }
+
+    return result
+
+
+def _validate_contract_semantics(contract: dict, xml_path: Path) -> None:
+    """Raise ValueError if any contract entry is missing required fields.
+
+    The XSD uses xs:choice minOccurs=0 (to allow order-independence), so it
+    cannot enforce presence of label/description/default at schema-parse time.
+    This function enforces those rules in Python after parsing.
+    """
+    errors: list[str] = []
+
+    # Types whose default value is semantically required for the tool to run.
+    # boolean is excluded because its falsy default ("off") reads as empty string.
+    _REQUIRES_DEFAULT = {"number", "integer", "string", "choice", "multichoice", "periodicelement", "file"}
+
+    for widget_id, entry in contract.get("inputs", {}).items():
+        if not entry.get("label"):
+            errors.append(f"contract input '{widget_id}': missing <about><label>")
+        if not entry.get("description"):
+            errors.append(f"contract input '{widget_id}': missing <about><description>")
+        if entry.get("type") in _REQUIRES_DEFAULT and entry.get("default", "") == "":
+            errors.append(f"contract input '{widget_id}': missing <default>")
+
+    for widget_id, entry in contract.get("outputs", {}).items():
+        if not entry.get("label"):
+            errors.append(f"contract output '{widget_id}': missing <about><label>")
+        if not entry.get("description"):
+            errors.append(f"contract output '{widget_id}': missing <about><description>")
+
+    if errors:
+        raise ValueError(
+            f"Contract semantic errors in {xml_path}:\n" + "\n".join(f"  - {e}" for e in errors)
+        )
+
+
+def _validate_contract_vs_runtime(tool_def, xml_path: Path) -> None:
+    """Check that runtime <input> widgets are consistent with the contract.
+
+    Rules:
+    - Every contract input id must appear in the runtime <input> tree.
+    - Every runtime data widget (number/integer/boolean/string/choice/multichoice/
+      periodicelement/file) must be declared in the contract — undeclared data
+      widgets are an error.
+    - UI-only widgets (group, phase, note, separator, loader, image, drawing) may
+      have ids not in the contract; they are silently allowed.
+    - For each matched widget: type, units, min, max must not contradict the
+      contract (runtime may omit fields declared by the contract, but must not
+      supply a different value).
+    """
+    contract_inputs: dict = tool_def.contract.get("inputs", {})
+    if not contract_inputs:
+        return
+
+    # Widget types that carry data and must be declared in the contract.
+    _DATA_TYPES = {"number", "integer", "boolean", "string", "choice",
+                   "multichoice", "periodicelement", "file"}
+    # Widget types that are purely UI layout — allowed without contract entry.
+    _UI_TYPES = {"group", "phase", "note", "separator", "loader", "image", "drawing"}
+
+    # Collect a flat map of id → widget for all widgets in the runtime tree.
+    def _collect_widgets(widgets) -> dict:
+        result: dict = {}
+        for w in widgets:
+            wid = getattr(w, "id", None)
+            if wid:
+                result[wid] = w
+            if hasattr(w, "children"):
+                result.update(_collect_widgets(w.children))
+        return result
+
+    runtime_map = _collect_widgets(tool_def.inputs)
+    contract_ids = set(contract_inputs.keys())
+    errors: list[str] = []
+
+    # Check for undeclared data widgets in the runtime section.
+    for wid, w in runtime_map.items():
+        if w.type in _DATA_TYPES and wid not in contract_ids:
+            errors.append(
+                f"input '{wid}' (type '{w.type}') is present in <input> but not declared in the contract"
+            )
+        elif w.type not in _DATA_TYPES and w.type not in _UI_TYPES:
+            # Unknown type — let it through but warn so we can extend later.
+            logger.debug("%s: unknown runtime input type '%s' for id '%s'", xml_path.name, w.type, wid)
+
+    # Check for contract inputs missing from runtime entirely.
+    runtime_ids = set(runtime_map.keys())
+    for cid in sorted(contract_ids - runtime_ids):
+        errors.append(f"contract input '{cid}' is missing from the runtime <input> section")
+
+    if errors:
+        raise ValueError(
+            f"Contract/runtime conflicts in {xml_path.name}:\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        )
+
+    # For each matched contract input verify type and boundary fields agree.
+    for wid, centry in contract_inputs.items():
+        w = runtime_map.get(wid)
+        if w is None:
+            continue  # already reported above
+        if w.type != centry["type"]:
+            errors.append(
+                f"input '{wid}': contract type '{centry['type']}' but runtime type '{w.type}'"
+            )
+            continue
+        for field_name in ("units", "min", "max"):
+            c_val = centry.get(field_name, "")
+            r_val = w.attrs.get(field_name, "") if hasattr(w, "attrs") else ""
+            if c_val and r_val and c_val != r_val:
+                errors.append(
+                    f"input '{wid}': contract {field_name}='{c_val}' "
+                    f"conflicts with runtime {field_name}='{r_val}'"
+                )
+
+    if errors:
+        raise ValueError(
+            f"Contract/runtime conflicts in {xml_path.name}:\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        )
 
 
 def _encode_tool_files_relpath(target: Path, tool_dir: Path) -> str:

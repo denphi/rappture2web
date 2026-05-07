@@ -1115,6 +1115,48 @@ async def _remote_cache_store(cache_url: str, run_xml: str) -> str:
         return ""
 
 
+def _check_classic_outputs_vs_contract(tool_def, outputs: dict, exited_ok: bool) -> list:
+    """Return a list of contract-violation strings for classic-mode run.xml outputs.
+
+    Checks:
+    - Undeclared output ids (any exit status).
+    - Type mismatches (any exit status).
+    - Missing declared outputs (only when the tool exited successfully).
+    """
+    if not tool_def or not tool_def.contract:
+        return []
+    contract_outputs = tool_def.contract.get("outputs", {})
+    if not contract_outputs:
+        return []
+
+    errors = []
+    produced = {k: v for k, v in outputs.items() if not k.startswith("__")}
+
+    for out_id, out_val in produced.items():
+        if out_id not in contract_outputs:
+            out_type = out_val.get("type", "?") if isinstance(out_val, dict) else "?"
+            errors.append(
+                f"Output '{out_id}' (type={out_type!r}) is not declared in the tool contract."
+            )
+            continue
+        declared_type = contract_outputs[out_id].get("type", "")
+        actual_type = out_val.get("type", "") if isinstance(out_val, dict) else ""
+        if declared_type and actual_type and declared_type != actual_type:
+            errors.append(
+                f"Output '{out_id}': contract declares type={declared_type!r} "
+                f"but run.xml produced type={actual_type!r}."
+            )
+
+    if exited_ok:
+        missing = set(contract_outputs.keys()) - set(produced.keys())
+        for out_id in sorted(missing):
+            errors.append(
+                f"Output '{out_id}' is declared in the contract but was not produced by a successful run."
+            )
+
+    return errors
+
+
 async def run_simulation(
     tool_xml_path: str,
     input_values: dict,
@@ -1436,6 +1478,7 @@ async def run_simulation(
                 else:
                     run_xml_path = driver_path  # tool may have modified driver in place
 
+            _classic_contract_errors: list = []
             if run_xml_path and os.path.exists(run_xml_path):
                 try:
                     outputs = parse_run_xml(run_xml_path)
@@ -1453,6 +1496,14 @@ async def run_simulation(
                             stdout_text += "\n"
                         if log_callback is not None:
                             await log_callback(xml_log if xml_log.endswith("\n") else xml_log + "\n")
+                    # Validate outputs against contract when one is declared.
+                    _classic_contract_errors = _check_classic_outputs_vs_contract(
+                        tool_def, outputs, process.returncode == 0
+                    )
+                    if _classic_contract_errors:
+                        stderr_text += "\nContract violation(s):\n" + "\n".join(
+                            f"  - {e}" for e in _classic_contract_errors
+                        )
                 except Exception as exc:
                     stderr_text += f"\nError parsing run.xml: {exc}"
 
@@ -1461,6 +1512,9 @@ async def run_simulation(
             log += "\n--- stderr ---\n" + stderr_text
 
         status = "success" if process.returncode == 0 else "error"
+        # Downgrade to error if contract violations were found on a zero-exit run.
+        if _classic_contract_errors and status == "success":
+            status = "error"
 
         # ── Save to history ──────────────────────────────────────────────────
         # In library mode, api_simulate_done already records the run with

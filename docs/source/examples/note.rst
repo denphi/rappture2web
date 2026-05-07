@@ -1,7 +1,7 @@
 Note Input Example
 ==================
 
-Location: ``examples/webapp/note/``
+Location: ``examples/rappture2/note/``
 
 This example demonstrates the ``<note>`` input type -- read-only HTML
 content displayed within the input panel.
@@ -9,30 +9,8 @@ content displayed within the input panel.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>note (rappture2web)</title>
-     <command>python3 @tool/note.py @driver</command>
-   </tool>
-   <input>
-     <note>
-       <contents>file://bysize.html</contents>
-     </note>
-     <number id="diameter">
-       <about>
-         <label>Particle diameter d</label>
-         <description>Diameter of sphere-shaped nanoparticles.</description>
-       </about>
-       <units>nm</units>
-       <min>2nm</min>
-       <max>20nm</max>
-       <default>5nm</default>
-     </number>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/note/tool.xml
+   :language: xml
 
 Key concepts
 ------------
@@ -47,4 +25,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/note/
+   rappture2web examples/rappture2/note/

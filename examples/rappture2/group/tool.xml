@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>group (rappture2web)</title>
+  <about>Examples of Rappture &lt;group&gt; objects.
+
+Groups provide a way of grouping input elements. A group of groups is drawn as a set of tabs.
+  </about>
+  <command>python3 @tool/group.py @driver</command>
+  <contract>
+    <input>
+      <boolean id="recomb">
+        <about>
+          <label>Recombination Model</label>
+          <description>Enable or disable the carrier recombination model.</description>
+        </about>
+        <default>on</default>
+      </boolean>
+      <number id="taun">
+        <about>
+          <label>For electrons</label>
+          <description>Minority carrier lifetime for electrons.</description>
+        </about>
+        <default>1e-6</default>
+      </number>
+      <number id="taup">
+        <about>
+          <label>For holes</label>
+          <description>Minority carrier lifetime for holes.</description>
+        </about>
+        <default>1e-6</default>
+      </number>
+      <number id="temp">
+        <about>
+          <label>Temperature</label>
+          <description>Ambient temperature for the simulation.</description>
+        </about>
+        <units>K</units>
+        <default>300K</default>
+      </number>
+      <number id="lat">
+        <about>
+          <label>Latitude</label>
+          <description>Geographic latitude of the measurement location.</description>
+        </about>
+        <default>40.42</default>
+      </number>
+      <number id="long">
+        <about>
+          <label>Longitude</label>
+          <description>Geographic longitude of the measurement location.</description>
+        </about>
+        <default>-86.91</default>
+      </number>
+    </input>
+    <output>
+      <log id="log"><about><label>Model Summary</label><description>Log summary of the grouped input selections.</description></about></log>
+    </output>
+  </contract>
+</tool>
+<input>
+  <group id="tabs">
+    <group id="models">
+      <about><label>Models</label></about>
+      <boolean id="recomb">
+        <about>
+          <label>Recombination Model</label>
+          <description>Enable or disable the carrier recombination model.</description>
+        </about>
+        <default>on</default>
+      </boolean>
+      <group id="tau">
+        <about>
+          <label>Minority carrier lifetimes</label>
+          <layout>horizontal</layout>
+        </about>
+        <number id="taun">
+          <about>
+            <label>For electrons</label>
+            <description>Minority carrier lifetime for electrons.</description>
+          </about>
+          <default>1e-6</default>
+        </number>
+        <number id="taup">
+          <about>
+            <label>For holes</label>
+            <description>Minority carrier lifetime for holes.</description>
+          </about>
+          <default>1e-6</default>
+        </number>
+      </group>
+    </group>
+    <group id="ambient">
+      <about><label>Ambient</label></about>
+      <number id="temp">
+        <about>
+          <label>Temperature</label>
+          <description>Ambient temperature for the simulation.</description>
+        </about>
+        <units>K</units>
+        <default>300K</default>
+      </number>
+      <group id="loc">
+        <about><layout>sentence:Location = (${lat},${long})</layout></about>
+        <number id="lat">
+          <about>
+            <label>Latitude</label>
+            <description>Geographic latitude of the measurement location.</description>
+          </about>
+          <default>40.42</default>
+        </number>
+        <number id="long">
+          <about>
+            <label>Longitude</label>
+            <description>Geographic longitude of the measurement location.</description>
+          </about>
+          <default>-86.91</default>
+        </number>
+      </group>
+    </group>
+  </group>
+</input>
+</run>

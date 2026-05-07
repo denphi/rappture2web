@@ -1,7 +1,7 @@
 Fermi-Dirac Example
 ===================
 
-Location: ``examples/webapp/fermi/``
+Location: ``examples/rappture2/fermi/``
 
 A complete scientific tool: computes the Fermi-Dirac distribution function
 and its derivative for a given temperature and Fermi energy.
@@ -9,12 +9,18 @@ and its derivative for a given temperature and Fermi energy.
 This is the rappture2web equivalent of the classic Rappture Fermi-Dirac
 example.
 
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/fermi/tool.xml
+   :language: xml
+
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/fermi/
+   rappture2web examples/rappture2/fermi/
 
 Inputs
 ------

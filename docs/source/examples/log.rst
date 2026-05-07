@@ -1,7 +1,7 @@
 Log Output Example
 ==================
 
-Location: ``examples/webapp/log/``
+Location: ``examples/rappture2/log/``
 
 This example demonstrates the ``<log>`` output type -- a textual record
 of simulation results displayed as preformatted text.
@@ -33,9 +33,15 @@ Key concepts
 - The log is displayed as monospaced text in the output panel.
 - This is useful for echoing solver output or progress information.
 
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/log/tool.xml
+   :language: xml
+
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/log/
+   rappture2web examples/rappture2/log/

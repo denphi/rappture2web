@@ -1,7 +1,7 @@
 3D Scalar Field Example
 =======================
 
-Location: ``examples/webapp/field3d/``
+Location: ``examples/rappture2/field3d/``
 
 Computes a 3D Gaussian scalar field ``f(x,y,z) = exp(-r^2/sigma^2)`` on a
 regular grid and visualizes it as a colored point cloud.
@@ -30,9 +30,15 @@ Script highlights
    rx['output.field(gaussian).component.mesh'] = 'output.mesh(grid)'
    rx['output.field(gaussian).component.values'] = vals_text
 
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/field3d/tool.xml
+   :language: xml
+
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/field3d/
+   rappture2web examples/rappture2/field3d/

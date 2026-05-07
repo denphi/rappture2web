@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>curve (rappture2web)</title>
+  <about>Example of a Rappture &lt;curve&gt; object.
+
+Curves are a list of (x,y) data points, representing discrete samples of a function y(x).
+
+When you click the Simulate button, the inputs will be used to generate output curves.
+  </about>
+  <command>python3 @tool/curve.py @driver</command>
+  <contract>
+    <input>
+      <integer id="points">
+        <about>
+          <label>Number of points</label>
+          <description>Determines the number of data points in all output curves.</description>
+        </about>
+        <min>2</min>
+        <max>1000</max>
+        <default>10</default>
+      </integer>
+    </input>
+    <output>
+      <curve id="single"><about><label>Single Curve</label><description>Example of a single curve.</description></about><xaxis><label>Time</label><units>s</units></xaxis><yaxis><label>Voltage v(11)</label><units>V</units></yaxis></curve>
+      <curve id="limited"><about><label>Axis limits curve</label><description>Single curve with axis limits applied.</description></about><xaxis><label>Time</label><units>s</units></xaxis><yaxis><label>Voltage v(11)</label><units>V</units></yaxis></curve>
+      <curve id="multi1"><about><label>Factor a=1</label><description>Grouped curve with logarithmic y axis.</description></about><xaxis><label>Frequency</label><units>Hz</units></xaxis><yaxis><label>Current</label><units>uA</units></yaxis></curve>
+      <curve id="multi2"><about><label>Factor a=2</label><description>Grouped curve with logarithmic y axis.</description></about><xaxis><label>Frequency</label><units>Hz</units></xaxis><yaxis><label>Current</label><units>uA</units></yaxis></curve>
+      <curve id="scatter"><about><label>Scatter curve</label><description>Example scatter curve.</description></about><xaxis><label>Time</label><units>s</units></xaxis><yaxis><label>Voltage v(11)</label><units>V</units></yaxis></curve>
+      <curve id="bars"><about><label>Bar chart</label><description>Example bar chart.</description></about><xaxis><label>Time</label><units>s</units></xaxis><yaxis><label>Voltage v(11)</label><units>V</units></yaxis></curve>
+      <curve id="line"><about><label>Sine</label><description>Line trace in a mixed element plot.</description></about><xaxis><label>Degrees</label></xaxis></curve>
+      <curve id="bar"><about><label>Cosine</label><description>Bar trace in a mixed element plot.</description></about><xaxis><label>Degrees</label></xaxis></curve>
+      <curve id="point"><about><label>Random</label><description>Scatter trace in a mixed element plot.</description></about><xaxis><label>Degrees</label></xaxis></curve>
+    </output>
+  </contract>
+</tool>
+<input>
+  <integer id="points">
+    <about>
+      <label>Number of points</label>
+      <description>Determines the number of data points in all output curves.</description>
+    </about>
+    <min>2</min>
+    <max>1000</max>
+    <default>10</default>
+  </integer>
+</input>
+</run>

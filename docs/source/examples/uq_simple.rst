@@ -1,7 +1,7 @@
 UQ Simple Example
 =================
 
-Location: ``examples/webapp/uq_simple/``
+Location: ``examples/rappture2/uq_simple/``
 
 A minimal example demonstrating Uncertainty Quantification on a simple
 cosine wave.
@@ -11,7 +11,7 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/uq_simple/
+   rappture2web examples/rappture2/uq_simple/
 
 How to use
 ----------
@@ -34,33 +34,8 @@ UQ output:
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <tool>
-     <title>UQ Simple Curve</title>
-     <command>python3 @tool/uq_simple.py @driver</command>
-     <uq>true</uq>      <!-- enables UQ controls -->
-   </tool>
-   <input>
-     <number id="amplitude">
-       <about><label>Amplitude</label></about>
-       <min>0.1</min>
-       <max>10</max>
-       <default>2</default>
-     </number>
-     <number id="frequency">
-       <about><label>Frequency</label></about>
-       <units>Hz</units>
-       <min>0.1Hz</min>
-       <max>10Hz</max>
-       <default>1Hz</default>
-     </number>
-     <integer id="points">
-       <about><label>Number of points</label></about>
-       <uq>false</uq>    <!-- not a UQ parameter -->
-       <default>200</default>
-     </integer>
-   </input>
+.. literalinclude:: ../../../examples/rappture2/uq_simple/tool.xml
+   :language: xml
 
 Script (unchanged for UQ)
 -------------------------

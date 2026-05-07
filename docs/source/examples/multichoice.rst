@@ -1,7 +1,7 @@
 MultiChoice Input Example
 =========================
 
-Location: ``examples/webapp/multichoice/``
+Location: ``examples/rappture2/multichoice/``
 
 This example demonstrates the ``<multichoice>`` input type -- a checkbox
 list where multiple options can be selected simultaneously.
@@ -9,36 +9,8 @@ list where multiple options can be selected simultaneously.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>multichoice (rappture2web)</title>
-     <command>python3 @tool/multichoice.py @driver</command>
-   </tool>
-   <input>
-     <multichoice id="countries">
-       <about>
-         <label>African Countries</label>
-         <description>Choose the countries to analyze.</description>
-       </about>
-       <option>
-         <about><label>South Africa</label></about>
-         <value>ZAF</value>
-       </option>
-       <option>
-         <about><label>Zimbabwe</label></about>
-         <value>ZWE</value>
-       </option>
-       <option>
-         <about><label>Swaziland</label></about>
-         <value>SWZ</value>
-       </option>
-       <default>Zimbabwe</default>
-     </multichoice>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/multichoice/tool.xml
+   :language: xml
 
 Script
 ------
@@ -68,4 +40,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/multichoice/
+   rappture2web examples/rappture2/multichoice/

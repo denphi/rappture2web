@@ -1,7 +1,7 @@
 Image Example
 =============
 
-Location: ``examples/webapp/image/``
+Location: ``examples/rappture2/image/``
 
 This example demonstrates the ``<image>`` input type with a ``<loader>``
 and a rotation angle. The input image is rotated by the specified angle.
@@ -9,39 +9,8 @@ and a rotation angle. The input image is rotated by the specified angle.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>image (rappture2web)</title>
-     <command>python3 @tool/image.py @driver</command>
-   </tool>
-   <input>
-     <loader>
-       <about><label>Image</label></about>
-       <example>*.xml</example>
-       <default>nanohub.xml</default>
-     </loader>
-     <image>
-       <about>
-         <label>Image</label>
-         <description>Input image that gets rotated.</description>
-         <diffs>ignore</diffs>
-       </about>
-     </image>
-     <number id="angle">
-       <about>
-         <label>Rotate</label>
-         <description>Rotation angle in degrees.</description>
-       </about>
-       <units>deg</units>
-       <min>0deg</min>
-       <max>360deg</max>
-       <default>45deg</default>
-     </number>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/image/tool.xml
+   :language: xml
 
 Key concepts
 ------------
@@ -56,4 +25,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/image/
+   rappture2web examples/rappture2/image/

@@ -1,7 +1,7 @@
 2D Flow Field Example
 =====================
 
-Location: ``examples/webapp/flow2d/``
+Location: ``examples/rappture2/flow2d/``
 
 Simulates 2D lid-driven cavity flow and visualizes the velocity field as
 colored arrows.
@@ -29,12 +29,18 @@ Key concepts
    rx['output.field(velocity).component.extents'] = '3'
 
 - ``extents=3`` tells the renderer this is a 3-component vector field.
-- The webapp renders vector fields as colored arrows.
+- rappture2web renders vector fields as colored arrows.
 - Use ``about.group`` to overlay vector and scalar fields on the same view.
+
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/flow2d/tool.xml
+   :language: xml
 
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/flow2d/
+   rappture2web examples/rappture2/flow2d/

@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>string (rappture2web)</title>
+  <about>Example of a Rappture &lt;string&gt; object.
+
+Strings are bits of text--single line or multiple lines. When you click Simulate, the input strings are echoed to the output.
+  </about>
+  <command>python3 @tool/run_string.py @driver</command>
+  <contract>
+    <input>
+      <string id="title">
+        <about>
+          <label>Title</label>
+          <description>This text will be used as the title for all plots.</description>
+        </about>
+        <default>untitled</default>
+      </string>
+      <string id="indeck">
+        <about>
+          <label>Input</label>
+          <description>This is the control file for the program.</description>
+        </about>
+        <default>Enter your SPICE commands
+in this area.</default>
+      </string>
+    </input>
+    <output>
+      <string id="outt"><about><label>Echo of title</label><description>Echoes the title string.</description></about></string>
+      <string id="outi"><about><label>Echo of input</label><description>Echoes the multiline input text.</description></about></string>
+    </output>
+  </contract>
+</tool>
+<input>
+  <string id="title">
+    <about>
+      <label>Title</label>
+      <description>This text will be used as the title for all plots.</description>
+    </about>
+    <default>untitled</default>
+  </string>
+
+  <separator/>
+
+  <string id="indeck">
+    <about>
+      <label>Input</label>
+      <description>This is the control file for the program.</description>
+      <hints>EXAMPLE:  .print ac vm(11) mag(i(vcc))</hints>
+    </about>
+    <size>40x10</size>
+    <default>Enter your SPICE commands
+in this area.</default>
+  </string>
+</input>
+</run>

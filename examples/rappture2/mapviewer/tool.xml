@@ -1,0 +1,96 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>LANDPARAM (rappture2web demo)</title>
+  <about>LANDPARAM computes land use change parameters for sub-Saharan Africa (SSA).
+
+For a given level of market access change, the tool returns:
+  1) Own-price land supply elasticity and land transformation elasticity by region
+  2) Cropland area converted from forest, grassland, and shrubland (Mha)
+  3) A map of grid-cell level updated cultivation probabilities
+  4) A supply curve of new cropland area vs. market access shock
+
+Based on: Liu and Villoria (2015). Spatial logit model of grid-cell cultivation probability.
+  </about>
+  <command>python3 @tool/mapviewer.py @driver</command>
+  <contract>
+    <input>
+      <number id="market_access_pct">
+        <about>
+          <label>Market access increase (%)</label>
+          <description>Percentage increase in market access (land profitability shock). Higher values lead to more cropland conversion.</description>
+        </about>
+        <units>%</units>
+        <min>1</min>
+        <max>50</max>
+        <default>10</default>
+      </number>
+      <choice id="region_filter">
+        <about>
+          <label>SSA sub-region</label>
+          <description>Which sub-Saharan Africa sub-region to highlight on the cultivation probability map.</description>
+        </about>
+        <option><about><label>All SSA</label><description>Entire sub-Saharan Africa region</description></about><value>all</value></option>
+        <option><about><label>East Africa</label><description>Eastern sub-Saharan Africa sub-region</description></about><value>E</value></option>
+        <option><about><label>South Africa</label><description>Southern sub-Saharan Africa sub-region</description></about><value>S</value></option>
+        <option><about><label>West Africa</label><description>Western sub-Saharan Africa sub-region</description></about><value>W</value></option>
+        <option><about><label>Central Africa</label><description>Central sub-Saharan Africa sub-region</description></about><value>C</value></option>
+        <default>all</default>
+      </choice>
+      <choice id="cover_type">
+        <about>
+          <label>Land cover type</label>
+          <description>Filter the cultivation probability map by the grid cell's baseline land cover.</description>
+        </about>
+        <option><about><label>All covers</label><description>Include all land cover types</description></about><value>all</value></option>
+        <option><about><label>Forest (F)</label><description>Forest land cover type</description></about><value>F</value></option>
+        <option><about><label>Grassland (G)</label><description>Grassland land cover type</description></about><value>G</value></option>
+        <option><about><label>Shrubland (S)</label><description>Shrubland land cover type</description></about><value>S</value></option>
+        <default>all</default>
+      </choice>
+    </input>
+    <output>
+      <mapviewer id="map"><about><label>Predicted Cultivation Probability</label><description>Geographic cultivation probability map.</description></about></mapviewer>
+      <table id="elasticities"><about><label>Elasticity Parameters by Region</label><description>Elasticity parameter table by region.</description></about></table>
+      <table id="conversion"><about><label>Cropland Conversion by Land Cover</label><description>Cropland conversion table by land cover type.</description></about></table>
+      <curve id="supply"><about><label>New Cropland Supply Schedule</label><description>Supply schedule as market access changes.</description></about><xaxis><label>Market Access Increase</label><units>%</units></xaxis><yaxis><label>New Cropland Area</label><units>Mha</units></yaxis></curve>
+    </output>
+  </contract>
+</tool>
+<input>
+  <number id="market_access_pct">
+    <about>
+      <label>Market access increase (%)</label>
+      <description>Percentage increase in market access (land profitability shock). Higher values lead to more cropland conversion.</description>
+    </about>
+    <min>1</min>
+    <max>50</max>
+    <default>10</default>
+    <units>%</units>
+  </number>
+  <choice id="region_filter">
+    <about>
+      <label>SSA sub-region</label>
+      <description>Which sub-Saharan Africa sub-region to highlight on the cultivation probability map.</description>
+    </about>
+    <option><about><label>All SSA</label><description>Entire sub-Saharan Africa region</description></about><value>all</value></option>
+    <option><about><label>East Africa</label><description>Eastern sub-Saharan Africa sub-region</description></about><value>E</value></option>
+    <option><about><label>South Africa</label><description>Southern sub-Saharan Africa sub-region</description></about><value>S</value></option>
+    <option><about><label>West Africa</label><description>Western sub-Saharan Africa sub-region</description></about><value>W</value></option>
+    <option><about><label>Central Africa</label><description>Central sub-Saharan Africa sub-region</description></about><value>C</value></option>
+    <default>all</default>
+  </choice>
+  <choice id="cover_type">
+    <about>
+      <label>Land cover type</label>
+      <description>Filter the cultivation probability map by the grid cell's baseline land cover.</description>
+    </about>
+    <option><about><label>All covers</label><description>Include all land cover types</description></about><value>all</value></option>
+    <option><about><label>Forest (F)</label><description>Forest land cover type</description></about><value>F</value></option>
+    <option><about><label>Grassland (G)</label><description>Grassland land cover type</description></about><value>G</value></option>
+    <option><about><label>Shrubland (S)</label><description>Shrubland land cover type</description></about><value>S</value></option>
+    <default>all</default>
+  </choice>
+</input>
+</run>

@@ -28,17 +28,24 @@ dependencies = [
     # FastAPI 0.103.x is the last series that ships a pydantic v1 shim.
     "pydantic>=1.10.0,<2.0",
     "fastapi>=0.95.2,<=0.103.2",
-    "uvicorn>=0.20.0",
-    "websockets>=10.0",
+    # Upper bounds are tight to the last release whose own Requires-Python
+    # includes 3.7, verified against PyPI metadata:
+    #   uvicorn 0.20.0  — 0.21.0 added python_requires>=3.8
+    #   websockets 10.4 — 11.0 added python_requires>=3.8
+    #   python-multipart 0.0.6 — 0.0.7 added python_requires>=3.8
+    #   lxml 4.9.x      — 5.0 added python_requires>=3.8
+    "uvicorn>=0.20.0,<0.21.0",
+    "websockets>=10.0,<11.0",
     "jinja2>=3.1.0",
-    "python-multipart>=0.0.6",
-    "lxml>=4.9.0",
+    "python-multipart>=0.0.6,<0.0.7",
+    "lxml>=4.9.0,<5.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "httpx>=0.24.0",
+    # httpx 0.26.0 added python_requires>=3.8; pytest 8.0 added >=3.8.
+    "pytest>=7.0,<8.0",
+    "httpx>=0.24.0,<0.26.0",
 ]
 
 [project.scripts]
@@ -52,4 +59,4 @@ where = ["."]
 include = ["rappture2web*"]
 
 [tool.setuptools.package-data]
-rappture2web = ["templates/**/*.html", "static/**/*"]
+rappture2web = ["templates/**/*.html", "static/**/*", "contract.xsd"]

@@ -1,7 +1,7 @@
 String Input Example
 ====================
 
-Location: ``examples/webapp/string/``
+Location: ``examples/rappture2/string/``
 
 This example demonstrates the ``<string>`` input type for both single-line
 and multi-line text entry. The ``<size>`` element controls textarea
@@ -10,37 +10,8 @@ dimensions.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>string (rappture2web)</title>
-     <command>python3 @tool/run_string.py @driver</command>
-   </tool>
-   <input>
-     <string id="title">
-       <about>
-         <label>Title</label>
-         <description>Text used as the title for all plots.</description>
-       </about>
-       <default>untitled</default>
-     </string>
-
-     <separator/>
-
-     <string id="indeck">
-       <about>
-         <label>Input</label>
-         <description>Control file for the program.</description>
-         <hints>EXAMPLE:  .print ac vm(11) mag(i(vcc))</hints>
-       </about>
-       <size>40x10</size>
-       <default>Enter your SPICE commands
-   in this area.</default>
-     </string>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/string/tool.xml
+   :language: xml
 
 Script
 ------
@@ -75,4 +46,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/string/
+   rappture2web examples/rappture2/string/

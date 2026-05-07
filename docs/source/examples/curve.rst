@@ -1,17 +1,23 @@
 Curve Output Example
 ====================
 
-Location: ``examples/webapp/curve/``
+Location: ``examples/rappture2/curve/``
 
 This example demonstrates all curve variants: single, grouped, scatter, bar,
 log-scale, and mixed element types.
+
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/curve/tool.xml
+   :language: xml
 
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/curve/
+   rappture2web examples/rappture2/curve/
 
 Key concepts
 ------------

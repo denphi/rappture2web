@@ -1,7 +1,7 @@
 Histogram Output Example
 ========================
 
-Location: ``examples/webapp/histogram/``
+Location: ``examples/rappture2/histogram/``
 
 This example demonstrates the ``<histogram>`` output type for bar charts,
 including single and grouped histograms.
@@ -46,9 +46,15 @@ Key concepts
   them on a single plot.
 - Axis labels and units are configured the same way as curves.
 
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/histogram/tool.xml
+   :language: xml
+
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/histogram/
+   rappture2web examples/rappture2/histogram/

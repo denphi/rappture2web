@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>image (rappture2web)</title>
+  <about>Example of a Rappture &lt;image&gt; object.
+
+When you click Simulate, the input image is rotated by the specified angle.
+  </about>
+  <command>python3 @tool/image.py @driver</command>
+  <contract>
+    <input>
+      <number id="angle">
+        <about>
+          <label>Rotate</label>
+          <description>Rotate image by this amount in degrees.</description>
+        </about>
+        <units>deg</units>
+        <min>0deg</min>
+        <max>360deg</max>
+        <default>45deg</default>
+      </number>
+    </input>
+    <output>
+      <image id="outi"><about><label>Rotated Image</label><description>Image produced after applying the selected rotation.</description></about></image>
+    </output>
+  </contract>
+</tool>
+<input>
+  <loader>
+    <about>
+      <label>Image</label>
+      <description>Use this to load different images.</description>
+    </about>
+    <example>*.xml</example>
+    <default>nanohub.xml</default>
+  </loader>
+  <image>
+    <about>
+      <label>Image</label>
+      <description>Input image that gets rotated.</description>
+      <diffs>ignore</diffs>
+    </about>
+  </image>
+  <number id="angle">
+    <about>
+      <label>Rotate</label>
+      <description>Rotate image by this amount in degrees.</description>
+    </about>
+    <units>deg</units>
+    <min>0deg</min>
+    <max>360deg</max>
+    <default>45deg</default>
+  </number>
+</input>
+</run>

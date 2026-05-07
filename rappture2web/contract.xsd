@@ -1,0 +1,726 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified"
+           version="2.0">
+
+  <!--
+    Rappture tool.xml Schema
+    ========================
+    Validates a complete <run> document (tool.xml skeleton).
+
+    Contract (strict — inside <tool><contract>):
+      - <tool><contract><input> declares every input the tool accepts:
+          id attribute, <about><label>, <about><description>, <default>
+          optional: <units>, <min>, <max> (UI may override but must stay within bounds)
+      - <tool><contract><output> declares every output the tool produces:
+          id attribute, <about><label>, <about><description>
+          optional: <units>
+      - ids must be unique within contract/input and contract/output
+
+    UI layout (relaxed — <input>/<output> sections at run level):
+      - <group>, <phase>: container elements, <about> is optional
+      - <note>, <separator>: display-only, no id or default required
+      - <image>, <loader>, <drawing>: UI-only widgets, about optional
+      - <about> may include: label, description, enable, layout, color, icon, hints, diffs
+  -->
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Root element with uniqueness constraints
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:element name="run">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="tool"   type="ToolMetaType"/>
+        <xs:element name="input"  type="InputSectionType"  minOccurs="0"/>
+        <xs:element name="output" type="OutputSectionType" minOccurs="0"/>
+      </xs:all>
+    </xs:complexType>
+
+    <!-- Contract input ids must be unique -->
+    <xs:unique name="UniqueContractInputId">
+      <xs:selector xpath="tool/contract/input/*"/>
+      <xs:field    xpath="@id"/>
+    </xs:unique>
+
+    <!-- Contract output ids must be unique -->
+    <xs:unique name="UniqueContractOutputId">
+      <xs:selector xpath="tool/contract/output/*"/>
+      <xs:field    xpath="@id"/>
+    </xs:unique>
+
+    <!-- Runtime input ids must be unique -->
+    <xs:unique name="UniqueInputId">
+      <xs:selector xpath="input/*"/>
+      <xs:field    xpath="@id"/>
+    </xs:unique>
+
+    <!-- Runtime output ids must be unique -->
+    <xs:unique name="UniqueOutputId">
+      <xs:selector xpath="output/*"/>
+      <xs:field    xpath="@id"/>
+    </xs:unique>
+  </xs:element>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Tool metadata
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <!--
+    ToolMetaType: title, about, command, contract are required and enforced by
+    the Python validator. The xs:choice loop allows elements in any order.
+  -->
+  <xs:complexType name="ToolMetaType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="title"    type="xs:string"/>
+      <xs:element name="about"    type="xs:string"/>
+      <xs:element name="command"  type="xs:string"/>
+      <xs:element name="contract" type="ContractType"/>
+      <xs:element name="uq"       type="xs:string"/>
+      <xs:element name="layout"   type="xs:string"/>
+      <xs:element name="version"  type="ToolVersionType"/>
+      <xs:element name="limits"   type="ToolLimitsType"/>
+      <xs:element name="id"           type="xs:string"/>
+      <xs:element name="name"         type="xs:string"/>
+      <xs:element name="description"  type="xs:string"/>
+      <xs:element name="cache"        type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="ToolVersionType" mixed="true">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:any processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ToolLimitsType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="cputime"  type="xs:string"/>
+      <xs:element name="filesize" type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Contract  —  authoritative declaration of tool inputs and outputs.
+       The UI may override defaults but must respect declared units and ranges.
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="ContractType">
+    <xs:all>
+      <xs:element name="input"  type="ContractInputSectionType"  minOccurs="0"/>
+      <xs:element name="output" type="ContractOutputSectionType" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+
+  <!-- Contract input section: same strict data widgets, no UI layout elements -->
+  <xs:complexType name="ContractInputSectionType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="number"          type="ContractNumberType"/>
+      <xs:element name="integer"         type="ContractIntegerType"/>
+      <xs:element name="boolean"         type="ContractBooleanType"/>
+      <xs:element name="string"          type="ContractStringType"/>
+      <xs:element name="choice"          type="ContractChoiceType"/>
+      <xs:element name="multichoice"     type="ContractMultiChoiceType"/>
+      <xs:element name="periodicelement" type="ContractPeriodicElementType"/>
+      <xs:element name="file"            type="ContractFileType"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- Contract output section: strict output declarations -->
+  <xs:complexType name="ContractOutputSectionType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="number"    type="ContractOutputNumberType"/>
+      <xs:element name="integer"   type="ContractOutputNumberType"/>
+      <xs:element name="string"    type="ContractOutputStringType"/>
+      <xs:element name="curve"     type="ContractCurveType"/>
+      <xs:element name="field"     type="ContractOutputGenericType"/>
+      <xs:element name="image"     type="ContractOutputGenericType"/>
+      <xs:element name="table"     type="ContractOutputGenericType"/>
+      <xs:element name="structure" type="ContractOutputGenericType"/>
+      <xs:element name="log"       type="ContractOutputGenericType"/>
+      <xs:element name="sequence"  type="ContractOutputGenericType"/>
+      <xs:element name="histogram" type="ContractCurveType"/>
+      <!-- Additional supported output renderers -->
+      <xs:element name="boolean"   type="ContractOutputGenericType"/>
+      <xs:element name="drawing"   type="ContractOutputGenericType"/>
+      <xs:element name="mapviewer" type="ContractOutputGenericType"/>
+      <xs:element name="mesh"      type="ContractOutputGenericType"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Contract input widget types
+       All require: id, about[label+description], default
+       Optional:    units, min, max (declare the authoritative bounds)
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="ContractNumberType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string"/>
+      <xs:element name="units"   type="xs:string"/>
+      <xs:element name="min"     type="xs:string"/>
+      <xs:element name="max"     type="xs:string"/>
+      <xs:element name="preset"  type="PresetType"/>
+    </xs:choice>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractIntegerType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string"/>
+      <xs:element name="min"     type="xs:string"/>
+      <xs:element name="max"     type="xs:string"/>
+      <xs:element name="preset"  type="PresetType"/>
+    </xs:choice>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractBooleanType">
+    <xs:all>
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractStringType">
+    <xs:all>
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractChoiceType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="option"  type="ChoiceOptionType"/>
+        <xs:element name="default" type="xs:string"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractMultiChoiceType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="option"  type="MultiChoiceOptionType"/>
+        <xs:element name="default" type="xs:string"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractPeriodicElementType">
+    <xs:all>
+      <xs:element name="about"       type="AboutRequiredType"/>
+      <xs:element name="default"     type="xs:string"/>
+      <xs:element name="returnvalue" type="xs:string" minOccurs="0"/>
+      <xs:element name="active"      type="xs:string" minOccurs="0"/>
+      <xs:element name="inactive"    type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractFileType">
+    <xs:all>
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string" minOccurs="0"/>
+      <xs:element name="accept"  type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Contract output widget types
+       All require: id, about[label+description]
+       Optional:    units, xaxis, yaxis
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="ContractOutputNumberType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="units" type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractOutputStringType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContractCurveType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="xaxis" type="AxisInfoType" minOccurs="0"/>
+      <xs:element name="yaxis" type="AxisInfoType" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <!-- Generic output: just needs about with label+description -->
+  <xs:complexType name="ContractOutputGenericType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       <about> block
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="AboutRequiredType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="label"       type="xs:string"/>
+      <xs:element name="description" type="xs:string"/>
+      <xs:element name="enable"      type="xs:string"/>
+      <xs:element name="layout"      type="xs:string"/>
+      <xs:element name="color"       type="xs:string"/>
+      <xs:element name="icon"        type="xs:string"/>
+      <xs:element name="hints"       type="xs:string"/>
+      <xs:element name="diffs"       type="xs:string"/>
+      <xs:element name="default"     type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="AboutOptionalType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="label"       type="xs:string"/>
+      <xs:element name="description" type="xs:string"/>
+      <xs:element name="enable"      type="xs:string"/>
+      <xs:element name="layout"      type="xs:string"/>
+      <xs:element name="color"       type="xs:string"/>
+      <xs:element name="icon"        type="xs:string"/>
+      <xs:element name="hints"       type="xs:string"/>
+      <xs:element name="diffs"       type="xs:string"/>
+      <xs:element name="default"     type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Input section  (runtime — relaxed UI layout allowed)
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="InputSectionType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="number"          type="NumberWidgetType"/>
+      <xs:element name="integer"         type="IntegerWidgetType"/>
+      <xs:element name="boolean"         type="BooleanWidgetType"/>
+      <xs:element name="string"          type="StringWidgetType"/>
+      <xs:element name="choice"          type="ChoiceWidgetType"/>
+      <xs:element name="multichoice"     type="MultiChoiceWidgetType"/>
+      <xs:element name="periodicelement" type="PeriodicElementWidgetType"/>
+      <xs:element name="file"            type="FileWidgetType"/>
+      <xs:element name="group"           type="GroupType"/>
+      <xs:element name="phase"           type="GroupType"/>
+      <xs:element name="note"            type="NoteType"/>
+      <xs:element name="separator"       type="SeparatorType"/>
+      <xs:element name="image"           type="ImageInputType"/>
+      <xs:element name="loader"          type="LoaderType"/>
+      <xs:element name="drawing"         type="DrawingType"/>
+      <xs:element name="structure"       type="StructureInputType"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Output section  (runtime)
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="OutputSectionType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="number"    type="OutputNumberType"/>
+      <xs:element name="integer"   type="OutputNumberType"/>
+      <xs:element name="string"    type="OutputStringType"/>
+      <xs:element name="curve"     type="CurveOutputType"/>
+      <xs:element name="field"     type="FieldOutputType"/>
+      <xs:element name="image"     type="ImageOutputType"/>
+      <xs:element name="table"     type="TableOutputType"/>
+      <xs:element name="structure" type="StructureOutputType"/>
+      <xs:element name="log"       type="LogOutputType"/>
+      <xs:element name="sequence"  type="SequenceOutputType"/>
+      <xs:element name="histogram" type="HistogramOutputType"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Runtime input widget types
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="NumberWidgetType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string"/>
+      <xs:element name="units"   type="xs:string"/>
+      <xs:element name="min"     type="xs:string"/>
+      <xs:element name="max"     type="xs:string"/>
+      <xs:element name="preset"  type="PresetType"/>
+      <xs:element name="color"   type="xs:string"/>
+      <xs:element name="uq"      type="xs:string"/>
+      <xs:element name="current" type="xs:string"/>
+    </xs:choice>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="IntegerWidgetType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string"/>
+      <xs:element name="min"     type="xs:string"/>
+      <xs:element name="max"     type="xs:string"/>
+      <xs:element name="preset"  type="PresetType"/>
+      <xs:element name="uq"      type="xs:string"/>
+      <xs:element name="current" type="xs:string"/>
+    </xs:choice>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="BooleanWidgetType">
+    <xs:all>
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string"/>
+      <xs:element name="enable"  type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="StringWidgetType">
+    <xs:all>
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string" minOccurs="0"/>
+      <xs:element name="size"    type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ChoiceWidgetType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="option"  type="ChoiceOptionType"/>
+        <xs:element name="default" type="xs:string"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ChoiceOptionType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutOptionalType" minOccurs="0"/>
+      <xs:element name="value" type="xs:string"         minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="MultiChoiceWidgetType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="option"  type="MultiChoiceOptionType"/>
+        <xs:element name="default" type="xs:string"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="MultiChoiceOptionType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutOptionalType" minOccurs="0"/>
+      <xs:element name="value" type="xs:string"         minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="PeriodicElementWidgetType">
+    <xs:all>
+      <xs:element name="about"       type="AboutRequiredType"/>
+      <xs:element name="default"     type="xs:string"/>
+      <xs:element name="returnvalue" type="xs:string" minOccurs="0"/>
+      <xs:element name="active"      type="xs:string" minOccurs="0"/>
+      <xs:element name="inactive"    type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="FileWidgetType">
+    <xs:all>
+      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="default" type="xs:string" minOccurs="0"/>
+      <xs:element name="accept"  type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="WidgetIdType" use="required"/>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       UI / layout widgets
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="GroupType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutOptionalType" minOccurs="0"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="number"          type="NumberWidgetType"/>
+        <xs:element name="integer"         type="IntegerWidgetType"/>
+        <xs:element name="boolean"         type="BooleanWidgetType"/>
+        <xs:element name="string"          type="StringWidgetType"/>
+        <xs:element name="choice"          type="ChoiceWidgetType"/>
+        <xs:element name="multichoice"     type="MultiChoiceWidgetType"/>
+        <xs:element name="periodicelement" type="PeriodicElementWidgetType"/>
+        <xs:element name="file"            type="FileWidgetType"/>
+        <xs:element name="group"           type="GroupType"/>
+        <xs:element name="phase"           type="GroupType"/>
+        <xs:element name="note"            type="NoteType"/>
+        <xs:element name="separator"       type="SeparatorType"/>
+        <xs:element name="image"           type="ImageInputType"/>
+        <xs:element name="loader"          type="LoaderType"/>
+        <xs:element name="drawing"         type="DrawingType"/>
+        <xs:element name="structure"       type="StructureInputType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="NoteType">
+    <xs:all>
+      <xs:element name="about"    type="AboutOptionalType" minOccurs="0"/>
+      <xs:element name="contents" type="xs:string"         minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="SeparatorType"/>
+
+  <xs:complexType name="ImageInputType">
+    <xs:all>
+      <xs:element name="about"   type="AboutOptionalType" minOccurs="0"/>
+      <xs:element name="default" type="xs:string"         minOccurs="0"/>
+      <xs:element name="current" type="xs:string"         minOccurs="0"/>
+      <xs:element name="resize"  type="xs:string"         minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="LoaderType">
+    <xs:all>
+      <xs:element name="about"    type="AboutOptionalType"  minOccurs="0"/>
+      <xs:element name="default"  type="xs:string"          minOccurs="0"/>
+      <xs:element name="example"  type="xs:string"          minOccurs="0"/>
+      <xs:element name="upload"   type="LoaderTransferType" minOccurs="0"/>
+      <xs:element name="download" type="LoaderTransferType" minOccurs="0"/>
+      <xs:element name="copy"     type="LoaderTransferType" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="LoaderTransferType">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="to"     type="xs:string"/>
+      <xs:element name="from"   type="xs:string"/>
+      <xs:element name="prompt" type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:complexType name="DrawingType">
+    <xs:all>
+      <xs:element name="about"         type="AboutOptionalType"      minOccurs="0"/>
+      <xs:element name="background"    type="DrawingBackgroundType"  minOccurs="0"/>
+      <xs:element name="components"    type="DrawingComponentsType"  minOccurs="0"/>
+      <xs:element name="substitutions" type="DrawingSubstitutionsType" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:complexType name="DrawingBackgroundType">
+    <xs:all>
+      <xs:element name="color"       type="xs:string" minOccurs="0"/>
+      <xs:element name="coordinates" type="xs:string" minOccurs="0"/>
+      <xs:element name="width"       type="xs:string" minOccurs="0"/>
+      <xs:element name="height"      type="xs:string" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+
+  <xs:complexType name="DrawingComponentsType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:any processContents="lax"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DrawingSubstitutionsType">
+    <xs:sequence>
+      <xs:element name="variable" type="DrawingVariableType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DrawingVariableType">
+    <xs:sequence>
+      <xs:element name="name" type="xs:string"/>
+      <xs:element name="path" type="xs:string"/>
+      <xs:element name="map"  type="DrawingMapType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DrawingMapType">
+    <xs:all>
+      <xs:element name="from" type="xs:string"/>
+      <xs:element name="to"   type="xs:string"/>
+    </xs:all>
+  </xs:complexType>
+
+  <xs:complexType name="StructureInputType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:any processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Runtime output widget types
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="OutputNumberType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="units" type="xs:string" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="OutputStringType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+    </xs:all>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="CurveOutputType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="xaxis" type="AxisInfoType" minOccurs="0"/>
+      <xs:element name="yaxis" type="AxisInfoType" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="FieldOutputType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="ImageOutputType">
+    <xs:all>
+      <xs:element name="about" type="AboutRequiredType"/>
+    </xs:all>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="TableOutputType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="StructureOutputType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="LogOutputType">
+    <xs:all>
+      <xs:element name="about" type="AboutOptionalType" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="SequenceOutputType">
+    <xs:sequence>
+      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="HistogramOutputType">
+    <xs:sequence>
+      <xs:element name="about"     type="AboutRequiredType"/>
+      <xs:element name="xaxis"     type="AxisInfoType"         minOccurs="0"/>
+      <xs:element name="yaxis"     type="AxisInfoType"         minOccurs="0"/>
+      <xs:element name="component" type="HistogramComponentType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <xs:complexType name="HistogramComponentType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:any processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Shared types
+  ══════════════════════════════════════════════════════════════════════════ -->
+
+  <xs:complexType name="AxisInfoType">
+    <xs:all>
+      <xs:element name="label"       type="xs:string" minOccurs="0"/>
+      <xs:element name="description" type="xs:string" minOccurs="0"/>
+      <xs:element name="units"       type="xs:string" minOccurs="0"/>
+      <xs:element name="scale"       type="ScaleType" minOccurs="0"/>
+      <xs:element name="marker"      type="AxisMarkerType" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+
+  <xs:complexType name="AxisMarkerType">
+    <xs:all>
+      <xs:element name="at"    type="xs:string" minOccurs="0"/>
+      <xs:element name="label" type="xs:string" minOccurs="0"/>
+      <xs:element name="style" type="xs:string" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+
+  <xs:complexType name="PresetType">
+    <xs:all>
+      <xs:element name="value" type="xs:string"/>
+      <xs:element name="label" type="xs:string" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+
+  <xs:simpleType name="WidgetIdType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z0-9][A-Za-z0-9_\-]*"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ScaleType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="linear"/>
+      <xs:enumeration value="log"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+</xs:schema>

@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>note (rappture2web)</title>
+  <about>Example of a Rappture &lt;note&gt; object.
+
+Notes are descriptive explanations to the user. The contents can be arbitrary HTML.
+  </about>
+  <command>python3 @tool/note.py @driver</command>
+  <contract>
+    <input>
+      <number id="diameter">
+        <about>
+          <label>Particle diameter d</label>
+          <description>Diameter of sphere-shaped nanoparticles.</description>
+        </about>
+        <units>nm</units>
+        <min>2nm</min>
+        <max>20nm</max>
+        <default>5nm</default>
+      </number>
+    </input>
+    <output>
+      <string id="out"><about><label>Particle diameter</label><description>Reports the selected particle diameter.</description></about></string>
+    </output>
+  </contract>
+</tool>
+<input>
+  <note>
+    <contents>file://bysize.html</contents>
+  </note>
+  <number id="diameter">
+    <about>
+      <label>Particle diameter d</label>
+      <description>Diameter of sphere-shaped nanoparticles.</description>
+    </about>
+    <units>nm</units>
+    <min>2nm</min>
+    <max>20nm</max>
+    <default>5nm</default>
+  </number>
+</input>
+</run>

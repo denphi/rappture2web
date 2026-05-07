@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>3D DX Vector Field (demo3)</title>
+  <about>3D vector flow field from an OpenDX structured grid (121×25×23). Demonstrates loading DX-format data with particle injection planes.</about>
+  <command>python3 @tool/flow_demo3.py @driver</command>
+  <contract>
+    <input>
+      <integer id="dummy">
+        <about>
+          <label>Subsample stride</label>
+          <description>Display every Nth point (1 = all, higher = faster).</description>
+        </about>
+        <min>1</min>
+        <max>10</max>
+        <default>3</default>
+      </integer>
+    </input>
+    <output>
+      <mesh id="grid"><about><label>DX Flow Grid</label><description>Hidden mesh used by the SiO2 flow fields.</description></about></mesh>
+      <field id="velocity"><about><label>SiO2 Flow Velocity</label><description>Vector flow field.</description></about></field>
+      <field id="magnitude"><about><label>Velocity Magnitude</label><description>Scalar velocity magnitude field.</description></about></field>
+    </output>
+  </contract>
+</tool>
+<input>
+  <integer id="dummy">
+    <about>
+      <label>Subsample stride</label>
+      <description>Display every Nth point (1 = all, higher = faster).</description>
+    </about>
+    <min>1</min>
+    <max>10</max>
+    <default>3</default>
+  </integer>
+</input>
+</run>

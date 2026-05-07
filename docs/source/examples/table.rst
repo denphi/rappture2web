@@ -1,7 +1,7 @@
 Table Output Example
 ====================
 
-Location: ``examples/webapp/table/``
+Location: ``examples/rappture2/table/``
 
 This example demonstrates the ``<table>`` output type. It computes energy
 levels for a particle in a 1D quantum box and displays them in a table.
@@ -46,9 +46,15 @@ Key concepts
 - Provide data as newline-separated rows with space-separated values.
 - Column order matches the order of ``column(...)`` definitions.
 
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/table/tool.xml
+   :language: xml
+
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/table/
+   rappture2web examples/rappture2/table/

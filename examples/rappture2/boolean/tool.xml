@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>boolean (rappture2web)</title>
+  <about>Example of a Rappture &lt;boolean&gt; object.
+
+Booleans are logical true/false values. When you click Simulate, the input booleans are echoed to the output.
+  </about>
+  <command>python3 @tool/boolean.py @driver</command>
+  <contract>
+    <input>
+      <boolean id="iimodel">
+        <about>
+          <label>Impact Ionization Model</label>
+          <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+        </about>
+        <default>on</default>
+      </boolean>
+      <boolean id="iimodel1">
+        <about>
+          <label>Impact Ionization Model 1</label>
+          <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+        </about>
+        <default>yes</default>
+      </boolean>
+      <boolean id="iimodel2">
+        <about>
+          <label>Impact Ionization Model 2</label>
+          <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+        </about>
+        <default>true</default>
+      </boolean>
+      <boolean id="iimodel3">
+        <about>
+          <label>Impact Ionization Model 3</label>
+          <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+        </about>
+        <default>1</default>
+      </boolean>
+    </input>
+    <output>
+      <boolean id="outb">
+        <about><label>Echo of boolean value iimodel</label><description>Echoes the first boolean input value.</description></about>
+      </boolean>
+      <boolean id="outb1">
+        <about><label>Echo of boolean value iimodel1</label><description>Echoes the second boolean input value.</description></about>
+      </boolean>
+      <boolean id="outb2">
+        <about><label>Echo of boolean value iimodel2</label><description>Echoes the third boolean input value.</description></about>
+      </boolean>
+      <boolean id="outb3">
+        <about><label>Echo of boolean value iimodel3</label><description>Echoes the fourth boolean input value.</description></about>
+      </boolean>
+    </output>
+  </contract>
+</tool>
+<input>
+  <boolean id="iimodel">
+    <about>
+      <label>Impact Ionization Model</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>on</default>
+  </boolean>
+  <boolean id="iimodel1">
+    <about>
+      <label>Impact Ionization Model 1</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>yes</default>
+  </boolean>
+  <boolean id="iimodel2">
+    <about>
+      <label>Impact Ionization Model 2</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>true</default>
+  </boolean>
+  <boolean id="iimodel3">
+    <about>
+      <label>Impact Ionization Model 3</label>
+      <description>Used to enable/disable the effects of impact ionization on the mobility model.</description>
+    </about>
+    <default>1</default>
+  </boolean>
+</input>
+</run>

@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>3D Wire Flow (demo1)</title>
+  <about>3D vector flow field from a Jwire simulation on a 126×30×22 regular grid. Visualises the velocity field as coloured arrows.</about>
+  <command>python3 @tool/flow_demo1.py @driver</command>
+  <contract>
+    <input>
+      <integer id="dummy">
+        <about>
+          <label>Subsample stride</label>
+          <description>Display every Nth point (1 = all, higher = faster).</description>
+        </about>
+        <min>1</min>
+        <max>10</max>
+        <default>3</default>
+      </integer>
+    </input>
+    <output>
+      <mesh id="grid"><about><label>Wire Flow Grid</label><description>Hidden mesh used by the wire flow field.</description></about></mesh>
+      <field id="velocity"><about><label>Jwire Flow Velocity</label><description>Three-dimensional vector flow field.</description></about></field>
+    </output>
+  </contract>
+</tool>
+<input>
+  <integer id="dummy">
+    <about>
+      <label>Subsample stride</label>
+      <description>Display every Nth point (1 = all, higher = faster).</description>
+    </about>
+    <min>1</min>
+    <max>10</max>
+    <default>3</default>
+  </integer>
+</input>
+</run>

@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>sequence (rappture2web)</title>
+  <about>Example of a Rappture &lt;sequence&gt; object.
+
+When you click Simulate, the input image is rotated several times to produce an animated sequence.
+  </about>
+  <command>python3 @tool/sequence.py @driver</command>
+  <contract>
+    <input>
+      <integer id="nframes">
+        <about>
+          <label>Number of frames</label>
+          <description>Determines the number of frames in the output sequence.</description>
+        </about>
+        <min>2</min>
+        <max>50</max>
+        <default>4</default>
+      </integer>
+    </input>
+    <output>
+      <sequence id="outs"><about><label>Image Sequence</label><description>Animated sequence of generated image frames.</description></about></sequence>
+    </output>
+  </contract>
+</tool>
+<input>
+  <loader>
+    <about>
+      <label>Image</label>
+      <description>Use this to load different images.</description>
+    </about>
+    <example>*.xml</example>
+    <default>nanohub.xml</default>
+  </loader>
+  <image>
+    <about><diffs>ignore</diffs></about>
+    <resize>height=200</resize>
+  </image>
+  <integer id="nframes">
+    <about>
+      <label>Number of frames</label>
+      <description>Determines the number of frames in the output sequence.</description>
+    </about>
+    <min>2</min>
+    <max>50</max>
+    <default>4</default>
+  </integer>
+</input>
+</run>

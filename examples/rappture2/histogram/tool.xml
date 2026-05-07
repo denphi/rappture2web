@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>histogram (rappture2web)</title>
+  <about>Example of a Rappture &lt;histogram&gt; object.
+
+Histograms are a list of (x,y) data points. When you click Simulate, the inputs generate output histograms.
+  </about>
+  <command>python3 @tool/histogram.py @driver</command>
+  <contract>
+    <input>
+      <integer id="points">
+        <about>
+          <label>Number of points</label>
+          <description>Determines the number of data points in all output histograms.</description>
+        </about>
+        <min>2</min>
+        <max>1000</max>
+        <default>10</default>
+      </integer>
+    </input>
+    <output>
+      <histogram id="single"><about><label>Single histogram</label><description>Example of a single histogram.</description></about><xaxis><label>Time</label><units>s</units></xaxis><yaxis><label>Voltage v(11)</label><units>V</units></yaxis></histogram>
+      <histogram id="multi1"><about><label>Factor a=1</label><description>Grouped histogram for factor 1.</description></about><xaxis><label>Frequency</label><units>Hz</units></xaxis><yaxis><label>Current</label><units>uA</units></yaxis></histogram>
+      <histogram id="multi2"><about><label>Factor a=2</label><description>Grouped histogram for factor 2.</description></about><xaxis><label>Frequency</label><units>Hz</units></xaxis><yaxis><label>Current</label><units>uA</units></yaxis></histogram>
+    </output>
+  </contract>
+</tool>
+<input>
+  <integer id="points">
+    <about>
+      <label>Number of points</label>
+      <description>Determines the number of data points in all output histograms.</description>
+    </about>
+    <min>2</min>
+    <max>1000</max>
+    <default>10</default>
+  </integer>
+</input>
+</run>

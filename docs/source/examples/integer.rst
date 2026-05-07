@@ -1,7 +1,7 @@
 Integer Input Example
 =====================
 
-Location: ``examples/webapp/integer/``
+Location: ``examples/rappture2/integer/``
 
 This example demonstrates the ``<integer>`` input type with min/max bounds.
 Integers are whole numbers with no units.
@@ -9,26 +9,8 @@ Integers are whole numbers with no units.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>integer (rappture2web)</title>
-     <command>python3 @tool/integer.py @driver</command>
-   </tool>
-   <input>
-     <integer id="points">
-       <about>
-         <label>Grid points</label>
-         <description>Number of nodes used in the simulation mesh.</description>
-       </about>
-       <min>10</min>
-       <max>1000</max>
-       <default>100</default>
-     </integer>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/integer/tool.xml
+   :language: xml
 
 Script
 ------
@@ -51,4 +33,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/integer/
+   rappture2web examples/rappture2/integer/

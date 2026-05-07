@@ -1,7 +1,7 @@
 Phase Input Example
 ===================
 
-Location: ``examples/webapp/phase/``
+Location: ``examples/rappture2/phase/``
 
 This example demonstrates the ``<phase>`` input type. A phase represents
 a whole page in the interface, enabling multi-step wizard-style workflows.
@@ -9,32 +9,8 @@ a whole page in the interface, enabling multi-step wizard-style workflows.
 tool.xml
 --------
 
-.. code-block:: xml
-
-   <?xml version="1.0"?>
-   <run>
-   <tool>
-     <title>phase (rappture2web)</title>
-     <command>python3 @tool/phase.py @driver</command>
-   </tool>
-   <input>
-     <phase id="one">
-       <about><label>First Page</label></about>
-       <string id="first">
-         <about><label>First input</label></about>
-         <default>one</default>
-       </string>
-     </phase>
-
-     <phase id="two">
-       <about><label>Second Page</label></about>
-       <string id="second">
-         <about><label>Second input</label></about>
-         <default>two</default>
-       </string>
-     </phase>
-   </input>
-   </run>
+.. literalinclude:: ../../../examples/rappture2/phase/tool.xml
+   :language: xml
 
 Key concepts
 ------------
@@ -48,4 +24,4 @@ Running
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/phase/
+   rappture2web examples/rappture2/phase/

@@ -1,18 +1,24 @@
 UQ Projectile Example
 =====================
 
-Location: ``examples/webapp/uq_projectile/``
+Location: ``examples/rappture2/uq_projectile/``
 
 A multi-input physics example with UQ support.  Demonstrates how
 uncertainty in launch parameters (velocity, angle, gravity) propagates
 to trajectory predictions.
+
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/uq_projectile/tool.xml
+   :language: xml
 
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/uq_projectile/
+   rappture2web examples/rappture2/uq_projectile/
 
 Inputs
 ------

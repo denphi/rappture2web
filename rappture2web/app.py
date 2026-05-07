@@ -673,11 +673,36 @@ async def api_get_inputs():
     return JSONResponse(_session["inputs"])
 
 
+def _check_output_vs_contract(output_id: str, output_type: str) -> None:
+    """Raise ValueError when a produced output violates the contract.
+
+    Internal sentinel outputs (__inputs__, __driver_xml__) and tools without
+    a contract declaration are never checked.
+    """
+    if _tool_def is None or not _tool_def.contract:
+        return
+    contract_outputs = _tool_def.contract.get("outputs", {})
+    if not contract_outputs:
+        return
+    if output_id.startswith("__"):
+        return
+    if output_id not in contract_outputs:
+        raise ValueError(
+            f"Output '{output_id}' (type={output_type!r}) is not declared in the tool contract."
+        )
+    declared_type = contract_outputs[output_id].get("type", "")
+    if output_type and declared_type and declared_type != output_type:
+        raise ValueError(
+            f"Output '{output_id}': contract declares type '{declared_type}' but got '{output_type}'."
+        )
+
+
 @app.post("/api/output")
 async def api_post_output(request: Request):
     """Receive and broadcast one output item from the tool script."""
     data = await request.json()
     output_id = data.get("id") or data.get("type", "output")
+    _check_output_vs_contract(output_id, data.get("type", ""))
     _session["outputs"][output_id] = data
     await _broadcast({"type": "output", "id": output_id, "data": data})
     return JSONResponse({"ok": True})
@@ -731,6 +756,24 @@ async def api_simulate_done(request: Request):
     driver_out = _build_driver_xml_output(_session["inputs"])
     if driver_out:
         _session["outputs"]["__driver_xml__"] = driver_out
+
+    # If all declared contract outputs were not produced, downgrade success to error.
+    if _tool_def is not None and _tool_def.contract and status == "success":
+        contract_outputs = _tool_def.contract.get("outputs", {})
+        produced = {k for k in _session["outputs"] if not k.startswith("__")}
+        missing_outputs = set(contract_outputs.keys()) - produced
+        if missing_outputs:
+            status = "error"
+            _session["status"] = "error"
+            missing_str = ", ".join(sorted(missing_outputs))
+            logger.error(
+                "%s: successful exit but missing declared contract outputs: %s — marking as error",
+                _tool_xml_path, missing_str,
+            )
+            _session["log"] = (_session.get("log") or "") + (
+                f"\nContract error: tool exited successfully but did not produce "
+                f"declared output(s): {missing_str}\n"
+            )
 
     # Record in history
     run_record = _history.add(

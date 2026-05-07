@@ -1,7 +1,7 @@
 MapViewer Output Example
 ========================
 
-Location: ``examples/webapp/mapviewer/``
+Location: ``examples/rappture2/mapviewer/``
 
 This example demonstrates the ``<mapviewer>`` output type -- geographic
 maps with scatter, choropleth, or heatmap layers.
@@ -40,9 +40,15 @@ Key concepts
    mv['layer(heat).type'] = 'heatmap'
    mv['layer(heat).data'] = heatmap_data
 
+tool.xml
+--------
+
+.. literalinclude:: ../../../examples/rappture2/mapviewer/tool.xml
+   :language: xml
+
 Running
 -------
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/mapviewer/
+   rappture2web examples/rappture2/mapviewer/

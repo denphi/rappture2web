@@ -2,12 +2,12 @@ Examples
 ========
 
 rappture2web ships with a comprehensive set of examples in the
-``examples/webapp/`` directory.  Each example is a self-contained tool
+``examples/rappture2/`` directory.  Each example is a self-contained tool
 that uses ``rappture2web.rp_library`` and can be run directly:
 
 .. code-block:: bash
 
-   rappture2web examples/webapp/curve/
+   rappture2web examples/rappture2/curve/
 
 Available examples
 ------------------

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<run xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="../../../rappture2web/contract.xsd">
+<tool>
+  <title>2D Half-Plane Flow (demo2)</title>
+  <about>2D vector flow field on a 305×109 regular grid. Visualises the velocity field as coloured arrows.</about>
+  <command>python3 @tool/flow_demo2.py @driver</command>
+  <contract>
+    <input>
+      <integer id="dummy">
+        <about>
+          <label>Subsample stride</label>
+          <description>Display every Nth point (1 = all, higher = faster).</description>
+        </about>
+        <min>1</min>
+        <max>20</max>
+        <default>5</default>
+      </integer>
+    </input>
+    <output>
+      <mesh id="grid"><about><label>2D Flow Grid</label><description>Hidden mesh used by the flow fields.</description></about></mesh>
+      <field id="velocity"><about><label>2D Flow Velocity</label><description>Vector flow field.</description></about></field>
+      <field id="magnitude"><about><label>Velocity Magnitude</label><description>Scalar velocity magnitude field.</description></about></field>
+    </output>
+  </contract>
+</tool>
+<input>
+  <integer id="dummy">
+    <about>
+      <label>Subsample stride</label>
+      <description>Display every Nth point (1 = all, higher = faster).</description>
+    </about>
+    <min>1</min>
+    <max>20</max>
+    <default>5</default>
+  </integer>
+</input>
+</run>
