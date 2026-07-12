@@ -15,8 +15,6 @@
     --rp-danger: #b93838;
     --rp-toolbar-bg: #132f4c;
     --rp-radius: 8px;
-    --rp-header-height: 76px;
-    --rp-header-height-with-toolbar: 124px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -86,12 +84,18 @@ body {
         radial-gradient(circle at 15% 15%, rgba(255,255,255,0.9) 0, rgba(255,255,255,0) 38%),
         linear-gradient(155deg, #eef3f8 0%, #e7eef7 46%, #dde7f4 100%);
     line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
 }
 
 /* Header / Toolbar */
 .rp-header {
     position: sticky;
     top: 0;
+    flex: 0 0 auto;
     z-index: 1000;
     box-shadow: 0 2px 8px rgba(14, 28, 44, 0.15);
 }
@@ -164,12 +168,30 @@ body {
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    position: relative;
 }
 .rp-toolbar-actions {
     list-style: none;
     display: flex;
     align-items: center;
     gap: 8px;
+}
+.rp-toolbar-overflow-toggle {
+    display: none;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    border: 1px solid rgba(255,255,255,0.45);
+    border-radius: 6px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
 }
 .rp-toolbar-link {
     display: inline-flex;
@@ -220,16 +242,41 @@ body {
 }
 
 /* Layout */
-:root { --rp-footer-height: 36px; }
-.rp-main { height: calc(100vh - var(--rp-header-height) - var(--rp-footer-height)); }
-.rp-header-has-toolbar + .rp-main {
-    height: calc(100vh - var(--rp-header-height-with-toolbar) - var(--rp-footer-height));
+.rp-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    container-type: inline-size;
 }
 .rp-layout {
     display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
     height: 100%;
     gap: 12px;
     padding: 12px;
+}
+.rp-pane-switch {
+    display: none;
+    flex-shrink: 0;
+    padding: 8px 12px 0;
+    gap: 4px;
+}
+.rp-pane-switch-btn {
+    flex: 1;
+    min-height: 40px;
+    border: 1px solid var(--rp-border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--rp-primary);
+    font: 600 14px/1 inherit;
+    cursor: pointer;
+}
+.rp-pane-switch-btn[aria-pressed="true"] {
+    color: #fff;
+    background: var(--rp-primary);
+    border-color: var(--rp-primary);
 }
 .rp-sidebar {
     position: relative;
@@ -741,11 +788,9 @@ body {
 
 /* Footer status bar */
 .rp-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: var(--rp-footer-height);
+    position: relative;
+    min-height: 36px;
+    flex: 0 0 auto;
     background: var(--rp-surface, #f8fafc);
     border-top: 1px solid var(--rp-border, #e2e8f0);
     display: flex;
@@ -1116,7 +1161,7 @@ body {
     display: flex; flex-direction: column; gap: 4px;
 }
 .rp-panel-title {
-    font-size: 12px; font-weight: 700; color: #64748b;
+    font-size: 12px; font-weight: 700; color: #94a3b8;
     text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 4px;
 }
 .rp-panel-btns { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 2px; }
@@ -1427,33 +1472,235 @@ body {
     color: var(--rp-error);
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .rp-brand-bar { padding: 10px 12px; min-height: 68px; }
-    .rp-nanohub-logo { height: 30px; padding-right: 10px; }
-    .rp-title { font-size: 18px; }
-    .rp-brand-platform { font-size: 10px; }
-    .rp-toolbar-inner {
-        padding: 6px 12px;
-        justify-content: flex-start;
-        min-height: 0;
+/* Responsive and embedded layouts */
+@container (max-width: 900px) {
+    .rp-pane-switch { display: flex; }
+    .rp-layout {
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 12px 10px;
     }
-    .rp-toolbar-actions { flex-wrap: wrap; }
-    .rp-toolbar-link {
-        min-height: 36px;
-        padding: 7px 12px;
-    }
-    .rp-main { height: calc(100vh - 68px); }
-    .rp-header-has-toolbar + .rp-main { height: calc(100vh - 118px); }
-    .rp-layout { flex-direction: column; }
     .rp-sidebar {
         width: 100%;
+        min-width: 0;
         max-width: none;
-        max-height: 50vh;
+        max-height: none;
+        flex: 1 1 auto;
         resize: none;
+        padding: 14px;
     }
-    .rp-content { min-height: 42vh; }
+    .rp-content {
+        flex: 1 1 auto;
+        min-height: 150px;
+    }
+    .rp-main:not(.rp-pane-results) .rp-content { display: none; }
+    .rp-main.rp-pane-results .rp-sidebar { display: none; }
+    .rp-main.rp-pane-results .rp-content { flex: 1; }
 }
+
+@container (max-width: 520px) {
+    .rp-number,
+    .rp-integer,
+    .rp-string:not(.rp-string-multiline),
+    .rp-choice {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .rp-number > .rp-label,
+    .rp-integer > .rp-label,
+    .rp-string:not(.rp-string-multiline) > .rp-label,
+    .rp-choice > .rp-label,
+    .rp-number > .rp-input,
+    .rp-number > .rp-number-controls,
+    .rp-integer > .rp-input,
+    .rp-string:not(.rp-string-multiline) > .rp-input,
+    .rp-choice > .rp-input,
+    .rp-number > .rp-hints,
+    .rp-number > .rp-color-bar,
+    .rp-integer > .rp-hints,
+    .rp-integer > .rp-color-bar,
+    .rp-string:not(.rp-string-multiline) > .rp-hints,
+    .rp-choice > .rp-hints {
+        grid-column: 1;
+    }
+    .rp-number-controls { flex-wrap: wrap; }
+    .rp-preset-select { flex: 1 1 100%; max-width: none; }
+    .rp-structure-parameters .rp-number,
+    .rp-structure-parameters .rp-integer,
+    .rp-structure-parameters .rp-string {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .rp-structure-parameters .rp-widget > .rp-label { width: auto; }
+    .rp-output-tabs { flex-wrap: wrap; }
+    .rp-output-selector { flex-basis: 100%; max-width: none; }
+}
+
+@media (max-width: 900px) {
+    .rp-pane-switch { display: flex; }
+    .rp-layout {
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 12px 10px;
+    }
+    .rp-sidebar {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        max-height: none;
+        flex: 1 1 auto;
+        resize: none;
+        padding: 14px;
+    }
+    .rp-actions {
+        position: sticky;
+        bottom: -1px;
+        z-index: 10;
+        margin-inline: -4px;
+        padding: 10px 4px 8px;
+        background: linear-gradient(to bottom, rgba(255,255,255,0.94), #fff 24%);
+        box-shadow: 0 -8px 12px rgba(255,255,255,0.9);
+    }
+    .rp-content { flex: 1 1 auto; min-height: 150px; }
+    .rp-main:not(.rp-pane-results) .rp-content { display: none; }
+    .rp-main.rp-pane-results .rp-sidebar { display: none; }
+    .rp-main.rp-pane-results .rp-content { flex: 1; }
+
+    .rp-brand-bar { padding: 8px 12px; min-height: 56px; }
+    .rp-nanohub-logo { height: 28px; padding-right: 10px; }
+    .rp-title {
+        font-size: 17px;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+    }
+    .rp-brand-platform, .rp-powered-by { display: none; }
+    .rp-toolbar-inner { min-height: 44px; padding: 2px 12px; }
+    .rp-toolbar-actions { gap: 4px; }
+    .rp-toolbar-link { min-height: 40px; padding: 6px 10px; }
+
+    .rp-output-panel { padding: 10px; }
+    .rp-fullscreen-btn {
+        min-height: 40px;
+        padding: 7px 12px;
+        color: #fff;
+        background: var(--rp-primary);
+        border-color: var(--rp-primary);
+    }
+    .rp-fullscreen-btn:hover {
+        color: #fff;
+        background: var(--rp-primary-hover);
+        border-color: var(--rp-primary-hover);
+    }
+    .rp-fs-toolbar, .rp-fs-controls { flex-wrap: wrap; gap: 6px; }
+    .rp-fs-controls .rp-output-selector { max-width: none; min-width: 0; }
+    .rp-fs-runmenu-panel { right: 0; max-width: min(320px, 85vw); }
+
+    .rp-3d-inner-row,
+    .rp-output-item.rp-output-plot-item .rp-output-body { position: relative; }
+    .rp-3d-panel-wrap {
+        position: absolute;
+        z-index: 5;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        max-width: min(280px, 82%);
+    }
+    .rp-3d-panel { width: min(240px, calc(100vw - 70px)); }
+    .rp-3d-panel-tab { width: 40px; min-width: 40px; }
+
+    .rp-seq-btn,
+    .rp-3d-btn,
+    .rp-run-reorder-btn,
+    .rp-run-reload,
+    .rp-run-delete { min-width: 40px; min-height: 40px; }
+    .rp-run-row { cursor: default; }
+    .rp-data-table { min-width: max-content; }
+    .rp-output-log .rp-output-body,
+    .rp-output-string .rp-output-body { overflow: auto; overflow-wrap: anywhere; }
+}
+
+@media (max-width: 520px) {
+    .rp-number,
+    .rp-integer,
+    .rp-string:not(.rp-string-multiline),
+    .rp-choice { grid-template-columns: minmax(0, 1fr); }
+    .rp-number > .rp-label,
+    .rp-integer > .rp-label,
+    .rp-string:not(.rp-string-multiline) > .rp-label,
+    .rp-choice > .rp-label,
+    .rp-number > .rp-input,
+    .rp-number > .rp-number-controls,
+    .rp-integer > .rp-input,
+    .rp-string:not(.rp-string-multiline) > .rp-input,
+    .rp-choice > .rp-input,
+    .rp-number > .rp-hints,
+    .rp-number > .rp-color-bar,
+    .rp-integer > .rp-hints,
+    .rp-integer > .rp-color-bar,
+    .rp-string:not(.rp-string-multiline) > .rp-hints,
+    .rp-choice > .rp-hints { grid-column: 1; }
+    .rp-number-controls { flex-wrap: wrap; }
+    .rp-preset-select { flex: 1 1 100%; max-width: none; }
+    .rp-structure-parameters .rp-number,
+    .rp-structure-parameters .rp-integer,
+    .rp-structure-parameters .rp-string { grid-template-columns: minmax(0, 1fr); }
+    .rp-structure-parameters .rp-widget > .rp-label { width: auto; }
+    .rp-output-tabs { flex-wrap: wrap; }
+    .rp-output-selector { flex-basis: 100%; max-width: none; }
+}
+
+@media (max-width: 600px), (max-height: 540px) {
+    .rp-brand-bar { min-height: 48px; padding-block: 6px; }
+    .rp-brand { padding-right: 48px; }
+    .rp-nanohub-logo { height: 24px; }
+    .rp-title { font-size: 15px; }
+    .rp-toolbar {
+        position: relative;
+        height: 0;
+        min-height: 0;
+        overflow: visible;
+        border-bottom: 0;
+        background: transparent;
+    }
+    .rp-toolbar-inner { height: 0; min-height: 0; padding: 0; }
+    .rp-toolbar-overflow-toggle { display: inline-flex; }
+    .rp-toolbar-overflow-toggle {
+        position: absolute;
+        right: 12px;
+        bottom: 4px;
+        background: var(--rp-toolbar-bg);
+    }
+    .rp-toolbar-actions {
+        display: none;
+        position: absolute;
+        z-index: 20;
+        top: 4px;
+        right: 12px;
+        width: min(280px, calc(100vw - 24px));
+        padding: 8px;
+        flex-direction: column;
+        align-items: stretch;
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 8px;
+        background: var(--rp-toolbar-bg);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.28);
+    }
+    .rp-toolbar.rp-toolbar-menu-open .rp-toolbar-actions { display: flex; }
+    .rp-toolbar-actions li, .rp-toolbar-link { width: 100%; }
+    .rp-footer { min-height: 32px; padding-inline: 10px; }
+    .rp-footer-stats { display: none; }
+}
+
+body.rp-compact-chrome .rp-brand-bar {
+    min-height: 42px;
+    padding: 5px 10px;
+}
+body.rp-compact-chrome .rp-toolbar,
+body.rp-compact-chrome .rp-powered-by,
+body.rp-compact-chrome .rp-brand-platform { display: none; }
+body.rp-compact-chrome .rp-nanohub-logo { height: 24px; }
+body.rp-compact-chrome .rp-title { font-size: 15px; }
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

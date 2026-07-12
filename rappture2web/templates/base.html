@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ tool.title }} - Rappture</title>
-    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260305y">
+    <link rel="stylesheet" href="{{ base_path }}/static/css/rappture.css?v=20260711e">
     <script>window._rpBasePath = {{ base_path | tojson }};</script>
     <script src="{{ base_path }}/static/js/plotly-3.4.0.min.js"></script>
     <script>Plotly.setPlotConfig({ topojsonURL: '{{ base_path }}/static/js/' });</script>
@@ -14,7 +14,8 @@
     {% block head %}{% endblock %}
 </head>
 
-<body>
+    {% set compact_mode = request is defined and (request.query_params.get('embed') == '1' or request.query_params.get('chrome') == 'minimal') %}
+<body{% if compact_mode %} class="rp-compact-chrome"{% endif %}>
     {% set has_nanohub_links = nanohub_about_url or nanohub_questions_url or nanohub_support_url or
     nanohub_terminate_url %}
     {% set show_upload_menu = not is_nanohub %}
@@ -34,7 +35,11 @@
         {% if show_toolbar %}
         <nav class="rp-toolbar" aria-label="Session actions">
             <div class="rp-toolbar-inner">
-                <ul class="rp-toolbar-actions">
+                <button type="button" class="rp-toolbar-overflow-toggle" aria-expanded="false"
+                    aria-controls="rp-toolbar-actions" aria-label="Open session actions">
+                    <span aria-hidden="true">&#8943;</span>
+                </button>
+                <ul id="rp-toolbar-actions" class="rp-toolbar-actions">
                     {% if is_nanohub %}
                     {% if nanohub_about_url %}
                     <li>
@@ -82,7 +87,8 @@
                     {% if cache_configured %}
                     <li>
                         <button type="button" id="rp-cache-toggle" class="rp-toolbar-link rp-cache-toggle"
-                            onclick="rappture.toggleCache(this)" title="Cache enabled — click to disable">
+                            onclick="rappture.toggleCache(this)" title="Cache enabled — click to disable"
+                            aria-label="Disable simulation cache">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                 stroke-linejoin="round" aria-hidden="true">
@@ -102,12 +108,12 @@
         {% block content %}{% endblock %}
     </main>
     <div id="rp-tooltip" role="tooltip" aria-hidden="true"></div>
-    <footer id="rp-footer" class="rp-footer" aria-live="polite" aria-atomic="true">
+    <footer id="rp-footer" class="rp-footer">
         <span id="rp-footer-status" class="rp-footer-status"></span>
         <span class="rp-footer-sep"></span>
         <span id="rp-footer-stats" class="rp-footer-stats"></span>
     </footer>
-    <script src="{{ base_path }}/static/js/rappture.js?v=20260309d"></script>
+    <script src="{{ base_path }}/static/js/rappture.js?v=20260711f"></script>
     <script src="{{ base_path }}/static/js/rp-utils.js?v=20260305b"></script>
     <script src="{{ base_path }}/static/js/rp-renderers-simple.js?v=20260305a"></script>
     <script src="{{ base_path }}/static/js/rp-input-drawing.js?v=20260305a"></script>

@@ -57,3 +57,6 @@ env/
 # Misc
 *.log
 *.tmp
+
+# Visual test artifacts
+tests/visual/screenshots/

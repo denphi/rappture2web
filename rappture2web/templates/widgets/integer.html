@@ -19,7 +19,7 @@
            {% if widget.attrs.min %}min="{{ widget.attrs.min | strip_units }}"{% endif %}
            {% if widget.attrs.max %}max="{{ widget.attrs.max | strip_units }}"{% endif %}
            step="1"
-           {% if widget.description %}aria-describedby="{{ input_id }}-desc"{% endif %}
+           {% if widget.description or widget.hints %}aria-describedby="{% if widget.description %}{{ input_id }}-desc{% endif %}{% if widget.hints %} {{ input_id }}-hint{% endif %}"{% endif %}
            {% if widget.color or widget.attrs.color %}oninput="rappture.updateInputColor(this)" onchange="rappture.updateInputColor(this)"{% endif %}>
     {% if uq_eligible %}
     <select class="rp-uq-dist-select" aria-label="Distribution type for {{ widget.label or widget.id }}"
@@ -57,6 +57,6 @@
     <div class="rp-color-bar" aria-hidden="true" style="height:6px;border-radius:3px;margin-top:3px"></div>
     {% endif %}
     {% if widget.hints %}
-    <small class="rp-hints">{{ widget.hints }}</small>
+    <small id="{{ input_id }}-hint" class="rp-hints">{{ widget.hints }}</small>
     {% endif %}
 </div>

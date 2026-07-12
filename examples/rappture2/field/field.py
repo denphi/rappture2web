@@ -58,7 +58,7 @@ xx, yy = np.meshgrid(x, y, indexing='ij')
 pts = formula(xx, yy, 1)
 f2d['component.values'] = pts
 
-vizmethod = rx['input.choice(3D).current'].value
+vizmethod = rx['input.choice(render3d).current'].value
 
 if vizmethod == 'grid':
     m3d = rx['output.mesh(m3d)']

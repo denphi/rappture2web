@@ -19,21 +19,54 @@ _BUNDLED_XSD = Path(__file__).parent / "contract.xsd"
 # XSI namespace used for schemaLocation attributes
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 
+# Cache compiled XSD schemas keyed by absolute path + mtime so a server
+# parsing many tool.xml files (or one file repeatedly on hot-reload) does
+# not recompile the schema on every call.
+_SCHEMA_CACHE: dict[tuple[str, int], object] = {}
+
+# Surface lxml-missing exactly once per process so the user sees a clear
+# warning instead of silently losing schema validation.
+_LXML_WARNED = False
+
+
+def _load_schema(xsd_path: Path):
+    """Return a compiled lxml XMLSchema for *xsd_path*, or None if lxml missing."""
+    global _LXML_WARNED
+    try:
+        from lxml import etree
+    except ImportError:
+        if not _LXML_WARNED:
+            logger.warning(
+                "lxml is not installed; tool.xml schema validation is disabled. "
+                "Install lxml to enable contract enforcement."
+            )
+            _LXML_WARNED = True
+        return None
+
+    try:
+        mtime = xsd_path.stat().st_mtime_ns
+    except OSError:
+        mtime = 0
+    key = (str(xsd_path), mtime)
+    cached = _SCHEMA_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with xsd_path.open("rb") as f:
+        schema = etree.XMLSchema(etree.parse(f))
+    _SCHEMA_CACHE[key] = schema
+    return schema
+
 
 def _validate_against_schema(xml_path: Path, xsd_path: Path) -> None:
     """Validate *xml_path* against *xsd_path* using lxml.
 
     Raises ValueError listing all validation errors if the document is invalid.
-    Raises ImportError if lxml is not installed (validation is skipped).
+    Silently skips (with a one-time warning) when lxml is not installed.
     """
-    try:
-        from lxml import etree
-    except ImportError:
-        logger.debug("lxml not available — skipping schema validation of %s", xml_path)
+    schema = _load_schema(xsd_path)
+    if schema is None:
         return
-
-    with xsd_path.open() as f:
-        schema = etree.XMLSchema(etree.parse(f))
+    from lxml import etree
     doc = etree.parse(str(xml_path))
     if not schema.validate(doc):
         errors = "\n".join(str(e) for e in schema.error_log)
@@ -857,15 +890,33 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
     schema_loc = root.get(f"{{{_XSI_NS}}}noNamespaceSchemaLocation")
     has_contract = root.find("tool/contract") is not None
 
-    # A tool is considered "new-format" when it explicitly declares a schema
-    # location.  New-format tools MUST include a <contract> block — omitting
-    # it is an error so that newer tools cannot silently bypass enforcement.
-    is_new_format = bool(schema_loc)
+    # A tool is considered "new-format" when either:
+    #   - it declares a schema via xsi:noNamespaceSchemaLocation, or
+    #   - its <tool><version> starts with "2." (Rappture 2.x)
+    # Either marker requires a <contract> block so v2 tools cannot silently
+    # bypass enforcement.
+    version_text = ""
+    tool_node = root.find("tool")
+    if tool_node is not None:
+        version_node = tool_node.find("version")
+        if version_node is not None:
+            version_text = (version_node.text or "").strip()
+            # Inline form: <version>2.0</version> wins.  If the tool uses a
+            # nested <version><application><revision>... pattern look for an
+            # explicit "schema" child carrying the schema version.
+            schema_node = version_node.find("schema")
+            if schema_node is not None and (schema_node.text or "").strip():
+                version_text = schema_node.text.strip()
+    is_v2 = version_text.startswith("2.")
+    is_new_format = bool(schema_loc) or is_v2
 
     if is_new_format and not has_contract:
+        marker = (
+            f"schema {schema_loc!r}" if schema_loc else f"version {version_text!r}"
+        )
         raise ValueError(
-            f"{xml_path.name}: tool declares schema {schema_loc!r} but is missing "
-            f"<tool><contract>.  New-format tools must include a contract."
+            f"{xml_path.name}: tool declares {marker} but is missing "
+            f"<tool><contract>.  Rappture 2.x tools must include a contract."
         )
 
     if schema_loc:
@@ -898,11 +949,19 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
             uq_enabled=(uq_text in ("true", "yes", "1")),
             cache_enabled=(cache_text not in ("false", "no", "0")),
         )
-        # Parse <contract> block if present
+        # Parse <contract> block if present.  Structural errors (duplicate
+        # singletons, missing id) and semantic errors (label/default/range
+        # rules) are collected together and surfaced in a single ValueError.
         contract_elem = tool_elem.find("contract")
         if contract_elem is not None:
-            tool_def.contract = _parse_contract(contract_elem)
-            _validate_contract_semantics(tool_def.contract, xml_path)
+            contract_errors: list[str] = []
+            tool_def.contract = _parse_contract(contract_elem, contract_errors)
+            _validate_contract_semantics(tool_def.contract, xml_path, contract_errors)
+            if contract_errors:
+                raise ValueError(
+                    f"Contract semantic errors in {xml_path}:\n"
+                    + "\n".join(f"  - {e}" for e in contract_errors)
+                )
 
     # Parse <input> section
     input_elem = root.find("input")
@@ -924,18 +983,112 @@ def parse_tool_xml(xml_path: str, base_path: str = "") -> ToolDef:  # base_path 
     return tool_def
 
 
-def _parse_contract(contract_elem) -> dict:
-    """Return a lightweight dict representation of <contract><input>/<output>."""
+# ── Contract widget-type taxonomy ────────────────────────────────────────────
+# Used by the validator and by runtime output checks.  Keep in sync with the
+# XSD's ContractInput/OutputSectionType elements.
+
+# Input widget types that must appear in <tool><contract><input>.
+_CONTRACT_INPUT_TYPES = {
+    "number", "integer", "boolean", "string", "choice",
+    "multichoice", "periodicelement", "file",
+}
+
+# Runtime <input> widget types that carry data and must be declared.
+_DATA_INPUT_TYPES = set(_CONTRACT_INPUT_TYPES)
+# Runtime <input> widget types that are purely UI layout — not contract-bound.
+_UI_INPUT_TYPES = {
+    "group", "phase", "note", "separator", "loader", "image", "drawing",
+    "structure",
+}
+
+# Output widget types that may appear in <tool><contract><output>.
+_CONTRACT_OUTPUT_TYPES = {
+    "number", "integer", "string", "boolean", "curve", "histogram", "field",
+    "image", "table", "structure", "drawing", "log", "sequence", "mesh",
+    "mapviewer",
+}
+
+# Types that the runtime parser normalises into other types.  When checking
+# runtime-produced output against the contract, the contract may legally
+# declare either side of the pair.
+_OUTPUT_TYPE_ALIASES: dict[str, set[str]] = {
+    "drawing":   {"drawing", "structure"},
+    "structure": {"drawing", "structure"},
+}
+
+# Singleton children that must not appear more than once inside a contract
+# widget.  <option> and <preset> are intentionally absent — they may repeat.
+_CONTRACT_SINGLETON_CHILDREN = {
+    "about", "default", "units", "min", "max", "accept", "returnvalue",
+    "active", "inactive",
+}
+
+
+def _output_types_match(declared: str, actual: str) -> bool:
+    """Return True when *actual* is acceptable for a contract that declares *declared*."""
+    if not declared or not actual:
+        return True
+    if declared == actual:
+        return True
+    aliases = _OUTPUT_TYPE_ALIASES.get(declared)
+    if aliases and actual in aliases:
+        return True
+    return False
+
+
+def _parse_contract(contract_elem, errors: list[str]) -> dict:
+    """Return a lightweight dict representation of <contract><input>/<output>.
+
+    Duplicate singleton children (e.g. two <default> tags) are recorded into
+    *errors* but parsing continues so the validator can produce all messages
+    in one pass.
+    """
     result: dict = {"inputs": {}, "outputs": {}}
+
+    def _check_singletons(parent, parent_id, kind):
+        seen: dict[str, int] = {}
+        for c in parent:
+            if c.tag in _CONTRACT_SINGLETON_CHILDREN:
+                seen[c.tag] = seen.get(c.tag, 0) + 1
+        for tag, count in seen.items():
+            if count > 1:
+                errors.append(
+                    f"contract {kind} '{parent_id}': <{tag}> appears {count} times "
+                    f"(must appear at most once)"
+                )
+
+    def _parse_options(child) -> list[dict]:
+        opts: list[dict] = []
+        for opt in child.findall("option"):
+            about = opt.find("about")
+            label = _get_text(about, "label") if about is not None else ""
+            value = _get_text(opt, "value")
+            if not value:
+                value = label
+            opts.append({
+                "id": opt.get("id", ""),
+                "label": label,
+                "value": value,
+            })
+        return opts
 
     input_elem = contract_elem.find("input")
     if input_elem is not None:
         for child in input_elem:
             widget_id = child.get("id")
             if not widget_id:
+                errors.append(
+                    f"contract input <{child.tag}>: missing required 'id' attribute"
+                )
                 continue
+            if widget_id in result["inputs"]:
+                errors.append(
+                    f"contract input '{widget_id}': duplicate id"
+                )
+                continue
+            _check_singletons(child, widget_id, "input")
             about = child.find("about")
-            result["inputs"][widget_id] = {
+            entry = {
                 "type":        child.tag,
                 "label":       _get_text(about, "label")       if about is not None else "",
                 "description": _get_text(about, "description") if about is not None else "",
@@ -944,13 +1097,25 @@ def _parse_contract(contract_elem) -> dict:
                 "min":         _get_text(child, "min"),
                 "max":         _get_text(child, "max"),
             }
+            if child.tag in ("choice", "multichoice"):
+                entry["options"] = _parse_options(child)
+            result["inputs"][widget_id] = entry
 
     output_elem = contract_elem.find("output")
     if output_elem is not None:
         for child in output_elem:
             widget_id = child.get("id")
             if not widget_id:
+                errors.append(
+                    f"contract output <{child.tag}>: missing required 'id' attribute"
+                )
                 continue
+            if widget_id in result["outputs"]:
+                errors.append(
+                    f"contract output '{widget_id}': duplicate id"
+                )
+                continue
+            _check_singletons(child, widget_id, "output")
             about = child.find("about")
             result["outputs"][widget_id] = {
                 "type":        child.tag,
@@ -962,116 +1127,236 @@ def _parse_contract(contract_elem) -> dict:
     return result
 
 
-def _validate_contract_semantics(contract: dict, xml_path: Path) -> None:
-    """Raise ValueError if any contract entry is missing required fields.
+_NUMERIC_TYPES = {"number", "integer"}
 
-    The XSD uses xs:choice minOccurs=0 (to allow order-independence), so it
-    cannot enforce presence of label/description/default at schema-parse time.
-    This function enforces those rules in Python after parsing.
+
+def _parse_numeric(value: str):
+    """Parse a Rappture numeric string (optionally suffixed with units).
+
+    Returns (value, units_suffix) or (None, '') if no leading number is found.
     """
-    errors: list[str] = []
+    if value is None:
+        return None, ""
+    s = str(value).strip()
+    if not s:
+        return None, ""
+    m = re.match(r'^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*(.*)$', s)
+    if not m:
+        return None, ""
+    try:
+        num = float(m.group(1))
+    except ValueError:
+        return None, ""
+    suffix = (m.group(2) or "").strip()
+    return num, suffix
 
+
+def _validate_contract_semantics(contract: dict, xml_path: Path, errors: list[str]) -> None:
+    """Append semantic errors for the parsed contract dict to *errors*.
+
+    Enforces what the XSD cannot express:
+      - required <about><label>/<description> on every entry
+      - required <default> for input types that need one
+      - numeric <default>/<min>/<max> consistency (min ≤ default ≤ max)
+      - <default> for choice/multichoice must be a declared <option> value or label
+    """
     # Types whose default value is semantically required for the tool to run.
     # boolean is excluded because its falsy default ("off") reads as empty string.
-    _REQUIRES_DEFAULT = {"number", "integer", "string", "choice", "multichoice", "periodicelement", "file"}
+    _REQUIRES_DEFAULT = {"number", "integer", "string", "choice", "multichoice",
+                         "periodicelement", "file"}
 
     for widget_id, entry in contract.get("inputs", {}).items():
+        wtype = entry.get("type", "")
         if not entry.get("label"):
             errors.append(f"contract input '{widget_id}': missing <about><label>")
         if not entry.get("description"):
             errors.append(f"contract input '{widget_id}': missing <about><description>")
-        if entry.get("type") in _REQUIRES_DEFAULT and entry.get("default", "") == "":
+        if wtype in _REQUIRES_DEFAULT and entry.get("default", "") == "":
+            # 'file' default is conventionally optional in classic Rappture; treat
+            # the contract requirement uniformly because the contract is meant to
+            # be authoritative.  Callers that need a fileless default can omit
+            # the widget from the contract entirely.
             errors.append(f"contract input '{widget_id}': missing <default>")
 
+        # ── Numeric consistency ─────────────────────────────────────────────
+        # Numeric comparisons only run when all relevant values share the
+        # same unit suffix (or are all unitless).  Cross-unit comparisons
+        # would require a unit-conversion table and produce false positives;
+        # the contract leaves unit-aware bounds checking to the runtime.
+        if wtype in _NUMERIC_TYPES:
+            def _np(field_name):
+                return _parse_numeric(entry.get(field_name, ""))
+
+            min_n, min_u = _np("min")
+            max_n, max_u = _np("max")
+            def_n, def_u = _np("default")
+
+            if (min_n is not None and max_n is not None
+                    and min_u == max_u and min_n > max_n):
+                errors.append(
+                    f"contract input '{widget_id}': <min>={entry['min']} is greater "
+                    f"than <max>={entry['max']}"
+                )
+            if (def_n is not None and min_n is not None
+                    and def_u == min_u and def_n < min_n):
+                errors.append(
+                    f"contract input '{widget_id}': <default>={entry['default']} "
+                    f"is below <min>={entry['min']}"
+                )
+            if (def_n is not None and max_n is not None
+                    and def_u == max_u and def_n > max_n):
+                errors.append(
+                    f"contract input '{widget_id}': <default>={entry['default']} "
+                    f"is above <max>={entry['max']}"
+                )
+            if wtype == "integer":
+                # Integer entries should have integer-valued numerics.  Accept
+                # things like "5" or "5.0"; reject "5.5".
+                for field_name in ("default", "min", "max"):
+                    raw = entry.get(field_name, "")
+                    n, _ = _parse_numeric(raw)
+                    if n is not None and float(int(n)) != n:
+                        errors.append(
+                            f"contract input '{widget_id}': <{field_name}>={raw} "
+                            f"is not an integer"
+                        )
+
+        # ── Choice / multichoice: default must match an option ──────────────
+        if wtype in ("choice", "multichoice"):
+            options = entry.get("options", []) or []
+            allowed: set[str] = set()
+            for opt in options:
+                if opt.get("value"):
+                    allowed.add(opt["value"])
+                if opt.get("label"):
+                    allowed.add(opt["label"])
+            if not options:
+                errors.append(
+                    f"contract input '{widget_id}': <{wtype}> declares no <option>s"
+                )
+            default = entry.get("default", "")
+            if default and options:
+                if wtype == "multichoice":
+                    # multichoice default may be a comma-separated list
+                    picked = [v.strip() for v in default.split(",") if v.strip()]
+                    bad = [v for v in picked if v not in allowed]
+                    if bad:
+                        errors.append(
+                            f"contract input '{widget_id}': <default>='{default}' "
+                            f"contains value(s) not in <option> set: {', '.join(bad)}"
+                        )
+                else:
+                    if default not in allowed:
+                        errors.append(
+                            f"contract input '{widget_id}': <default>='{default}' "
+                            f"is not one of the declared <option> values"
+                        )
+
     for widget_id, entry in contract.get("outputs", {}).items():
+        wtype = entry.get("type", "")
+        if wtype and wtype not in _CONTRACT_OUTPUT_TYPES:
+            errors.append(
+                f"contract output '{widget_id}': unknown type '<{wtype}>'"
+            )
         if not entry.get("label"):
             errors.append(f"contract output '{widget_id}': missing <about><label>")
         if not entry.get("description"):
             errors.append(f"contract output '{widget_id}': missing <about><description>")
 
-    if errors:
-        raise ValueError(
-            f"Contract semantic errors in {xml_path}:\n" + "\n".join(f"  - {e}" for e in errors)
-        )
-
 
 def _validate_contract_vs_runtime(tool_def, xml_path: Path) -> None:
-    """Check that runtime <input> widgets are consistent with the contract.
+    """Check that runtime <input>/<output> declarations match the contract.
 
-    Rules:
-    - Every contract input id must appear in the runtime <input> tree.
-    - Every runtime data widget (number/integer/boolean/string/choice/multichoice/
-      periodicelement/file) must be declared in the contract — undeclared data
-      widgets are an error.
-    - UI-only widgets (group, phase, note, separator, loader, image, drawing) may
-      have ids not in the contract; they are silently allowed.
-    - For each matched widget: type, units, min, max must not contradict the
-      contract (runtime may omit fields declared by the contract, but must not
-      supply a different value).
+    All errors discovered across input and output checks are accumulated and
+    surfaced in a single ValueError so tool authors don't have to fix issues
+    one at a time.
     """
     contract_inputs: dict = tool_def.contract.get("inputs", {})
-    if not contract_inputs:
-        return
+    contract_outputs: dict = tool_def.contract.get("outputs", {})
 
-    # Widget types that carry data and must be declared in the contract.
-    _DATA_TYPES = {"number", "integer", "boolean", "string", "choice",
-                   "multichoice", "periodicelement", "file"}
-    # Widget types that are purely UI layout — allowed without contract entry.
-    _UI_TYPES = {"group", "phase", "note", "separator", "loader", "image", "drawing"}
-
-    # Collect a flat map of id → widget for all widgets in the runtime tree.
-    def _collect_widgets(widgets) -> dict:
-        result: dict = {}
-        for w in widgets:
-            wid = getattr(w, "id", None)
-            if wid:
-                result[wid] = w
-            if hasattr(w, "children"):
-                result.update(_collect_widgets(w.children))
-        return result
-
-    runtime_map = _collect_widgets(tool_def.inputs)
-    contract_ids = set(contract_inputs.keys())
     errors: list[str] = []
 
-    # Check for undeclared data widgets in the runtime section.
-    for wid, w in runtime_map.items():
-        if w.type in _DATA_TYPES and wid not in contract_ids:
-            errors.append(
-                f"input '{wid}' (type '{w.type}') is present in <input> but not declared in the contract"
-            )
-        elif w.type not in _DATA_TYPES and w.type not in _UI_TYPES:
-            # Unknown type — let it through but warn so we can extend later.
-            logger.debug("%s: unknown runtime input type '%s' for id '%s'", xml_path.name, w.type, wid)
+    # ── Inputs ──────────────────────────────────────────────────────────────
+    if contract_inputs:
+        def _collect_widgets(widgets) -> dict:
+            result: dict = {}
+            for w in widgets:
+                wid = getattr(w, "id", None)
+                if wid:
+                    result[wid] = w
+                if hasattr(w, "children"):
+                    result.update(_collect_widgets(w.children))
+            return result
 
-    # Check for contract inputs missing from runtime entirely.
-    runtime_ids = set(runtime_map.keys())
-    for cid in sorted(contract_ids - runtime_ids):
-        errors.append(f"contract input '{cid}' is missing from the runtime <input> section")
+        runtime_map = _collect_widgets(tool_def.inputs)
+        contract_ids = set(contract_inputs.keys())
 
-    if errors:
-        raise ValueError(
-            f"Contract/runtime conflicts in {xml_path.name}:\n"
-            + "\n".join(f"  - {e}" for e in errors)
-        )
-
-    # For each matched contract input verify type and boundary fields agree.
-    for wid, centry in contract_inputs.items():
-        w = runtime_map.get(wid)
-        if w is None:
-            continue  # already reported above
-        if w.type != centry["type"]:
-            errors.append(
-                f"input '{wid}': contract type '{centry['type']}' but runtime type '{w.type}'"
-            )
-            continue
-        for field_name in ("units", "min", "max"):
-            c_val = centry.get(field_name, "")
-            r_val = w.attrs.get(field_name, "") if hasattr(w, "attrs") else ""
-            if c_val and r_val and c_val != r_val:
+        for wid, w in runtime_map.items():
+            if w.type in _DATA_INPUT_TYPES and wid not in contract_ids:
                 errors.append(
-                    f"input '{wid}': contract {field_name}='{c_val}' "
-                    f"conflicts with runtime {field_name}='{r_val}'"
+                    f"input '{wid}' (type '{w.type}') is present in <input> "
+                    f"but not declared in the contract"
+                )
+            elif w.type not in _DATA_INPUT_TYPES and w.type not in _UI_INPUT_TYPES:
+                logger.debug(
+                    "%s: unknown runtime input type '%s' for id '%s'",
+                    xml_path.name, w.type, wid,
+                )
+
+        runtime_ids = set(runtime_map.keys())
+        for cid in sorted(contract_ids - runtime_ids):
+            errors.append(
+                f"contract input '{cid}' is missing from the runtime <input> section"
+            )
+
+        for wid, centry in contract_inputs.items():
+            w = runtime_map.get(wid)
+            if w is None:
+                continue  # already reported above
+            if w.type != centry["type"]:
+                errors.append(
+                    f"input '{wid}': contract type '{centry['type']}' "
+                    f"but runtime type '{w.type}'"
+                )
+                continue
+            for field_name in ("units", "min", "max"):
+                c_val = centry.get(field_name, "")
+                r_val = w.attrs.get(field_name, "") if hasattr(w, "attrs") else ""
+                if c_val and r_val and c_val != r_val:
+                    errors.append(
+                        f"input '{wid}': contract {field_name}='{c_val}' "
+                        f"conflicts with runtime {field_name}='{r_val}'"
+                    )
+
+    # ── Outputs ─────────────────────────────────────────────────────────────
+    if contract_outputs:
+        runtime_outputs = {
+            getattr(o, "id", ""): o for o in tool_def.outputs if getattr(o, "id", "")
+        }
+        contract_out_ids = set(contract_outputs.keys())
+
+        for oid, o in runtime_outputs.items():
+            if oid not in contract_out_ids:
+                # Runtime output present but not declared in contract.  This is
+                # only an error when the type is one the contract covers; pure
+                # UI types (e.g. group) are allowed without a contract entry.
+                if o.type in _CONTRACT_OUTPUT_TYPES:
+                    errors.append(
+                        f"output '{oid}' (type '{o.type}') is present in <output> "
+                        f"but not declared in the contract"
+                    )
+
+        for oid, centry in contract_outputs.items():
+            o = runtime_outputs.get(oid)
+            if o is None:
+                # Missing runtime <output> is allowed: many tools omit pre-decl
+                # of outputs and emit them dynamically.  The runtime checks
+                # (check_output_against_contract) enforce production-time rules.
+                continue
+            if not _output_types_match(centry.get("type", ""), o.type):
+                errors.append(
+                    f"output '{oid}': contract type '{centry['type']}' "
+                    f"but runtime type '{o.type}'"
                 )
 
     if errors:
@@ -1079,6 +1364,47 @@ def _validate_contract_vs_runtime(tool_def, xml_path: Path) -> None:
             f"Contract/runtime conflicts in {xml_path.name}:\n"
             + "\n".join(f"  - {e}" for e in errors)
         )
+
+
+def check_output_against_contract(contract: dict, output_id: str,
+                                  output_type: str) -> str:
+    """Shared runtime check used by both library and classic modes.
+
+    Returns an empty string if the produced output is consistent with the
+    contract, otherwise a single human-readable error string.  Internal
+    sentinel ids (those starting with "__") and tools without a contract
+    are always accepted.
+    """
+    if not contract or not output_id:
+        return ""
+    if output_id.startswith("__"):
+        return ""
+    outputs = contract.get("outputs", {}) or {}
+    if not outputs:
+        return ""
+    if output_id not in outputs:
+        return (
+            f"Output '{output_id}' (type={output_type!r}) is not declared "
+            f"in the tool contract."
+        )
+    declared = outputs[output_id].get("type", "")
+    if output_type and declared and not _output_types_match(declared, output_type):
+        return (
+            f"Output '{output_id}': contract declares type '{declared}' "
+            f"but got '{output_type}'."
+        )
+    return ""
+
+
+def missing_contract_outputs(contract: dict, produced_ids) -> list[str]:
+    """Return sorted list of contract output ids not present in *produced_ids*."""
+    if not contract:
+        return []
+    outputs = contract.get("outputs", {}) or {}
+    if not outputs:
+        return []
+    produced = {pid for pid in produced_ids if pid and not pid.startswith("__")}
+    return sorted(set(outputs.keys()) - produced)
 
 
 def _encode_tool_files_relpath(target: Path, tool_dir: Path) -> str:
@@ -1098,8 +1424,128 @@ def _encode_tool_files_relpath(target: Path, tool_dir: Path) -> str:
     return "/".join(encoded_parts)
 
 
+# Conservative HTML allowlist used for <note> file:// content.  We deliberately
+# omit <script>, <iframe>, <object>, <embed>, <form>, <input>, <button>, and
+# all event-handler attributes.  Extend cautiously — every added tag/attribute
+# is a potential XSS vector.
+_NOTE_ALLOWED_TAGS = frozenset({
+    "a", "abbr", "b", "blockquote", "br", "caption", "code", "col", "colgroup",
+    "dd", "div", "dl", "dt", "em", "figcaption", "figure", "h1", "h2", "h3",
+    "h4", "h5", "h6", "hr", "i", "img", "kbd", "li", "ol", "p", "pre", "q",
+    "samp", "section", "small", "span", "strong", "sub", "sup", "table",
+    "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul", "var",
+})
+_NOTE_ALLOWED_ATTRS_PER_TAG: dict = {
+    "a":   {"href", "title", "rel", "target"},
+    "img": {"src", "alt", "title", "width", "height"},
+    "td":  {"colspan", "rowspan", "align"},
+    "th":  {"colspan", "rowspan", "align", "scope"},
+    "col": {"span", "width"},
+}
+# Attributes allowed on any allowed tag.
+_NOTE_GLOBAL_ATTRS = frozenset({"id", "class", "title", "lang", "dir"})
+
+
+def _is_safe_url(raw: str) -> bool:
+    """Return True when *raw* is a URL the note sanitizer should keep."""
+    lower = raw.strip().lower()
+    # Reject anything that could execute script in any browser.
+    if lower.startswith(("javascript:", "vbscript:", "data:text/html")):
+        return False
+    return True
+
+
+def _sanitize_note_html(html: str) -> str:
+    """Strip disallowed tags/attributes from a note HTML fragment.
+
+    Implemented on top of html.parser so we don't add a runtime dep.  This is
+    a coarse-grained filter: dangerous tags are dropped (their text content
+    is preserved); disallowed attributes are stripped silently.
+    """
+    from html.parser import HTMLParser
+    from html import escape
+
+    out: list[str] = []
+    # Tags we drop entirely (including text) — script/style content must not
+    # leak into the output even as text, since the parser preserves CDATA-
+    # like behaviour for them.
+    SUPPRESS_CONTENT = {"script", "style"}
+
+    class _Sanitizer(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self._suppress_depth = 0
+
+        def _allowed_attrs(self, tag: str):
+            return _NOTE_ALLOWED_ATTRS_PER_TAG.get(tag, set()) | _NOTE_GLOBAL_ATTRS
+
+        def handle_starttag(self, tag, attrs):
+            if tag in SUPPRESS_CONTENT:
+                self._suppress_depth += 1
+                return
+            if tag not in _NOTE_ALLOWED_TAGS:
+                return
+            allowed = self._allowed_attrs(tag)
+            pieces = [f"<{tag}"]
+            for name, value in attrs:
+                if name is None or name.lower() not in allowed:
+                    continue
+                if name.lower().startswith("on"):
+                    continue  # event handlers
+                if value is None:
+                    pieces.append(f" {name}")
+                    continue
+                if name.lower() in ("href", "src") and not _is_safe_url(value):
+                    continue
+                pieces.append(f' {name}="{escape(value, quote=True)}"')
+            pieces.append(">")
+            out.append("".join(pieces))
+
+        def handle_endtag(self, tag):
+            if tag in SUPPRESS_CONTENT:
+                if self._suppress_depth > 0:
+                    self._suppress_depth -= 1
+                return
+            if tag in _NOTE_ALLOWED_TAGS:
+                out.append(f"</{tag}>")
+
+        def handle_startendtag(self, tag, attrs):
+            self.handle_starttag(tag, attrs)
+            if tag not in SUPPRESS_CONTENT and tag in _NOTE_ALLOWED_TAGS:
+                out.append(f"</{tag}>")
+
+        def handle_data(self, data):
+            if self._suppress_depth > 0:
+                return
+            out.append(escape(data, quote=False))
+
+        def handle_entityref(self, name):
+            if self._suppress_depth > 0:
+                return
+            out.append(f"&{name};")
+
+        def handle_charref(self, name):
+            if self._suppress_depth > 0:
+                return
+            out.append(f"&#{name};")
+
+    parser = _Sanitizer()
+    parser.feed(html)
+    parser.close()
+    return "".join(out)
+
+
 def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
-    """Resolve file:// references in note widget contents and inline images."""
+    """Resolve file:// references in note widget contents and inline images.
+
+    Two protections layered here:
+
+      - Path traversal: the resolved file path must stay within *tool_dir*.
+        A note referencing file://../../etc/passwd is silently ignored.
+      - HTML sanitization: the loaded HTML is run through _sanitize_note_html
+        so a malicious or compromised note file cannot inject <script>,
+        event handlers, or javascript: URLs into the rendered page.
+    """
     import re
     tool_dir = tool_dir.resolve()
     for w in widgets:
@@ -1107,7 +1553,19 @@ def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
             contents = w.attrs.get("contents", "")
             if contents and contents.startswith("file://"):
                 fname = contents[7:].strip()
-                fpath = tool_dir / fname
+                # Resolve and confine the target to tool_dir.  Reject any
+                # path that escapes via "..", absolute paths, or symlinks.
+                try:
+                    fpath = (tool_dir / fname).resolve()
+                except (OSError, RuntimeError):
+                    continue
+                try:
+                    fpath.relative_to(tool_dir)
+                except ValueError:
+                    logger.warning(
+                        "note file:// reference escapes tool_dir: %s", fname
+                    )
+                    continue
                 if fpath.exists():
                     html = fpath.read_text(errors="replace")
                     # Rewrite relative src/href paths to go through /tool-files/.
@@ -1150,6 +1608,7 @@ def _resolve_note_contents(widgets, tool_dir: Path, base_path: str = ""):
                         html,
                         flags=re.IGNORECASE,
                     )
+                    html = _sanitize_note_html(html)
                     w.attrs["contents"] = "html://" + html
         # Recurse into group/phase children
         if hasattr(w, "children") and w.children:

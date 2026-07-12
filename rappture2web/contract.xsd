@@ -126,25 +126,27 @@
     </xs:choice>
   </xs:complexType>
 
-  <!-- Contract output section: strict output declarations -->
+  <!-- Contract output section: strict output declarations.
+       The set of element names here MUST stay in sync with OutputSectionType
+       below; mismatched sets mean a tool can declare an output that cannot
+       legally appear in <output> at runtime. -->
   <xs:complexType name="ContractOutputSectionType">
     <xs:choice minOccurs="0" maxOccurs="unbounded">
       <xs:element name="number"    type="ContractOutputNumberType"/>
       <xs:element name="integer"   type="ContractOutputNumberType"/>
       <xs:element name="string"    type="ContractOutputStringType"/>
+      <xs:element name="boolean"   type="ContractOutputGenericType"/>
       <xs:element name="curve"     type="ContractCurveType"/>
+      <xs:element name="histogram" type="ContractCurveType"/>
       <xs:element name="field"     type="ContractOutputGenericType"/>
       <xs:element name="image"     type="ContractOutputGenericType"/>
       <xs:element name="table"     type="ContractOutputGenericType"/>
       <xs:element name="structure" type="ContractOutputGenericType"/>
+      <xs:element name="drawing"   type="ContractOutputGenericType"/>
       <xs:element name="log"       type="ContractOutputGenericType"/>
       <xs:element name="sequence"  type="ContractOutputGenericType"/>
-      <xs:element name="histogram" type="ContractCurveType"/>
-      <!-- Additional supported output renderers -->
-      <xs:element name="boolean"   type="ContractOutputGenericType"/>
-      <xs:element name="drawing"   type="ContractOutputGenericType"/>
-      <xs:element name="mapviewer" type="ContractOutputGenericType"/>
       <xs:element name="mesh"      type="ContractOutputGenericType"/>
+      <xs:element name="mapviewer" type="ContractOutputGenericType"/>
     </xs:choice>
   </xs:complexType>
 
@@ -152,11 +154,17 @@
        Contract input widget types
        All require: id, about[label+description], default
        Optional:    units, min, max (declare the authoritative bounds)
+
+       Note on multiplicity: the XSD allows each child element to repeat
+       because xs:choice cannot otherwise express "any-order, optional".
+       The Python validator (_validate_contract_semantics) rejects duplicate
+       singleton children at parse time, so a contract with two <default>
+       blocks will be rejected even though the XSD permits it.
   ══════════════════════════════════════════════════════════════════════════ -->
 
   <xs:complexType name="ContractNumberType">
     <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string"/>
       <xs:element name="units"   type="xs:string"/>
       <xs:element name="min"     type="xs:string"/>
@@ -168,8 +176,9 @@
 
   <xs:complexType name="ContractIntegerType">
     <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string"/>
+      <xs:element name="units"   type="xs:string"/>
       <xs:element name="min"     type="xs:string"/>
       <xs:element name="max"     type="xs:string"/>
       <xs:element name="preset"  type="PresetType"/>
@@ -179,7 +188,7 @@
 
   <xs:complexType name="ContractBooleanType">
     <xs:all>
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string"/>
     </xs:all>
     <xs:attribute name="id" type="WidgetIdType" use="required"/>
@@ -187,7 +196,7 @@
 
   <xs:complexType name="ContractStringType">
     <xs:all>
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string" minOccurs="0"/>
     </xs:all>
     <xs:attribute name="id" type="WidgetIdType" use="required"/>
@@ -195,7 +204,7 @@
 
   <xs:complexType name="ContractChoiceType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:choice minOccurs="0" maxOccurs="unbounded">
         <xs:element name="option"  type="ChoiceOptionType"/>
         <xs:element name="default" type="xs:string"/>
@@ -206,7 +215,7 @@
 
   <xs:complexType name="ContractMultiChoiceType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:choice minOccurs="0" maxOccurs="unbounded">
         <xs:element name="option"  type="MultiChoiceOptionType"/>
         <xs:element name="default" type="xs:string"/>
@@ -217,7 +226,7 @@
 
   <xs:complexType name="ContractPeriodicElementType">
     <xs:all>
-      <xs:element name="about"       type="AboutRequiredType"/>
+      <xs:element name="about"       type="AboutBlockType"/>
       <xs:element name="default"     type="xs:string"/>
       <xs:element name="returnvalue" type="xs:string" minOccurs="0"/>
       <xs:element name="active"      type="xs:string" minOccurs="0"/>
@@ -228,7 +237,7 @@
 
   <xs:complexType name="ContractFileType">
     <xs:all>
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string" minOccurs="0"/>
       <xs:element name="accept"  type="xs:string" minOccurs="0"/>
     </xs:all>
@@ -243,7 +252,7 @@
 
   <xs:complexType name="ContractOutputNumberType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:element name="units" type="xs:string" minOccurs="0"/>
     </xs:all>
     <xs:attribute name="id" type="WidgetIdType" use="required"/>
@@ -251,14 +260,14 @@
 
   <xs:complexType name="ContractOutputStringType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
     </xs:all>
     <xs:attribute name="id" type="WidgetIdType" use="required"/>
   </xs:complexType>
 
   <xs:complexType name="ContractCurveType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:element name="xaxis" type="AxisInfoType" minOccurs="0"/>
       <xs:element name="yaxis" type="AxisInfoType" minOccurs="0"/>
     </xs:all>
@@ -268,7 +277,7 @@
   <!-- Generic output: just needs about with label+description -->
   <xs:complexType name="ContractOutputGenericType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
     </xs:all>
     <xs:attribute name="id" type="WidgetIdType" use="required"/>
   </xs:complexType>
@@ -277,7 +286,7 @@
        <about> block
   ══════════════════════════════════════════════════════════════════════════ -->
 
-  <xs:complexType name="AboutRequiredType">
+  <xs:complexType name="AboutBlockType">
     <xs:choice minOccurs="0" maxOccurs="unbounded">
       <xs:element name="label"       type="xs:string"/>
       <xs:element name="description" type="xs:string"/>
@@ -339,14 +348,19 @@
       <xs:element name="number"    type="OutputNumberType"/>
       <xs:element name="integer"   type="OutputNumberType"/>
       <xs:element name="string"    type="OutputStringType"/>
+      <xs:element name="boolean"   type="OutputGenericType"/>
       <xs:element name="curve"     type="CurveOutputType"/>
+      <xs:element name="histogram" type="HistogramOutputType"/>
       <xs:element name="field"     type="FieldOutputType"/>
       <xs:element name="image"     type="ImageOutputType"/>
       <xs:element name="table"     type="TableOutputType"/>
       <xs:element name="structure" type="StructureOutputType"/>
+      <xs:element name="drawing"   type="OutputGenericType"/>
       <xs:element name="log"       type="LogOutputType"/>
       <xs:element name="sequence"  type="SequenceOutputType"/>
-      <xs:element name="histogram" type="HistogramOutputType"/>
+      <xs:element name="mesh"      type="OutputGenericType"/>
+      <xs:element name="mapviewer" type="OutputGenericType"/>
+      <xs:element name="group"     type="OutputGroupType"/>
     </xs:choice>
   </xs:complexType>
 
@@ -356,7 +370,7 @@
 
   <xs:complexType name="NumberWidgetType">
     <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string"/>
       <xs:element name="units"   type="xs:string"/>
       <xs:element name="min"     type="xs:string"/>
@@ -371,7 +385,7 @@
 
   <xs:complexType name="IntegerWidgetType">
     <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string"/>
       <xs:element name="min"     type="xs:string"/>
       <xs:element name="max"     type="xs:string"/>
@@ -384,7 +398,7 @@
 
   <xs:complexType name="BooleanWidgetType">
     <xs:all>
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string"/>
       <xs:element name="enable"  type="xs:string" minOccurs="0"/>
     </xs:all>
@@ -393,7 +407,7 @@
 
   <xs:complexType name="StringWidgetType">
     <xs:all>
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string" minOccurs="0"/>
       <xs:element name="size"    type="xs:string" minOccurs="0"/>
     </xs:all>
@@ -402,7 +416,7 @@
 
   <xs:complexType name="ChoiceWidgetType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:choice minOccurs="0" maxOccurs="unbounded">
         <xs:element name="option"  type="ChoiceOptionType"/>
         <xs:element name="default" type="xs:string"/>
@@ -421,7 +435,7 @@
 
   <xs:complexType name="MultiChoiceWidgetType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:choice minOccurs="0" maxOccurs="unbounded">
         <xs:element name="option"  type="MultiChoiceOptionType"/>
         <xs:element name="default" type="xs:string"/>
@@ -440,7 +454,7 @@
 
   <xs:complexType name="PeriodicElementWidgetType">
     <xs:all>
-      <xs:element name="about"       type="AboutRequiredType"/>
+      <xs:element name="about"       type="AboutBlockType"/>
       <xs:element name="default"     type="xs:string"/>
       <xs:element name="returnvalue" type="xs:string" minOccurs="0"/>
       <xs:element name="active"      type="xs:string" minOccurs="0"/>
@@ -451,7 +465,7 @@
 
   <xs:complexType name="FileWidgetType">
     <xs:all>
-      <xs:element name="about"   type="AboutRequiredType"/>
+      <xs:element name="about"   type="AboutBlockType"/>
       <xs:element name="default" type="xs:string" minOccurs="0"/>
       <xs:element name="accept"  type="xs:string" minOccurs="0"/>
     </xs:all>
@@ -586,7 +600,7 @@
 
   <xs:complexType name="OutputNumberType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:element name="units" type="xs:string" minOccurs="0"/>
     </xs:all>
     <xs:attribute name="id"       type="WidgetIdType" use="required"/>
@@ -595,7 +609,7 @@
 
   <xs:complexType name="OutputStringType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
     </xs:all>
     <xs:attribute name="id"       type="WidgetIdType" use="required"/>
     <xs:attribute name="required" type="xs:boolean"   default="false"/>
@@ -603,7 +617,7 @@
 
   <xs:complexType name="CurveOutputType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:element name="xaxis" type="AxisInfoType" minOccurs="0"/>
       <xs:element name="yaxis" type="AxisInfoType" minOccurs="0"/>
     </xs:all>
@@ -613,7 +627,7 @@
 
   <xs:complexType name="FieldOutputType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
     </xs:sequence>
     <xs:attribute name="id"       type="WidgetIdType" use="required"/>
@@ -622,7 +636,7 @@
 
   <xs:complexType name="ImageOutputType">
     <xs:all>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
     </xs:all>
     <xs:attribute name="id"       type="WidgetIdType" use="required"/>
     <xs:attribute name="required" type="xs:boolean"   default="false"/>
@@ -630,7 +644,7 @@
 
   <xs:complexType name="TableOutputType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
     </xs:sequence>
     <xs:attribute name="id"       type="WidgetIdType" use="required"/>
@@ -639,7 +653,7 @@
 
   <xs:complexType name="StructureOutputType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
     </xs:sequence>
     <xs:attribute name="id"       type="WidgetIdType" use="required"/>
@@ -656,7 +670,7 @@
 
   <xs:complexType name="SequenceOutputType">
     <xs:sequence>
-      <xs:element name="about" type="AboutRequiredType"/>
+      <xs:element name="about" type="AboutBlockType"/>
       <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
     </xs:sequence>
     <xs:attribute name="id"       type="WidgetIdType" use="required"/>
@@ -665,7 +679,7 @@
 
   <xs:complexType name="HistogramOutputType">
     <xs:sequence>
-      <xs:element name="about"     type="AboutRequiredType"/>
+      <xs:element name="about"     type="AboutBlockType"/>
       <xs:element name="xaxis"     type="AxisInfoType"         minOccurs="0"/>
       <xs:element name="yaxis"     type="AxisInfoType"         minOccurs="0"/>
       <xs:element name="component" type="HistogramComponentType" minOccurs="0" maxOccurs="unbounded"/>
@@ -677,6 +691,29 @@
   <xs:complexType name="HistogramComponentType">
     <xs:sequence minOccurs="0" maxOccurs="unbounded">
       <xs:any processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string"/>
+  </xs:complexType>
+
+  <!--
+    Generic runtime output element used for boolean / drawing / mapviewer /
+    mesh.  Accepts arbitrary content because each renderer has its own
+    payload structure; the contract guarantees the id/type, runtime content
+    is interpreted by the renderer.  The <about> child is accepted by the
+    wildcard; runtime parsers locate it by tag name regardless of position.
+  -->
+  <xs:complexType name="OutputGenericType" mixed="true">
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id"       type="WidgetIdType" use="required"/>
+    <xs:attribute name="required" type="xs:boolean"   default="false"/>
+  </xs:complexType>
+
+  <!-- Output groups overlay multiple child outputs sharing axes. -->
+  <xs:complexType name="OutputGroupType">
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
     </xs:sequence>
     <xs:attribute name="id" type="xs:string"/>
   </xs:complexType>
@@ -710,9 +747,14 @@
     </xs:all>
   </xs:complexType>
 
+  <!--
+    Widget ids must start with a letter or underscore so they form legal
+    identifiers downstream (driver.xml paths, command substitutions, Python
+    attribute access).  Leading digits are rejected.
+  -->
   <xs:simpleType name="WidgetIdType">
     <xs:restriction base="xs:string">
-      <xs:pattern value="[A-Za-z0-9][A-Za-z0-9_\-]*"/>
+      <xs:pattern value="[A-Za-z_][A-Za-z0-9_\-]*"/>
     </xs:restriction>
   </xs:simpleType>
 

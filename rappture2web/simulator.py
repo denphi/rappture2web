@@ -22,7 +22,34 @@ from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
-from .xml_parser import parse_run_xml, parse_tool_xml, parse_rappture_path, strip_units
+from .xml_parser import (
+    check_output_against_contract,
+    missing_contract_outputs,
+    parse_rappture_path,
+    parse_run_xml,
+    parse_tool_xml,
+    strip_units,
+)
+
+
+async def _kill_and_wait(proc, label: str = "process", wait_timeout: float = 5.0):
+    """Kill *proc* and await its exit so it doesn't linger as a zombie.
+
+    asyncio.subprocess.Process.kill() only sends SIGKILL; the OS keeps the
+    entry in the process table until something reaps it.  Awaiting wait()
+    triggers transport cleanup and reaps the child.  We bound the wait so a
+    truly stuck child can't block the outer caller forever.
+    """
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        return  # already gone
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=wait_timeout)
+    except asyncio.TimeoutError:
+        logger.warning("%s did not exit within %.1fs after SIGKILL", label, wait_timeout)
+    except Exception as exc:
+        logger.debug("error awaiting %s after kill: %s", label, exc)
 
 
 # ─── PUQ helpers ──────────────────────────────────────────────────────────────
@@ -799,7 +826,7 @@ async def run_uq_simulation(
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=120)
         except asyncio.TimeoutError:
-            proc.kill()
+            await _kill_and_wait(proc, "get_params.py")
             return {"status": "error", "log": "get_params.py timed out", "outputs": {}, "cached": False}
         if proc.returncode != 0:
             msg = err.decode("utf-8", errors="replace")
@@ -814,7 +841,20 @@ async def run_uq_simulation(
 
         with open(csv_path, newline="") as f:
             reader = csv.DictReader(f)
+            csv_fields = set(reader.fieldnames or [])
             collocation_rows = list(reader)
+
+        # Validate column headers: every UQ parameter should appear as @@<name>.
+        expected_cols = {f"@@{name}" for name in uq_param_names.values()}
+        missing_cols = expected_cols - csv_fields
+        if missing_cols:
+            msg = (
+                f"PUQ collocation CSV is missing expected columns: "
+                f"{', '.join(sorted(missing_cols))}. "
+                f"Found columns: {sorted(csv_fields)}"
+            )
+            await _log(f"[UQ] ERROR: {msg}\n")
+            return {"status": "error", "log": "".join(log_lines), "outputs": {}, "cached": False}
 
         await _log(f"[UQ] {len(collocation_rows)} collocation points to evaluate\n")
 
@@ -879,7 +919,7 @@ async def run_uq_simulation(
             try:
                 r_out, r_err = await asyncio.wait_for(proc_run.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
-                proc_run.kill()
+                await _kill_and_wait(proc_run, f"UQ run {i + 1}")
                 await _log(f"[UQ] Run {i + 1} timed out\n")
                 return {"status": "error", "log": "".join(log_lines), "outputs": {}, "cached": False}
 
@@ -951,7 +991,7 @@ async def run_uq_simulation(
         try:
             a_out, a_err = await asyncio.wait_for(proc_analyze.communicate(), timeout=300)
         except asyncio.TimeoutError:
-            proc_analyze.kill()
+            await _kill_and_wait(proc_analyze, "analyze.py")
             await _log("[UQ] analyze.py timed out\n")
             return {"status": "error", "log": "".join(log_lines), "outputs": {}, "cached": False}
 
@@ -971,6 +1011,25 @@ async def run_uq_simulation(
         else:
             await _log("[UQ] WARNING: run_uq.xml not generated\n")
 
+        # Move run_uq.xml into the history cache_dir so we can wipe uq_work_dir
+        # without losing the run XML referenced by RunHistory.
+        persisted_run_xml: str | None = None
+        if (
+            history is not None
+            and getattr(history, "_cache_dir", None)
+            and os.path.exists(run_uq_xml)
+        ):
+            try:
+                os.makedirs(history._cache_dir, exist_ok=True)
+                persisted_run_xml = os.path.join(
+                    history._cache_dir, f"run_uq_{pid}.xml"
+                )
+                shutil.copy(run_uq_xml, persisted_run_xml)
+            except OSError as exc:
+                logger.warning("could not persist run_uq.xml: %s", exc)
+                persisted_run_xml = None
+        run_xml_for_record = persisted_run_xml or run_uq_xml
+
         log = "".join(log_lines)
         run_record = None
         if history is not None:
@@ -979,14 +1038,14 @@ async def run_uq_simulation(
                 outputs=outputs,
                 log=log,
                 status="success",
-                run_xml=run_uq_xml,
+                run_xml=run_xml_for_record,
             )
 
         return {
             "status": "success",
             "outputs": outputs,
             "log": log,
-            "run_xml": run_uq_xml,
+            "run_xml": run_xml_for_record,
             "run_id": run_record["run_id"] if run_record else None,
             "run_num": run_record["run_num"] if run_record else None,
             "cached": False,
@@ -996,19 +1055,22 @@ async def run_uq_simulation(
     except Exception as exc:
         import traceback
         tb = traceback.format_exc()
+        logger.error("UQ run failed: %s", tb)
         return {
             "status": "error",
-            "log": "".join(log_lines) + f"\n{tb}",
+            "log": "".join(log_lines) + f"\nUQ run failed: {exc}",
             "outputs": {},
             "cached": False,
         }
     finally:
-        # Clean up wrapper scripts
-        for fname in Path(uq_work_dir).glob(".uq_*.sh"):
+        # Remove the per-run scratch directory so long-running servers don't
+        # accumulate unbounded CSV/HDF5/run.xml files.  Set
+        # RAPPTURE2WEB_KEEP_UQ_WORK_DIR=1 to retain it for debugging.
+        if os.environ.get("RAPPTURE2WEB_KEEP_UQ_WORK_DIR", "").strip() in ("", "0", "false", "no"):
             try:
-                fname.unlink()
-            except OSError:
-                pass
+                shutil.rmtree(uq_work_dir, ignore_errors=True)
+            except Exception as exc:
+                logger.debug("uq_work_dir cleanup failed: %s", exc)
 
 
 # ─── Main simulation entry point ─────────────────────────────────────────────
@@ -1118,38 +1180,23 @@ async def _remote_cache_store(cache_url: str, run_xml: str) -> str:
 def _check_classic_outputs_vs_contract(tool_def, outputs: dict, exited_ok: bool) -> list:
     """Return a list of contract-violation strings for classic-mode run.xml outputs.
 
-    Checks:
-    - Undeclared output ids (any exit status).
-    - Type mismatches (any exit status).
-    - Missing declared outputs (only when the tool exited successfully).
+    Delegates the per-output check to xml_parser.check_output_against_contract so
+    the library-mode (/api/output) and classic-mode (run.xml) paths cannot
+    drift apart in how they interpret the contract.
     """
     if not tool_def or not tool_def.contract:
         return []
-    contract_outputs = tool_def.contract.get("outputs", {})
-    if not contract_outputs:
-        return []
+    contract = tool_def.contract
 
-    errors = []
-    produced = {k: v for k, v in outputs.items() if not k.startswith("__")}
-
-    for out_id, out_val in produced.items():
-        if out_id not in contract_outputs:
-            out_type = out_val.get("type", "?") if isinstance(out_val, dict) else "?"
-            errors.append(
-                f"Output '{out_id}' (type={out_type!r}) is not declared in the tool contract."
-            )
-            continue
-        declared_type = contract_outputs[out_id].get("type", "")
+    errors: list[str] = []
+    for out_id, out_val in outputs.items():
         actual_type = out_val.get("type", "") if isinstance(out_val, dict) else ""
-        if declared_type and actual_type and declared_type != actual_type:
-            errors.append(
-                f"Output '{out_id}': contract declares type={declared_type!r} "
-                f"but run.xml produced type={actual_type!r}."
-            )
+        err = check_output_against_contract(contract, out_id, actual_type)
+        if err:
+            errors.append(err)
 
     if exited_ok:
-        missing = set(contract_outputs.keys()) - set(produced.keys())
-        for out_id in sorted(missing):
+        for out_id in missing_contract_outputs(contract, outputs.keys()):
             errors.append(
                 f"Output '{out_id}' is declared in the contract but was not produced by a successful run."
             )
@@ -1354,6 +1401,12 @@ async def run_simulation(
     else:
         exec_command = command
 
+    # NOTE: <command> from tool.xml is executed via a shell.  This is by
+    # Rappture's design — <command> *is* a shell line ("python @tool/foo.py
+    # @driver"), and rewriting it through a fixed argv list would break
+    # tools that use pipes, redirections, env overrides, or && chains.
+    # Operators must therefore treat tool.xml as code: it should only be
+    # loaded from trusted sources and not from user-uploaded files.
     try:
         process = await asyncio.create_subprocess_shell(
             exec_command,

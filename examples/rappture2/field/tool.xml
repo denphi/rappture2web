@@ -17,7 +17,7 @@ Fields are a set of values defined on a mesh. When you click Simulate, the input
         </about>
         <default>x*y*z</default>
       </string>
-      <choice id="3D">
+      <choice id="render3d">
         <about>
           <label>3D Rendering</label>
           <description>Determines the mesh type and method used for 3D rendering</description>
@@ -51,7 +51,7 @@ Fields are a set of values defined on a mesh. When you click Simulate, the input
     <default>x*y*z</default>
   </string>
   <separator/>
-  <choice id="3D">
+  <choice id="render3d">
     <about>
       <label>3D Rendering</label>
       <description>Determines the mesh type and method used for 3D rendering</description>

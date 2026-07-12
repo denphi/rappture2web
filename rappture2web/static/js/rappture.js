@@ -73,6 +73,121 @@ const rappture = {
     // ── Base path (set by server for reverse-proxy support) ──────────────────
     _bp: (typeof window._rpBasePath === 'string' ? window._rpBasePath : ''),
 
+    // ── Compact workspace controls ───────────────────────────────────────────
+
+    _paneMode: 'inputs',
+
+    _paneStorageKey() {
+        return 'rp2w:pane:' + (this._toolKey || window.location.pathname);
+    },
+
+    _setPaneMode(mode, persist = true) {
+        if (!['inputs', 'results'].includes(mode)) mode = 'inputs';
+        this._paneMode = mode;
+        const main = document.querySelector('.rp-main');
+        if (main) {
+            main.classList.toggle('rp-pane-inputs', mode === 'inputs');
+            main.classList.toggle('rp-pane-results', mode === 'results');
+        }
+        document.querySelectorAll('.rp-pane-switch-btn').forEach(btn => {
+            btn.setAttribute('aria-pressed', String(btn.dataset.pane === mode));
+        });
+        if (persist) {
+            try { localStorage.setItem(this._paneStorageKey(), mode); } catch (_) { }
+        }
+        requestAnimationFrame(() => {
+            const panel = document.querySelector('.rp-output-panel.active');
+            if (panel) this._resizeOutputPanel(panel);
+            window.dispatchEvent(new Event('resize'));
+        });
+    },
+
+    initCompactLayout() {
+        let saved = 'inputs';
+        try { saved = localStorage.getItem(this._paneStorageKey()) || 'inputs'; } catch (_) { }
+        this._setPaneMode(saved, false);
+        document.querySelectorAll('.rp-pane-switch-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._setPaneMode(btn.dataset.pane);
+            });
+            btn.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const buttons = Array.from(document.querySelectorAll('.rp-pane-switch-btn'));
+                let idx = buttons.indexOf(btn);
+                if (event.key === 'Home') idx = 0;
+                else if (event.key === 'End') idx = buttons.length - 1;
+                else idx = (idx + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+                buttons[idx].focus();
+                buttons[idx].click();
+            });
+        });
+
+        // Renderer modules create their control panels dynamically. On narrow
+        // workspaces start each panel collapsed so it does not cover the plot;
+        // the existing edge tab still toggles it open normally.
+        const collapseNewPanels = node => {
+            if (!window.matchMedia('(max-width: 900px)').matches || !node) return;
+            const panels = [];
+            if (node.matches && node.matches('.rp-3d-panel-wrap')) panels.push(node);
+            if (node.querySelectorAll) {
+                node.querySelectorAll('.rp-3d-panel-wrap').forEach(panel => panels.push(panel));
+            }
+            panels.forEach(panel => {
+                if (panel.dataset.rpCompactInitialized) return;
+                panel.dataset.rpCompactInitialized = 'true';
+                panel.classList.add('collapsed');
+                const tab = panel.querySelector('.rp-3d-panel-tab');
+                if (tab) {
+                    tab.setAttribute('role', 'button');
+                    tab.setAttribute('tabindex', '0');
+                    tab.setAttribute('aria-label', 'Plot controls');
+                    const syncExpanded = () => {
+                        tab.setAttribute('aria-expanded', String(!panel.classList.contains('collapsed')));
+                    };
+                    syncExpanded();
+                    tab.addEventListener('click', syncExpanded);
+                    tab.addEventListener('keydown', event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            tab.click();
+                        }
+                    });
+                }
+            });
+        };
+        collapseNewPanels(document);
+        this._compactPanelObserver = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                mutation.addedNodes.forEach(node => collapseNewPanels(node));
+            });
+        });
+        this._compactPanelObserver.observe(document.body, { childList: true, subtree: true });
+
+        const toolbar = document.querySelector('.rp-toolbar');
+        const toggle = document.querySelector('.rp-toolbar-overflow-toggle');
+        if (toolbar && toggle) {
+            const close = () => {
+                toolbar.classList.remove('rp-toolbar-menu-open');
+                toggle.setAttribute('aria-expanded', 'false');
+            };
+            toggle.addEventListener('click', event => {
+                event.stopPropagation();
+                const open = toolbar.classList.toggle('rp-toolbar-menu-open');
+                toggle.setAttribute('aria-expanded', String(open));
+            });
+            document.addEventListener('click', event => {
+                if (!toolbar.contains(event.target)) close();
+            });
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape') { close(); toggle.focus(); }
+            });
+            toolbar.querySelectorAll('a, .rp-toolbar-actions button').forEach(item => {
+                item.addEventListener('click', close);
+            });
+        }
+    },
+
     // ── Renderer registry ────────────────────────────────────────────────────
 
     /**
@@ -894,6 +1009,11 @@ overlay = document.createElement('div');
                 this._setStatus('Upload failed: ' + (data.error || resp.statusText));
             } else {
                 this._setStatus('');
+                if (window.matchMedia('(max-width: 900px)').matches) {
+                    this._setPaneMode('results');
+                    const resultsPane = document.getElementById('rp-results-pane');
+                    if (resultsPane) resultsPane.focus({ preventScroll: true });
+                }
             }
         } catch (e) {
             this._setStatus('Upload error: ' + e.message);
@@ -913,6 +1033,15 @@ overlay = document.createElement('div');
 
         const { inputs, uq_inputs } = await this.collectInputs();
 
+        // Narrow workspaces use exclusive panes. Move to the running results
+        // view after values have been collected so the form never disappears
+        // before submission is complete.
+        if (window.matchMedia('(max-width: 900px)').matches) {
+            this._setPaneMode('results');
+            const resultsPane = document.getElementById('rp-results-pane');
+            if (resultsPane) resultsPane.focus({ preventScroll: true });
+        }
+
         try {
             const body = { inputs };
             if (uq_inputs && Object.keys(uq_inputs).length > 0) body.uq_inputs = uq_inputs;
@@ -929,6 +1058,7 @@ overlay = document.createElement('div');
             // meaning the server never sent (or won't send) a 'done' message.
             if (result.status !== 'success') {
                 this._setRunning(false);
+                this._setStatus('Simulation failed', 'error');
                 if (result.log) {
                     const container = document.getElementById('rp-results');
                     if (container) {
@@ -1426,12 +1556,12 @@ overlay = document.createElement('div');
             const runBtn = document.createElement('button');
             runBtn.type = 'button';
             runBtn.className = 'rp-fs-runbtn';
-            runBtn.setAttribute('aria-haspopup', 'menu');
+            runBtn.setAttribute('aria-haspopup', 'dialog');
             runBtn.setAttribute('aria-expanded', 'false');
             runBtn.textContent = 'Runs';
             const runMenu = document.createElement('div');
             runMenu.className = 'rp-fs-runmenu-panel';
-            runMenu.setAttribute('role', 'menu');
+            runMenu.setAttribute('role', 'dialog');
             runMenu.setAttribute('aria-label', 'Select runs for comparison');
             runWrap.appendChild(runBtn);
             runWrap.appendChild(runMenu);
@@ -2144,7 +2274,8 @@ overlay = document.createElement('div');
             const row = document.createElement('div');
             row.className = 'rp-run-row' + (isTop ? ' rp-run-top' : '');
             row.dataset.runId = run.run_id;
-            row.draggable = true;
+            row.setAttribute('role', 'listitem');
+            row.draggable = !window.matchMedia('(max-width: 900px)').matches;
 
             // Checkbox
             const cb = document.createElement('input');
@@ -2153,6 +2284,7 @@ overlay = document.createElement('div');
             cb.value = run.run_id;
             cb.checked = !!run._checked;
             cb.title = inputTip;
+            cb.setAttribute('aria-label', `Select ${run.label} for comparison`);
             cb.addEventListener('change', () => {
                 run._checked = cb.checked;
                 this._syncSelectAll();
@@ -2188,7 +2320,16 @@ overlay = document.createElement('div');
             labelSpan.className = 'rp-run-label' + (isTop ? ' rp-run-label-top' : '');
             labelSpan.textContent = run.label;
             labelSpan.title = 'Double-click to rename';
+            labelSpan.setAttribute('role', 'button');
+            labelSpan.setAttribute('tabindex', '0');
+            labelSpan.setAttribute('aria-label', `Rename ${run.label}`);
             labelSpan.addEventListener('dblclick', () => this._startRename(run, labelSpan));
+            labelSpan.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === 'F2') {
+                    event.preventDefault();
+                    this._startRename(run, labelSpan);
+                }
+            });
 
             // Status badge
             const statusSpan = document.createElement('span');
@@ -2267,7 +2408,16 @@ overlay = document.createElement('div');
             span.className = 'rp-run-label' + (idx === 0 ? ' rp-run-label-top' : '');
             span.textContent = newLabel;
             span.title = 'Double-click to rename';
+            span.setAttribute('role', 'button');
+            span.setAttribute('tabindex', '0');
+            span.setAttribute('aria-label', `Rename ${newLabel}`);
             span.addEventListener('dblclick', () => this._startRename(run, span));
+            span.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === 'F2') {
+                    event.preventDefault();
+                    this._startRename(run, span);
+                }
+            });
             input.replaceWith(span);
             try {
                 await fetch(`${this._bp}/api/runs/${run.run_id}`, {
@@ -2340,6 +2490,8 @@ overlay = document.createElement('div');
         const popup = document.createElement('div');
         popup.className = 'rp-color-popup';
         popup.style.display = 'none';
+        popup.setAttribute('role', 'dialog');
+        popup.setAttribute('aria-label', `Choose color for ${run.label}`);
 
         // Palette grid
         const grid = document.createElement('div');
@@ -2350,6 +2502,7 @@ overlay = document.createElement('div');
             dot.className = 'rp-color-dot';
             dot.style.background = hex;
             dot.title = hex;
+            dot.setAttribute('aria-label', `Use color ${hex} for ${run.label}`);
             if (hex === run._color) dot.classList.add('active');
             dot.addEventListener('click', () => {
                 run._color = hex;
@@ -2498,6 +2651,7 @@ overlay = document.createElement('div');
             if (btn) {
                 btn.classList.toggle('rp-cache-toggle-off', !on);
                 btn.title = on ? 'Cache enabled — click to disable' : 'Cache disabled — click to enable';
+                btn.setAttribute('aria-label', on ? 'Disable simulation cache' : 'Enable simulation cache');
             }
             this._setStatus(`Cache ${on ? 'enabled' : 'disabled'}.`, 'info');
         } catch (e) {
@@ -3421,6 +3575,7 @@ overlay = document.createElement('div');
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    rappture.initCompactLayout();
     rappture.initEnableConditions();
     rappture.initColorInputs();
     rappture.initTabAccessibility();

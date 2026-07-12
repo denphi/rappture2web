@@ -1,10 +1,16 @@
+{% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-boolean" data-path="{{ widget.path }}" data-type="boolean"
      {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}>
     <label class="rp-label rp-boolean-label" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">
         <input type="checkbox"
+               id="{{ input_id }}"
                class="rp-input rp-input-boolean"
                name="{{ widget.path }}"
+               {% if widget.description %}aria-describedby="{{ input_id }}-desc"{% endif %}
                {% if widget.default|lower in ['on', 'yes', 'true', '1'] %}checked{% endif %}>
         {{ widget.label or widget.id }}
     </label>
+    {% if widget.description %}
+    <span id="{{ input_id }}-desc" class="rp-sr-only">{{ widget.description }}</span>
+    {% endif %}
 </div>

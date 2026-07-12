@@ -8,8 +8,14 @@
 {% set has_phases = inputs | selectattr('type', 'equalto', 'phase') | list | length == inputs | length and inputs | length > 0 %}
 {% set top_groups = inputs | selectattr('type', 'equalto', 'group') | list %}
 {% set has_top_groups = not has_phases and top_groups | length > 1 %}
+<div class="rp-pane-switch" role="group" aria-label="Choose visible workspace pane">
+    <button type="button" class="rp-pane-switch-btn" data-pane="inputs"
+            aria-pressed="false" aria-controls="rp-input-pane">Inputs</button>
+    <button type="button" class="rp-pane-switch-btn" data-pane="results"
+            aria-pressed="false" aria-controls="rp-results-pane">Results</button>
+</div>
 <div class="rp-layout">
-    <aside class="rp-sidebar" role="complementary" aria-label="Tool inputs and controls">
+    <aside id="rp-input-pane" class="rp-sidebar" role="complementary" aria-label="Tool inputs and controls">
 
         <form id="rp-form" class="rp-form" aria-label="Simulation inputs">
             {% if has_phases %}
@@ -120,8 +126,8 @@
             </div>
         </section>
     </aside>
-    <section class="rp-content" aria-label="Simulation results">
-        <div id="rp-results" class="rp-results" aria-live="polite" aria-label="Output results">
+    <section id="rp-results-pane" class="rp-content" aria-label="Simulation results" tabindex="-1">
+        <div id="rp-results" class="rp-results" aria-label="Output results">
             <div class="rp-results-placeholder">
                 {% if tool.about %}
                 <div class="rp-results-about">{{ tool.about }}</div>

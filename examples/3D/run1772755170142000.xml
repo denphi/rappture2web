@@ -1,0 +1,4655 @@
+<?xml version="1.0"?>
+<run>
+    <tool>
+        <id>crystal_viewer</id>
+        <name>Crystal Viewer Tool</name>
+        <version>
+            <identifier>3.0.9</identifier>
+            <application>
+                <revision>416</revision>
+                <modified>2020-01-29 08:04:54 -0800 (Wed, 29 Jan 2020)</modified>
+                <installed>2020-01-29 08:11:38 PST</installed>
+                <directory id="top">/apps/crystal_viewer/r416</directory>
+                <directory id="tool">/apps/crystal_viewer/r416/rappture</directory>
+            </application>
+            <rappture>
+                <version>1.7</version>
+                <revision>6716</revision>
+                <modified>$LastChangedDate: 2019-01-04 18:14:36 -0500 (Fri, 04 Jan 2019) $</modified>
+                <language>tcl</language>
+            </rappture>
+        </version>
+        <title>Crystal Viewer v3.0</title>
+        <about>Visualize crystalline structure of different materials and Bravais lattice, the user can also construct his or her own "crystal".
+Developers:
+Yuanchen Chu (chu72@purdue.edu)
+Fan Chen     (fanchen@purdue.edu)
+Michael Povolotskyi
+Jim Fonseca
+Gerhard Klimeck</about>
+        <command>tclsh @tool/wrapper.tcl @driver</command>
+    </tool>
+    <input>
+        <phase id="First_stage">
+            <about>
+                <label>Introduction</label>
+                <description>Introduction to this tool</description>
+            </about>
+            <note id="note">
+                <contents>file://intro_page/intro.html</contents>
+            </note>
+        </phase>
+        <phase id="Second_stage">
+            <about>
+                <label>Settings</label>
+            </about>
+            <choice id="What_to_do">
+                <about>
+                    <label>I want to ...</label>
+                    <description>please choose one of the three available options before setting parameters</description>
+                </about>
+                <option id="1">
+                    <about>
+                        <label>view a material</label>
+                    </about>
+                    <value>1</value>
+                </option>
+                <option id="2">
+                    <about>
+                        <label>create your own "crystal"</label>
+                    </about>
+                    <value>2</value>
+                </option>
+                <option id="3">
+                    <about>
+                        <label>view Bravais lattice</label>
+                    </about>
+                    <value>3</value>
+                </option>
+                <default>1</default>
+                <current>1</current>
+            </choice>
+            <group id="Crystal_structure">
+                <about>
+                    <label>Crystal structure</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1</enable>
+                </about>
+                <choice id="Crystal_structure">
+                    <about>
+                        <label>Choose a crystal structure</label>
+                        <description>choose an available crystal structure</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Diamond</label>
+                        </about>
+                        <value>1</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Zincblende</label>
+                        </about>
+                        <value>2</value>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>Wurtzite</label>
+                        </about>
+                        <value>3</value>
+                    </option>
+                    <option id="4">
+                        <about>
+                            <label>Rock Salt (Sodium Chloride)</label>
+                        </about>
+                        <value>4</value>
+                    </option>
+                    <option id="5">
+                        <about>
+                            <label>Cesium Chloride</label>
+                        </about>
+                        <value>5</value>
+                    </option>
+                    <option id="6">
+                        <about>
+                            <label>Face-centered Cubic</label>
+                        </about>
+                        <value>6</value>
+                    </option>
+                    <option id="7">
+                        <about>
+                            <label>Body-centered Cubic</label>
+                        </about>
+                        <value>7</value>
+                    </option>
+                    <option id="8">
+                        <about>
+                            <label>Carbon Meshes</label>
+                        </about>
+                        <value>8</value>
+                    </option>
+                    <option id="9">
+                        <about>
+                            <label>Rhombohedral</label>
+                        </about>
+                        <value>9</value>
+                    </option>
+                    <option id="10">
+                        <about>
+                            <label>Perovskite</label>
+                        </about>
+                        <value>10</value>
+                    </option>
+                    <option id="11">
+                        <about>
+                            <label>TMD (Transistion Metal Dichalcogenide)</label>
+                        </about>
+                        <value>11</value>
+                    </option>
+                    <option id="12">
+                        <about>
+                            <label>Black Phosphorous</label>
+                        </about>
+                        <value>12</value>
+                    </option>
+                    <default>1</default>
+                    <current>1</current>
+                </choice>
+            </group>
+            <group id="1">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==1</enable>
+                </about>
+                <choice id="1">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Si</label>
+                            <description>silicon</description>
+                        </about>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Ge</label>
+                            <description>germanium</description>
+                        </about>
+                    </option>
+                    <default>Si</default>
+                    <current>Si</current>
+                </choice>
+            </group>
+            <group id="2">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==2</enable>
+                </about>
+                <choice id="2">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>AlP</label>
+                        </about>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>AlAs</label>
+                        </about>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>AlSb</label>
+                        </about>
+                    </option>
+                    <option id="4">
+                        <about>
+                            <label>GaAs</label>
+                        </about>
+                    </option>
+                    <option id="5">
+                        <about>
+                            <label>GaP</label>
+                        </about>
+                    </option>
+                    <option id="6">
+                        <about>
+                            <label>GaSb</label>
+                        </about>
+                    </option>
+                    <option id="7">
+                        <about>
+                            <label>InAs</label>
+                        </about>
+                    </option>
+                    <option id="8">
+                        <about>
+                            <label>InP</label>
+                        </about>
+                    </option>
+                    <option id="9">
+                        <about>
+                            <label>InSb</label>
+                        </about>
+                    </option>
+                    <default>GaAs</default>
+                    <current>GaAs</current>
+                </choice>
+            </group>
+            <group id="3">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==3</enable>
+                </about>
+                <choice id="3">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>AlN</label>
+                        </about>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>InN</label>
+                        </about>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>GaN</label>
+                        </about>
+                    </option>
+                    <default>GaN</default>
+                    <current>GaN</current>
+                </choice>
+            </group>
+            <group id="4">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==4</enable>
+                </about>
+                <choice id="4">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>NaCl</label>
+                        </about>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>SmSe</label>
+                        </about>
+                    </option>
+                    <default>NaCl</default>
+                    <current>NaCl</current>
+                </choice>
+            </group>
+            <group id="5">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==5</enable>
+                </about>
+                <choice id="5">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>CsCl</label>
+                        </about>
+                    </option>
+                    <default>CsCl</default>
+                    <current>CsCl</current>
+                </choice>
+            </group>
+            <group id="6">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==6</enable>
+                </about>
+                <choice id="6">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Cu</label>
+                        </about>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Al</label>
+                        </about>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>Ag</label>
+                        </about>
+                    </option>
+                    <option id="4">
+                        <about>
+                            <label>Au</label>
+                        </about>
+                    </option>
+                    <default>Cu</default>
+                    <current>Cu</current>
+                </choice>
+            </group>
+            <group id="7">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==7</enable>
+                </about>
+                <choice id="7">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>W</label>
+                        </about>
+                    </option>
+                    <default>W</default>
+                    <current>W</current>
+                </choice>
+            </group>
+            <group id="8">
+                <about>
+                    <label>Material</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==8</enable>
+                </about>
+                <choice id="8">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Graphene</label>
+                        </about>
+                        <value>1</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Carbon nanotube</label>
+                        </about>
+                        <value>2</value>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>Bucky ball (C60)</label>
+                        </about>
+                        <value>3</value>
+                    </option>
+                    <default>1</default>
+                    <current>1</current>
+                </choice>
+            </group>
+            <group id="9">
+                <about>
+                    <label>Group</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==9</enable>
+                </about>
+                <choice id="9">
+                    <about>
+                        <label>Material</label>
+                        <description>Select the material you want to view</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Bi2Te3</label>
+                        </about>
+                    </option>
+                    <default>Bi2Te3</default>
+                    <current>Bi2Te3</current>
+                </choice>
+            </group>
+            <group id="10">
+                <about>
+                    <label>Group</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==10</enable>
+                </about>
+                <choice id="10">
+                    <about>
+                        <label>Material</label>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>SrTiO3</label>
+                        </about>
+                        <value>SrTiO3</value>
+                    </option>
+                    <default>SrTiO3</default>
+                    <current>SrTiO3</current>
+                </choice>
+            </group>
+            <group id="11">
+                <about>
+                    <label>Group</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==11</enable>
+                </about>
+                <choice id="11">
+                    <about>
+                        <label>Material</label>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>MoS2</label>
+                        </about>
+                        <value>MoS2</value>
+                    </option>
+                    <default>MoS2</default>
+                    <current>MoS2</current>
+                </choice>
+            </group>
+            <group id="12">
+                <about>
+                    <label>Group</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==1 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure)==12</enable>
+                </about>
+                <choice id="12">
+                    <about>
+                        <label>Material</label>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Black Phosphorous</label>
+                        </about>
+                        <value>Black Phosphorous</value>
+                    </option>
+                    <default>Black Phosphorous</default>
+                    <current>Black Phosphorous</current>
+                </choice>
+            </group>
+            <group id="Crystal_system">
+                <about>
+                    <label>Crystal system</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)== 3</enable>
+                </about>
+                <choice id="Crystal_system">
+                    <about>
+                        <label>Choose a crystal system</label>
+                        <description>choose one of the seven crystal systems</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Triclinic</label>
+                        </about>
+                        <value>21</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Monoclinic</label>
+                        </about>
+                        <value>22</value>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>Orthorhombic</label>
+                        </about>
+                        <value>23</value>
+                    </option>
+                    <option id="4">
+                        <about>
+                            <label>Tetragonal</label>
+                        </about>
+                        <value>24</value>
+                    </option>
+                    <option id="5">
+                        <about>
+                            <label>Cubic</label>
+                        </about>
+                        <value>25</value>
+                    </option>
+                    <option id="6">
+                        <about>
+                            <label>Hexagonal</label>
+                        </about>
+                        <value>26</value>
+                    </option>
+                    <option id="7">
+                        <about>
+                            <label>Trigonal (Rhombohedral)</label>
+                        </about>
+                        <value>27</value>
+                    </option>
+                    <default>25</default>
+                    <current>25</current>
+                </choice>
+            </group>
+            <group id="21">
+                <about>
+                    <label>Bravais lattice</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==21</enable>
+                </about>
+                <choice id="21">
+                    <about>
+                        <label>Bravais lattice</label>
+                        <description>choose a bravais lattice</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Simple triclinc</label>
+                        </about>
+                        <value>triclinic</value>
+                    </option>
+                    <default>Simple triclinc</default>
+                    <current>triclinic</current>
+                </choice>
+            </group>
+            <group id="22">
+                <about>
+                    <label>Bravais lattice</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==22</enable>
+                </about>
+                <choice id="22">
+                    <about>
+                        <label>Bravais lattice</label>
+                        <description>choose a bravais lattice</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Simple monoclinic</label>
+                        </about>
+                        <value>monoclinic</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Base-centered monoclinic</label>
+                        </about>
+                        <value>monoclinicC</value>
+                    </option>
+                    <default>Simple monoclinic</default>
+                    <current>monoclinic</current>
+                </choice>
+            </group>
+            <group id="23">
+                <about>
+                    <label>Bravais lattice</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==23</enable>
+                </about>
+                <choice id="23">
+                    <about>
+                        <label>Bravais lattice</label>
+                        <description>choose a bravais lattice</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Simple Orthorhombic</label>
+                        </about>
+                        <value>orthorhombic</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Base-centered Orthorhombic</label>
+                        </about>
+                        <value>orthorhombicC</value>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>Body-centered Orthorhombic</label>
+                        </about>
+                        <value>orthorhombicI</value>
+                    </option>
+                    <option id="4">
+                        <about>
+                            <label>Face-centered Orthorhombic</label>
+                        </about>
+                        <value>orthorhombicF</value>
+                    </option>
+                    <default>Simple Orthorhombic</default>
+                    <current>orthorhombic</current>
+                </choice>
+            </group>
+            <group id="24">
+                <about>
+                    <label>Bravais lattice</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==24</enable>
+                </about>
+                <choice id="24">
+                    <about>
+                        <label>Bravais lattice</label>
+                        <description>choose a bravais lattice</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Simple tetragonal</label>
+                        </about>
+                        <value>tetragonal</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Body-centered tetragonal</label>
+                        </about>
+                        <value>tetragonalI</value>
+                    </option>
+                    <default>Simple tetragonal</default>
+                    <current>tetragonal</current>
+                </choice>
+            </group>
+            <group id="25">
+                <about>
+                    <label>Bravais lattice</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==25</enable>
+                </about>
+                <choice id="25">
+                    <about>
+                        <label>Bravais lattice</label>
+                        <description>choose a bravais lattice</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Simple cubic</label>
+                        </about>
+                        <value>simplecubic</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>Body-centered cubic</label>
+                        </about>
+                        <value>bcc</value>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>Face-centered cubic</label>
+                        </about>
+                        <value>fcc</value>
+                    </option>
+                    <default>Simple cubic</default>
+                    <current>simplecubic</current>
+                </choice>
+            </group>
+            <group id="26">
+                <about>
+                    <label>Bravais lattice</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==26</enable>
+                </about>
+                <choice id="26">
+                    <about>
+                        <label>Bravais lattice</label>
+                        <description>choose a bravais lattice</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Simple hexagonal</label>
+                        </about>
+                        <value>hexagonal</value>
+                    </option>
+                    <default>Simple hexagonal</default>
+                    <current>hexagonal</current>
+                </choice>
+            </group>
+            <group id="27">
+                <about>
+                    <label>Bravais lattice</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==27</enable>
+                </about>
+                <choice id="27">
+                    <about>
+                        <label>Bravais lattice</label>
+                        <description>choose a bravais lattice</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>Simple trigonal</label>
+                        </about>
+                        <value>rhombohedral</value>
+                    </option>
+                    <default>Simple trigonal</default>
+                    <current>rhombohedral</current>
+                </choice>
+            </group>
+            <group id="Bravais_lattice_parameters_triclinic">
+                <about>
+                    <label>Bravais lattice parameters</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==21</enable>
+                </about>
+                <string id="a">
+                    <about>
+                        <label>a (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="b">
+                    <about>
+                        <label>b (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="c">
+                    <about>
+                        <label>c (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="Alpha">
+                    <about>
+                        <label>Alpha (deg,grad,rad)</label>
+                        <description>enter a number between -90deg and 90deg with units of angle (deg,grad,rad)</description>
+                    </about>
+                    <default>75deg</default>
+                    <current>75deg</current>
+                </string>
+                <string id="Beta">
+                    <about>
+                        <label>Beta (deg,grad,rad)</label>
+                        <description>enter a number between -90deg and 90deg with units of angle (deg,grad,rad)</description>
+                    </about>
+                    <default>75deg</default>
+                    <current>75deg</current>
+                </string>
+                <string id="Gamma">
+                    <about>
+                        <label>Gamma (deg,grad,rad)</label>
+                        <description>enter a number between -90deg and 90deg with units of angle (deg,grad,rad)</description>
+                    </about>
+                    <default>75deg</default>
+                    <current>75deg</current>
+                </string>
+            </group>
+            <group id="Bravais_lattice_parameters_monoclinic">
+                <about>
+                    <label>Bravais lattice parameters</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==22</enable>
+                </about>
+                <string id="a">
+                    <about>
+                        <label>a (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="b">
+                    <about>
+                        <label>b (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="c">
+                    <about>
+                        <label>c (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="Beta">
+                    <about>
+                        <label>Beta (deg,grad,rad)</label>
+                        <description>enter a number between -90deg and 90deg with units of angle (deg,grad,rad)</description>
+                    </about>
+                    <default>75deg</default>
+                    <current>75deg</current>
+                </string>
+            </group>
+            <group id="Bravais_lattice_parameters_orthorhombic">
+                <about>
+                    <label>Bravais lattice parameters</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==23</enable>
+                </about>
+                <string id="a">
+                    <about>
+                        <label>a (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="b">
+                    <about>
+                        <label>b (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="c">
+                    <about>
+                        <label>c (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+            </group>
+            <group id="Bravais_lattice_parameters_tetragonal">
+                <about>
+                    <label>Bravais lattice parameters</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==24</enable>
+                </about>
+                <string id="a">
+                    <about>
+                        <label>a (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.5nm</default>
+                    <current>0.5nm</current>
+                </string>
+                <string id="c">
+                    <about>
+                        <label>c (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>1nm</default>
+                    <current>1nm</current>
+                </string>
+            </group>
+            <group id="Bravais_lattice_parameters_cubic">
+                <about>
+                    <label>Bravais lattice parameters</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==25</enable>
+                </about>
+                <string id="a">
+                    <about>
+                        <label>a (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.5nm</default>
+                    <current>0.5nm</current>
+                </string>
+            </group>
+            <group id="Bravais_lattice_parameters_hexagonal">
+                <about>
+                    <label>Bravais lattice parameters</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==26</enable>
+                </about>
+                <string id="a">
+                    <about>
+                        <label>a (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.5nm</default>
+                    <current>0.5nm</current>
+                </string>
+                <string id="c">
+                    <about>
+                        <label>c (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>1nm</default>
+                    <current>1nm</current>
+                </string>
+            </group>
+            <group id="Bravais_lattice_parameters_trigonal">
+                <about>
+                    <label>Bravais lattice parameters</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do)==3 &amp;&amp; input.phase(Second_stage).group(Crystal_system).choice(Crystal_system)==27</enable>
+                </about>
+                <string id="a">
+                    <about>
+                        <label>a (A,bohr,nm)</label>
+                        <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm)</description>
+                    </about>
+                    <default>0.6nm</default>
+                    <current>0.6nm</current>
+                </string>
+                <string id="Alpha">
+                    <about>
+                        <label>Alpha (deg,grad,rad)</label>
+                        <description>enter a number between -90deg and 90deg with units of angle (deg,grad,rad)</description>
+                    </about>
+                    <default>75deg</default>
+                    <current>75deg</current>
+                </string>
+            </group>
+            <group id="Repetition_of_unit_cell">
+                <about>
+                    <label>Dimension</label>
+                    <enable>input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 8 &amp;&amp; input.phase(Second_stage).choice(What_to_do) == 1</enable>
+                </about>
+                <integer id="Nx">
+                    <about>
+                        <label>m</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the lattice grid</description>
+                    </about>
+                    <default>2</default>
+                    <min>1</min>
+                    <current>3</current>
+                </integer>
+                <integer id="Ny">
+                    <about>
+                        <label>n</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the lattice grid</description>
+                    </about>
+                    <default>2</default>
+                    <min>1</min>
+                    <current>2</current>
+                </integer>
+                <integer id="Nz">
+                    <about>
+                        <label>p</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the lattice grid</description>
+                    </about>
+                    <default>2</default>
+                    <min>1</min>
+                    <current>2</current>
+                </integer>
+                <boolean id="Primitive_cell">
+                    <about>
+                        <label>Use primitive Bravais vector</label>
+                        <description>Toggle on to use the primitive Bravais vector or remain it off to use the conventinal Bravais vector;
+for some materials, only the primitive Bravais vector is available</description>
+                        <enable>input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 3 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 5 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 4 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 9 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 10 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 11 &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 12</enable>
+                    </about>
+                    <default>no</default>
+                    <current>no</current>
+                </boolean>
+            </group>
+            <group id="si_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(1).choice(1) == "Si" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 1</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/si_R.html</contents>
+                </note>
+            </group>
+            <group id="ge_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(1).choice(1) == "Ge" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 1</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/ge_R.html</contents>
+                </note>
+            </group>
+            <group id="ag_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(6).choice(6) == "Ag" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 6</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/ag_R.html</contents>
+                </note>
+            </group>
+            <group id="al_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(6).choice(6) == "Al" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 6</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/al_R.html</contents>
+                </note>
+            </group>
+            <group id="aln_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(3).choice(3) == "AlN" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 3</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/aln_R.html</contents>
+                </note>
+            </group>
+            <group id="alas_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "AlAs" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/alas_R.html</contents>
+                </note>
+            </group>
+            <group id="alp_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "AlP" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/alp_R.html</contents>
+                </note>
+            </group>
+            <group id="alsb_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "AlSb" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/alsb_R.html</contents>
+                </note>
+            </group>
+            <group id="au_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(6).choice(6) == "Au" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 6</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/au_R.html</contents>
+                </note>
+            </group>
+            <group id="cscl_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(5).choice(5) == "CsCl" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 5</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/cscl_R.html</contents>
+                </note>
+            </group>
+            <group id="cu_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(6).choice(6) == "Cu" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 6</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/cu_R.html</contents>
+                </note>
+            </group>
+            <group id="gaas_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "GaAs" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/gaas_R.html</contents>
+                </note>
+            </group>
+            <group id="gan_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(3).choice(3) == "GaN" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 3</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/gan_R.html</contents>
+                </note>
+            </group>
+            <group id="gap_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "GaP" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/gap_R.html</contents>
+                </note>
+            </group>
+            <group id="gasb_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "GaSb" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/gasb_R.html</contents>
+                </note>
+            </group>
+            <group id="inas_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "InAs" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/inas_R.html</contents>
+                </note>
+            </group>
+            <group id="inn_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(3).choice(3) == "InN" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 3</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/inn_R.html</contents>
+                </note>
+            </group>
+            <group id="inp_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "InP" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/inp_R.html</contents>
+                </note>
+            </group>
+            <group id="insb_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(2).choice(2) == "InSb" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 2</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/insb_R.html</contents>
+                </note>
+            </group>
+            <group id="nacl_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(4).choice(4) == "NaCl" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 4</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/nacl_R.html</contents>
+                </note>
+            </group>
+            <group id="smse_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(4).choice(4) == "SmSe" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 4</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/smse_R.html</contents>
+                </note>
+            </group>
+            <group id="w_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(7).choice(7) == "W" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 7</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/w_R.html</contents>
+                </note>
+            </group>
+            <group id="Bi2Te3_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(9).choice(9) == "Bi2Te3" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 9</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/Bi2Te3_R.html</contents>
+                </note>
+            </group>
+            <group id="SrTiO3_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(10).choice(10) == "SrTiO3" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 10</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/SrTiO3_R.html</contents>
+                </note>
+            </group>
+            <group id="MoS2_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(11).choice(11) == "MoS2" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 11</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/MoS2_R.html</contents>
+                </note>
+            </group>
+            <group id="BlackPhosphorous_R">
+                <about>
+                    <label>Bravais vector</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 1 &amp;&amp; input.phase(Second_stage).group(12).choice(12) == "Black Phosphorous" &amp;&amp; input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 12</enable>
+                </about>
+                <note id="value1">
+                    <contents>file://material_bravais_vectors/Black_Phosphorous_R.html</contents>
+                </note>
+            </group>
+            <group id="Graphene_parameters">
+                <about>
+                    <label>Graphene settings</label>
+                    <enable>input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 8 &amp;&amp; input.phase(Second_stage).group(8).choice(8) == 1 &amp;&amp; input.phase(Second_stage).choice(What_to_do) == 1</enable>
+                </about>
+                <integer id="Lx">
+                    <about>
+                        <label>Lx</label>
+                        <description>extension in X direction in terms of a0</description>
+                    </about>
+                    <default>3</default>
+                    <min>1</min>
+                    <max>15</max>
+                    <current>3</current>
+                </integer>
+                <integer id="Ly">
+                    <about>
+                        <label>Ly</label>
+                        <description>extension in Y direction in terms of a1</description>
+                    </about>
+                    <default>3</default>
+                    <min>1</min>
+                    <max>15</max>
+                    <current>3</current>
+                </integer>
+                <string id="C_C_bong_length">
+                    <about>
+                        <label>C-C bond length (A,bohr,nm)</label>
+                        <description>enter a number between 1e-10 nm to 1000nm with units of length (A, bohr, in, m)</description>
+                    </about>
+                    <default>0.142nm</default>
+                    <current>0.142nm</current>
+                </string>
+                <integer id="Number_of_sheet">
+                    <about>
+                        <label>Number of sheet</label>
+                        <description>set the number of graphene sheet;
+please enter a integer between 1 and 15</description>
+                    </about>
+                    <default>3</default>
+                    <min>1</min>
+                    <max>15</max>
+                    <current>3</current>
+                </integer>
+                <string id="Separation_distance">
+                    <about>
+                        <label>Layer separation distance (A,bohr,nm)</label>
+                        <description>set the speration distance between two graphene layer;
+enter a number between 1e-10 nm to 1000nm with units of length (A, bohr, in, m)</description>
+                        <enable>input.phase(Second_stage).group(Graphene_parameters).integer(Number_of_sheet) &gt; 1</enable>
+                    </about>
+                    <default>0.335nm</default>
+                    <current>0.335nm</current>
+                </string>
+                <boolean id="AA_Stacking">
+                    <about>
+                        <label>AA Stacking</label>
+                        <description>default is AB stacking
+select to be true for AA stacking</description>
+                    </about>
+                    <default>no</default>
+                    <current>no</current>
+                </boolean>
+            </group>
+            <group id="CNT_parameters">
+                <about>
+                    <label>CNT settings</label>
+                    <enable>input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) == 8 &amp;&amp; input.phase(Second_stage).group(8).choice(8) == 2 &amp;&amp; input.phase(Second_stage).choice(What_to_do) == 1</enable>
+                </about>
+                <integer id="n">
+                    <about>
+                        <label>n</label>
+                        <description>the chiral vector can be written as R = na1+ma2;
+the two coefficients n and m, decide the dimension of the carbon nano tube</description>
+                    </about>
+                    <default>3</default>
+                    <min>1</min>
+                    <max>15</max>
+                    <current>3</current>
+                </integer>
+                <integer id="m">
+                    <about>
+                        <label>m (&lt;=n)</label>
+                        <description>the chiral vector can be written as R = na1+ma2;
+the two coefficients n and m, decide the dimension of the carbon nano tube</description>
+                    </about>
+                    <default>2</default>
+                    <min>0</min>
+                    <max>15</max>
+                    <current>2</current>
+                </integer>
+                <integer id="num_of_unit_cell">
+                    <about>
+                        <label>Number of unit celld</label>
+                        <description>number of unit cells along the direction of the tube</description>
+                    </about>
+                    <default>3</default>
+                    <min>1</min>
+                    <max>15</max>
+                    <current>3</current>
+                </integer>
+                <string id="C_C_bong_length">
+                    <about>
+                        <label>C-C bong length (A,bohr,nm)</label>
+                        <description>enter a number between 1e-10 nm to 1000nm with units of length (A, bohr, in, m)</description>
+                    </about>
+                    <default>0.142nm</default>
+                    <current>0.142nm</current>
+                </string>
+                <note id="note">
+                    <contents>file://chiral_vector_CNT/chiral_vector_CNT.html</contents>
+                </note>
+            </group>
+            <group id="Define_Basis">
+                <about>
+                    <label>Define the basis</label>
+                    <description>the basis will be repeated periodically to create the crystal;
+you can set up to 8 atoms in one basis;
+you can also define material for every atom in your basis;</description>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 2</enable>
+                </about>
+                <choice id="Basis_atom_number">
+                    <about>
+                        <label>Basis atom number</label>
+                        <description>define the number of atom in the basis;
+you can define up to 8 atoms in your basis</description>
+                    </about>
+                    <option id="1">
+                        <about>
+                            <label>1</label>
+                        </about>
+                        <value>1</value>
+                    </option>
+                    <option id="2">
+                        <about>
+                            <label>2</label>
+                        </about>
+                        <value>2</value>
+                    </option>
+                    <option id="3">
+                        <about>
+                            <label>3</label>
+                        </about>
+                        <value>3</value>
+                    </option>
+                    <option id="4">
+                        <about>
+                            <label>4</label>
+                        </about>
+                        <value>4</value>
+                    </option>
+                    <option id="5">
+                        <about>
+                            <label>5</label>
+                        </about>
+                        <value>5</value>
+                    </option>
+                    <option id="6">
+                        <about>
+                            <label>6</label>
+                        </about>
+                        <value>6</value>
+                    </option>
+                    <option id="7">
+                        <about>
+                            <label>7</label>
+                        </about>
+                        <value>7</value>
+                    </option>
+                    <option id="8">
+                        <about>
+                            <label>8</label>
+                        </about>
+                        <value>8</value>
+                    </option>
+                    <default>1</default>
+                    <current>1</current>
+                </choice>
+                <group id="Basis_atom_1">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number) == 1</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+                <group id="Basis_atom_2">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number)== 2</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_2_position">
+                        <about>
+                            <label>Atom 2 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0.25)</default>
+                        <current>(0.25, 0.25, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_2_type">
+                        <about>
+                            <label>Atom 2 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+                <group id="Basis_atom_3">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number) == 3</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_2_position">
+                        <about>
+                            <label>Atom 2 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0.25)</default>
+                        <current>(0.25, 0.25, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_2_type">
+                        <about>
+                            <label>Atom 2 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_3_position">
+                        <about>
+                            <label>Atom 3 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0)</default>
+                        <current>(0.25, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_3_type">
+                        <about>
+                            <label>Atom 3 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+                <group id="Basis_atom_4">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number) == 4</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_2_position">
+                        <about>
+                            <label>Atom 2 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0.25)</default>
+                        <current>(0, 0, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_2_type">
+                        <about>
+                            <label>Atom 2 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_3_position">
+                        <about>
+                            <label>Atom 3 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0, 0)</default>
+                        <current>(0.25, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_3_type">
+                        <about>
+                            <label>Atom 3 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_4_position">
+                        <about>
+                            <label>Atom 4 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0)</default>
+                        <current>(0.25, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_4_type">
+                        <about>
+                            <label>Atom 4 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+                <group id="Basis_atom_5">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number) == 5</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_2_position">
+                        <about>
+                            <label>Atom 2 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0.25)</default>
+                        <current>(0, 0, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_2_type">
+                        <about>
+                            <label>Atom 2 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_3_position">
+                        <about>
+                            <label>Atom 3 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0, 0)</default>
+                        <current>(0.25, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_3_type">
+                        <about>
+                            <label>Atom 3 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_4_position">
+                        <about>
+                            <label>Atom 4 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0)</default>
+                        <current>(0.25, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_4_type">
+                        <about>
+                            <label>Atom 4 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_5_position">
+                        <about>
+                            <label>Atom 5 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0.25, 0)</default>
+                        <current>(0, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_5_type">
+                        <about>
+                            <label>Atom 5 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+                <group id="Basis_atom_6">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number)== 6</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_2_position">
+                        <about>
+                            <label>Atom 2 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0.25)</default>
+                        <current>(0, 0, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_2_type">
+                        <about>
+                            <label>Atom 2 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_3_position">
+                        <about>
+                            <label>Atom 3 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0, 0)</default>
+                        <current>(0.25, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_3_type">
+                        <about>
+                            <label>Atom 3 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_4_position">
+                        <about>
+                            <label>Atom 4 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0)</default>
+                        <current>(0.25, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_4_type">
+                        <about>
+                            <label>Atom 4 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_5_position">
+                        <about>
+                            <label>Atom 5 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0.25, 0)</default>
+                        <current>(0, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_5_type">
+                        <about>
+                            <label>Atom 5 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_6_position">
+                        <about>
+                            <label>Atom 6 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0.25)</default>
+                        <current>(0.25, 0.25, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_6_type">
+                        <about>
+                            <label>Atom 6  type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+                <group id="Basis_atom_7">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number) == 7</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_2_position">
+                        <about>
+                            <label>Atom 2 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0, 0)</default>
+                        <current>(0.25, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_2_type">
+                        <about>
+                            <label>Atom 2 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_3_position">
+                        <about>
+                            <label>Atom 3 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0.25, 0)</default>
+                        <current>(0, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_3_type">
+                        <about>
+                            <label>Atom 3 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_4_position">
+                        <about>
+                            <label>Atom 4 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0.25)</default>
+                        <current>(0, 0, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_4_type">
+                        <about>
+                            <label>Atom 4 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_5_position">
+                        <about>
+                            <label>Atom 5 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0)</default>
+                        <current>(0.25, 0.25, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_5_type">
+                        <about>
+                            <label>Atom 5 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_6_position">
+                        <about>
+                            <label>Atom 6 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0.25, 0.25)</default>
+                        <current>(0, 0.25, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_6_type">
+                        <about>
+                            <label>Atom 6 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_7_position">
+                        <about>
+                            <label>Atom 7 position1 (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0, 0.25)</default>
+                        <current>(0.25, 0, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_7_type">
+                        <about>
+                            <label>Atom 7 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+                <group id="Basis_atom_8">
+                    <about>
+                        <label>Basis atom</label>
+                        <enable>input.phase(Second_stage).group(Define_Basis).choice(Basis_atom_number) == 8</enable>
+                    </about>
+                    <string id="Atom_1_position">
+                        <about>
+                            <label>Atom 1 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0, 0)</default>
+                        <current>(0, 0, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_1_type">
+                        <about>
+                            <label>Atom 1 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_2_position">
+                        <about>
+                            <label>Atom 2 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.5, 0.5, 0)</default>
+                        <current>(0.5, 0.5, 0)</current>
+                    </string>
+                    <periodicelement id="Atom_2_type">
+                        <about>
+                            <label>Atom 2 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_3_position">
+                        <about>
+                            <label>Atom 3 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.25, 0.25)</default>
+                        <current>(0.25, 0.25, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_3_type">
+                        <about>
+                            <label>Atom 3 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_4_position">
+                        <about>
+                            <label>Atom 4 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.75, 0.75, 0.25)</default>
+                        <current>(0.75, 0.75, 0.25)</current>
+                    </string>
+                    <periodicelement id="Atom_4_type">
+                        <about>
+                            <label>Atom 4 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_5_position">
+                        <about>
+                            <label>Atom 5 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0, 0.5, 0.5)</default>
+                        <current>(0, 0.5, 0.5)</current>
+                    </string>
+                    <periodicelement id="Atom_5_type">
+                        <about>
+                            <label>Atom 5 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_6_position">
+                        <about>
+                            <label>Atom 6 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.5, 0, 0.5)</default>
+                        <current>(0.5, 0, 0.5)</current>
+                    </string>
+                    <periodicelement id="Atom_6_type">
+                        <about>
+                            <label>Atom 6 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_7_position">
+                        <about>
+                            <label>Atom 7 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.25, 0.75, 0.75)</default>
+                        <current>(0.25, 0.75, 0.75)</current>
+                    </string>
+                    <periodicelement id="Atom_7_type">
+                        <about>
+                            <label>Atom 7 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                    <string id="Atom_8_position">
+                        <about>
+                            <label>Atom 8 position (nm)</label>
+                            <description>define the position of atom 1 in the form of (x, y, z);
+the unit  is nm</description>
+                        </about>
+                        <default>(0.75, 0.25, 0.75)</default>
+                        <current>(0.75, 0.25, 0.75)</current>
+                    </string>
+                    <periodicelement id="Atom_8_type">
+                        <about>
+                            <label>Atom 8 type</label>
+                            <description>choose the material for this atom</description>
+                        </about>
+                        <default>Silicon</default>
+                        <returnvalue>symbol</returnvalue>
+                        <current>Si</current>
+                    </periodicelement>
+                </group>
+            </group>
+            <group id="Repeating_vector">
+                <about>
+                    <label>Bravais vector</label>
+                    <description>define the vector a1, a2 and a3 of the Bravais vector R=ma1+na2+pa3 where m,n and p are all integers</description>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 2</enable>
+                </about>
+                <string id="Vector_1">
+                    <about>
+                        <label>Vector a1 (nm)</label>
+                        <description>define the vector in the form of (x, y, z);
+the unit is nm</description>
+                    </about>
+                    <default>(1, 0, 0)</default>
+                    <current>(1, 0, 0)</current>
+                </string>
+                <string id="Vector_2">
+                    <about>
+                        <label>Vector a2 (nm)</label>
+                        <description>define the vector in the form of (x, y, z);
+the unit is nm</description>
+                    </about>
+                    <default>(0, 1, 0)</default>
+                    <current>(0, 1, 0)</current>
+                </string>
+                <string id="Vector_3">
+                    <about>
+                        <label>Vector a3 (nm)</label>
+                        <description>define the vector in the form of (x, y, z);
+the unit is nm</description>
+                    </about>
+                    <default>(0, 0, 1)</default>
+                    <current>(0, 0, 1)</current>
+                </string>
+            </group>
+            <group id="Bond_radius">
+                <about>
+                    <label>Define the bond radius</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 2</enable>
+                </about>
+                <string id="Bond_radius">
+                    <about>
+                        <label>Bond radius (A,bohr,nm)</label>
+                        <description>if the distance between two atoms is equal or smaller than the bond radius, a bond will be create between them and the bond will be presented as a line connecting the two atoms;
+enter a number between 1e-10 nm to 1000nm with units of length (A, bohr, in, m)</description>
+                    </about>
+                    <default>0.433013nm</default>
+                    <current>0.433013nm</current>
+                </string>
+            </group>
+            <group id="Dimension">
+                <about>
+                    <label>Dimension</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 2</enable>
+                </about>
+                <integer id="Nx_userdefined">
+                    <about>
+                        <label>m</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the lattice grid</description>
+                    </about>
+                    <default>2</default>
+                    <min>1</min>
+                    <current>2</current>
+                </integer>
+                <integer id="Ny_userdefined">
+                    <about>
+                        <label>n</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the lattice grid</description>
+                    </about>
+                    <default>2</default>
+                    <min>1</min>
+                    <current>2</current>
+                </integer>
+                <integer id="Nz_userdefined">
+                    <about>
+                        <label>p</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the lattice grid</description>
+                    </about>
+                    <default>2</default>
+                    <min>1</min>
+                    <current>2</current>
+                </integer>
+            </group>
+            <group id="Bravais_dimension">
+                <about>
+                    <label>Dimension</label>
+                    <enable>input.phase(Second_stage).choice(What_to_do) == 3</enable>
+                </about>
+                <integer id="Nx">
+                    <about>
+                        <label>m</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the Bravais lattice grid</description>
+                    </about>
+                    <default>5</default>
+                    <min>1</min>
+                    <current>5</current>
+                </integer>
+                <integer id="Ny">
+                    <about>
+                        <label>n</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the Bravais lattice grid</description>
+                    </about>
+                    <default>5</default>
+                    <min>1</min>
+                    <current>5</current>
+                </integer>
+                <integer id="Nz">
+                    <about>
+                        <label>p</label>
+                        <description>the Bravais vector can be written as R = ma1+na2+pa3;
+the three coefficients m, n, and p decide the dimension of the Bravais lattice grid</description>
+                    </about>
+                    <default>5</default>
+                    <min>1</min>
+                    <current>5</current>
+                </integer>
+            </group>
+            <boolean id="Draw_miller_plane">
+                <about>
+                    <label>Draw miller plane</label>
+                    <enable>(input.phase(Second_stage).group(Crystal_structure).choice(Crystal_structure) != 8 &amp;&amp; input.phase(Second_stage).choice(What_to_do) == 1) || (input.phase(Second_stage).choice(What_to_do) == 2)</enable>
+                </about>
+                <default>no</default>
+                <current>yes</current>
+            </boolean>
+            <group id="Miller_plane">
+                <about>
+                    <label>Miller plane</label>
+                    <enable>input.phase(Second_stage).boolean(Draw_miller_plane) == "yes"</enable>
+                </about>
+                <group id="Plane1">
+                    <about>
+                        <label>Plane 1</label>
+                    </about>
+                    <boolean id="Draw_plane_1">
+                        <about>
+                            <label>Draw plane 1</label>
+                            <description>Toggle on to draw plane 1 in the lattice grid;
+Plane 1 is colored in green</description>
+                        </about>
+                        <default>yes</default>
+                        <current>yes</current>
+                    </boolean>
+                    <integer id="Miller_index_1_1">
+                        <about>
+                            <label>h (First miller index )</label>
+                            <description>first miller index for plane 1</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).boolean(Draw_plane_1) == "yes"</enable>
+                        </about>
+                        <default>1</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>1</current>
+                    </integer>
+                    <integer id="Miller_index_1_2">
+                        <about>
+                            <label>k (Second miller index )</label>
+                            <description>second miller index for plane 1</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).boolean(Draw_plane_1) == "yes"</enable>
+                        </about>
+                        <default>0</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>0</current>
+                    </integer>
+                    <integer id="Miller_index_1_3">
+                        <about>
+                            <label>l (Third miller index )</label>
+                            <description>third miller index for plane 1</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).boolean(Draw_plane_1) == "yes"</enable>
+                        </about>
+                        <default>0</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>0</current>
+                    </integer>
+                    <boolean id="Plane1_shift">
+                        <about>
+                            <label>Manually set plane 1 intersection point</label>
+                            <description>Toggle on to set the cross point of the miller plane on the axis;
+you can choose to set the cross point on x axis or y axis or z axis</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).boolean(Draw_plane_1)== "yes"</enable>
+                        </about>
+                        <default>no</default>
+                        <current>no</current>
+                    </boolean>
+                    <group id="Plane1_shift">
+                        <about>
+                            <label>Miller plane1 shift</label>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).boolean(Plane1_shift) == "yes"</enable>
+                        </about>
+                        <choice id="Which_axis">
+                            <about>
+                                <label>set the cross point on which axis</label>
+                            </about>
+                            <option id="1">
+                                <about>
+                                    <label>x axis</label>
+                                </about>
+                                <value>1</value>
+                            </option>
+                            <option id="2">
+                                <about>
+                                    <label>y axis</label>
+                                </about>
+                                <value>2</value>
+                            </option>
+                            <option id="3">
+                                <about>
+                                    <label>z axis</label>
+                                </about>
+                                <value>3</value>
+                            </option>
+                            <default>1</default>
+                            <current>1</current>
+                        </choice>
+                        <string id="X_cross">
+                            <about>
+                                <label>Cross point on X axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (X, 0, 0)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).group(Plane1_shift).choice(Which_axis) == 1 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane1).integer(Miller_index_1_1) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                        <string id="Y_cross">
+                            <about>
+                                <label>Cross point on Y axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (0, Y, 0)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).group(Plane1_shift).choice(Which_axis) == 2 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane1).integer(Miller_index_1_2) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                        <string id="Z_cross">
+                            <about>
+                                <label>Cross point on Z axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (0, 0, Z)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane1).group(Plane1_shift).choice(Which_axis)== 3 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane1).integer(Miller_index_1_3) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                    </group>
+                </group>
+                <group id="Plane2">
+                    <about>
+                        <label>Plane 2</label>
+                    </about>
+                    <boolean id="Draw_plane_2">
+                        <about>
+                            <label>Draw plane 2</label>
+                            <description>Toggle on to draw plane 2 in the lattice grid;
+Plane 2 is colored in blue</description>
+                        </about>
+                        <default>no</default>
+                        <current>yes</current>
+                    </boolean>
+                    <integer id="Miller_index_2_1">
+                        <about>
+                            <label>h (First miller index )</label>
+                            <description>first miller index for plane 2</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).boolean(Draw_plane_2)== "yes"</enable>
+                        </about>
+                        <default>0</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>0</current>
+                    </integer>
+                    <integer id="Miller_index_2_2">
+                        <about>
+                            <label>k (Second miller index )</label>
+                            <description>second miller index for plane 2</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).boolean(Draw_plane_2) == "yes"</enable>
+                        </about>
+                        <default>1</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>1</current>
+                    </integer>
+                    <integer id="Miller_index_2_3">
+                        <about>
+                            <label>l (Third miller index )</label>
+                            <description>third miller index for plane 2</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).boolean(Draw_plane_2) == "yes"</enable>
+                        </about>
+                        <default>0</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>0</current>
+                    </integer>
+                    <boolean id="Plane2_shift">
+                        <about>
+                            <label>Manually set plane 2 intersection point</label>
+                            <description>Toggle on to set the cross point of the miller plane on the axis;
+you can choose to set the cross point on x axis or y axis or z axis</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).boolean(Draw_plane_2) == "yes"</enable>
+                        </about>
+                        <default>no</default>
+                        <current>no</current>
+                    </boolean>
+                    <group id="Plane2_shift">
+                        <about>
+                            <label>Miller plane2 shift</label>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).boolean(Plane2_shift) == "yes"</enable>
+                        </about>
+                        <choice id="Which_axis">
+                            <about>
+                                <label>set the cross point on which axis</label>
+                            </about>
+                            <option id="1">
+                                <about>
+                                    <label>x axis</label>
+                                </about>
+                                <value>1</value>
+                            </option>
+                            <option id="2">
+                                <about>
+                                    <label>y axis</label>
+                                </about>
+                                <value>2</value>
+                            </option>
+                            <option id="3">
+                                <about>
+                                    <label>z axis</label>
+                                </about>
+                                <value>3</value>
+                            </option>
+                            <default>1</default>
+                            <current>1</current>
+                        </choice>
+                        <string id="X_cross">
+                            <about>
+                                <label>Cross point on X axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (X, 0, 0)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).group(Plane2_shift).choice(Which_axis) == 1 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane2).integer(Miller_index_2_1) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                        <string id="Y_cross">
+                            <about>
+                                <label>Cross point on Y axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (0, Y, 0)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).group(Plane2_shift).choice(Which_axis) == 2 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane2).integer(Miller_index_2_2) !=0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                        <string id="Z_cross">
+                            <about>
+                                <label>Cross point on Z axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (0, 0, Z)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane2).group(Plane2_shift).choice(Which_axis) == 3 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane2).integer(Miller_index_2_3) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                    </group>
+                </group>
+                <group id="Plane3">
+                    <about>
+                        <label>Plane 3</label>
+                    </about>
+                    <boolean id="Draw_plane_3">
+                        <about>
+                            <label>Draw plane 3</label>
+                            <description>Toggle on to draw plane 3 in the lattice grid;
+Plane 3 is colored in red</description>
+                        </about>
+                        <default>no</default>
+                        <current>yes</current>
+                    </boolean>
+                    <integer id="Miller_index_3_1">
+                        <about>
+                            <label>h (First miller index )</label>
+                            <description>first miller index for plane 3</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).boolean(Draw_plane_3) == "yes"</enable>
+                        </about>
+                        <default>0</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>0</current>
+                    </integer>
+                    <integer id="Miller_index_3_2">
+                        <about>
+                            <label>k (Second miller index )</label>
+                            <description>second miller index for plane 3</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).boolean(Draw_plane_3) == "yes"</enable>
+                        </about>
+                        <default>0</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>0</current>
+                    </integer>
+                    <integer id="Miller_index_3_3">
+                        <about>
+                            <label>l (Third miller index )</label>
+                            <description>third miller index for plane 3</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).boolean(Draw_plane_3) == "yes"</enable>
+                        </about>
+                        <default>1</default>
+                        <min>-7</min>
+                        <max>7</max>
+                        <current>1</current>
+                    </integer>
+                    <boolean id="Plane3_shift">
+                        <about>
+                            <label>Manually set plane 3 intersection point</label>
+                            <description>Toggle on to set the cross point of the miller plane on the axis;
+you can choose to set the cross point on x axis or y axis or z axis</description>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).boolean(Draw_plane_3) == "yes"</enable>
+                        </about>
+                        <default>no</default>
+                        <current>no</current>
+                    </boolean>
+                    <group id="Plane3_shift">
+                        <about>
+                            <label>Miller plane3 shift</label>
+                            <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).boolean(Plane3_shift) == "yes"</enable>
+                        </about>
+                        <choice id="Which_axis">
+                            <about>
+                                <label>set the cross point on which axis</label>
+                            </about>
+                            <option id="1">
+                                <about>
+                                    <label>x axis</label>
+                                </about>
+                                <value>1</value>
+                            </option>
+                            <option id="2">
+                                <about>
+                                    <label>y axis</label>
+                                </about>
+                                <value>2</value>
+                            </option>
+                            <option id="3">
+                                <about>
+                                    <label>z axis</label>
+                                </about>
+                                <value>3</value>
+                            </option>
+                            <default>1</default>
+                            <current>1</current>
+                        </choice>
+                        <string id="X_cross">
+                            <about>
+                                <label>Cross point on X axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (X, 0, 0)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).group(Plane3_shift).choice(Which_axis)== 1 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane3).integer(Miller_index_3_1) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                        <string id="Y_cross">
+                            <about>
+                                <label>Cross point on Y axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (0, Y, 0)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).group(Plane3_shift).choice(Which_axis) == 2 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane3).integer(Miller_index_3_2) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                        <string id="Z_cross">
+                            <about>
+                                <label>Cross point on Z axis (A,bohr,nm)</label>
+                                <description>enter a number between 0.1nm and 10nm with units of length (A,bohr,nm);
+the miller plane will cross the point (0, 0, Z)</description>
+                                <enable>input.phase(Second_stage).group(Miller_plane).group(Plane3).group(Plane3_shift).choice(Which_axis) == 3 &amp;&amp; input.phase(Second_stage).group(Miller_plane).group(Plane3).integer(Miller_index_3_3) != 0</enable>
+                            </about>
+                            <default>1nm</default>
+                            <current>1nm</current>
+                        </string>
+                    </group>
+                </group>
+            </group>
+        </phase>
+    </input>
+    <meta>
+        <driver id="4c1f8635-f561-4cb3-5f3c-4ff8f58b0677">
+            <source>rapptureUI</source>
+            <version>6716</version>
+            <time>Thu Mar 05 06:59:07 PM EST 2026</time>
+        </driver>
+        <generated>human</generated>
+        <driver id="1928a804-4524-4ac8-7695-712980c5389e">
+            <source>toolParameters</source>
+            <version>6716</version>
+            <time>Thu Mar 05 06:59:09 PM EST 2026</time>
+        </driver>
+    </meta>
+    <output>
+        <drawing id="structure0">
+            <about>
+                <label>Text book unit cell</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="structure0">
+                <pdb>HEADER    NEMO5 DATA
+AUTHOR   5 S.STEIGER,M.POVOLOTSKYI,T.KUBIS,H.-H.PARK,G.KLIMECK
+REMARK   0 NEMO5 COPYRIGHT (C) 2010-2011 PURDUE UNIVERSITY, WEST LAFAYETTE IN, USA
+ATOM      1   Si  Si  0001       0.000   0.000   0.000                      Si
+ATOM      2   Si  Si  0001       1.358   1.358   1.358                      Si
+ATOM      3   Si  Si  0001       2.716   2.716   0.000                      Si
+ATOM      4   Si  Si  0001       4.073   4.073   1.358                      Si
+ATOM      5   Si  Si  0001       2.716   0.000   2.716                      Si
+ATOM      6   Si  Si  0001       4.073   1.358   4.073                      Si
+ATOM      7   Si  Si  0001       0.000   2.716   2.716                      Si
+ATOM      8   Si  Si  0001       1.358   4.073   4.073                      Si
+ATOM      9   Si  Si  0001       0.000   0.000   5.431                      Si
+ATOM     10   Si  Si  0001       2.716   2.716   5.431                      Si
+ATOM     11   Si  Si  0001       0.000   5.431   0.000                      Si
+ATOM     12   Si  Si  0001       2.716   5.431   2.716                      Si
+ATOM     13   Si  Si  0001       0.000   5.431   5.431                      Si
+ATOM     14   Si  Si  0001       5.431   0.000   0.000                      Si
+ATOM     15   Si  Si  0001       5.431   2.716   2.716                      Si
+ATOM     16   Si  Si  0001       5.431   0.000   5.431                      Si
+ATOM     17   Si  Si  0001       5.431   5.431   0.000                      Si
+ATOM     18   Si  Si  0001       5.431   5.431   5.431                      Si
+ATOM     19   Xe  Si  0001      10.862   0.000   0.000                      Xe
+ATOM     20   Yb  Si  0001       0.000  10.862   0.000                      Yb
+ATOM     21   Zn  Si  0001       0.000   0.000  10.862                      Zn
+ATOM     22   He  Si  0001       0.000   0.000   0.000                      He
+ATOM     23   He  Si  0001       5.431   0.000   0.000                      He
+ATOM     24   He  Si  0001       5.431   5.431   0.000                      He
+ATOM     25   He  Si  0001       0.000   5.431   0.000                      He
+ATOM     26   He  Si  0001       0.000   0.000   5.431                      He
+ATOM     27   He  Si  0001       5.431   0.000   5.431                      He
+ATOM     28   He  Si  0001       5.431   5.431   5.431                      He
+ATOM     29   He  Si  0001       0.000   5.431   5.431                      He
+CONECT    1    2
+CONECT    2    1    3    5    7
+CONECT    3    2    4
+CONECT    4    3   12   15   17
+CONECT    5    2    6
+CONECT    6    5   10   15   16
+CONECT    7    2    8
+CONECT    8    7   10   12   13
+CONECT    9
+CONECT   10    6    8
+CONECT   11
+CONECT   12    4    8
+CONECT   13    8
+CONECT   14
+CONECT   15    4    6
+CONECT   16    6
+CONECT   17    4
+CONECT   18
+CONECT   19   22
+CONECT   20   22
+CONECT   21   22
+CONECT   22   19   20   21   23   25   26
+CONECT   23   22   24   27
+CONECT   24   23   25   28
+CONECT   25   22   24   29
+CONECT   26   22   27   29
+CONECT   27   23   26   28
+CONECT   28   24   27   29
+CONECT   29   25   26   28
+END</pdb>
+            </molecule>
+        </drawing>
+        <drawing id="structure2">
+            <about>
+                <label>Lattice grid</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="structure2">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 96 float
+0 0 0 1.35775 1.35775 1.35775 2.7155 2.7155 0
+4.07325 4.07325 1.35775 2.7155 0 2.7155 4.07325 1.35775 4.07325
+0 2.7155 2.7155 1.35775 4.07325 4.07325 0 0 5.431
+1.35775 1.35775 6.78875 2.7155 2.7155 5.431 4.07325 4.07325 6.78875
+2.7155 0 8.1465 4.07325 1.35775 9.50425 0 2.7155 8.1465
+1.35775 4.07325 9.50425 0 5.431 0 1.35775 6.78875 1.35775
+2.7155 8.1465 0 4.07325 9.50425 1.35775 2.7155 5.431 2.7155
+4.07325 6.78875 4.07325 0 8.1465 2.7155 1.35775 9.50425 4.07325
+0 5.431 5.431 1.35775 6.78875 6.78875 2.7155 8.1465 5.431
+4.07325 9.50425 6.78875 2.7155 5.431 8.1465 4.07325 6.78875 9.50425
+0 8.1465 8.1465 1.35775 9.50425 9.50425 5.431 0 0
+6.78875 1.35775 1.35775 8.1465 2.7155 0 9.50425 4.07325 1.35775
+8.1465 0 2.7155 9.50425 1.35775 4.07325 5.431 2.7155 2.7155
+6.78875 4.07325 4.07325 5.431 0 5.431 6.78875 1.35775 6.78875
+8.1465 2.7155 5.431 9.50425 4.07325 6.78875 8.1465 0 8.1465
+9.50425 1.35775 9.50425 5.431 2.7155 8.1465 6.78875 4.07325 9.50425
+5.431 5.431 0 6.78875 6.78875 1.35775 8.1465 8.1465 0
+9.50425 9.50425 1.35775 8.1465 5.431 2.7155 9.50425 6.78875 4.07325
+5.431 8.1465 2.7155 6.78875 9.50425 4.07325 5.431 5.431 5.431
+6.78875 6.78875 6.78875 8.1465 8.1465 5.431 9.50425 9.50425 6.78875
+8.1465 5.431 8.1465 9.50425 6.78875 9.50425 5.431 8.1465 8.1465
+6.78875 9.50425 9.50425 10.862 0 0 12.2197 1.35775 1.35775
+13.5775 2.7155 0 14.9353 4.07325 1.35775 13.5775 0 2.7155
+14.9353 1.35775 4.07325 10.862 2.7155 2.7155 12.2197 4.07325 4.07325
+10.862 0 5.431 12.2197 1.35775 6.78875 13.5775 2.7155 5.431
+14.9353 4.07325 6.78875 13.5775 0 8.1465 14.9353 1.35775 9.50425
+10.862 2.7155 8.1465 12.2197 4.07325 9.50425 10.862 5.431 0
+12.2197 6.78875 1.35775 13.5775 8.1465 0 14.9353 9.50425 1.35775
+13.5775 5.431 2.7155 14.9353 6.78875 4.07325 10.862 8.1465 2.7155
+12.2197 9.50425 4.07325 10.862 5.431 5.431 12.2197 6.78875 6.78875
+13.5775 8.1465 5.431 14.9353 9.50425 6.78875 13.5775 5.431 8.1465
+14.9353 6.78875 9.50425 10.862 8.1465 8.1465 12.2197 9.50425 9.50425
+
+VERTICES 96 192
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+1 8
+1 9
+1 10
+1 11
+1 12
+1 13
+1 14
+1 15
+1 16
+1 17
+1 18
+1 19
+1 20
+1 21
+1 22
+1 23
+1 24
+1 25
+1 26
+1 27
+1 28
+1 29
+1 30
+1 31
+1 32
+1 33
+1 34
+1 35
+1 36
+1 37
+1 38
+1 39
+1 40
+1 41
+1 42
+1 43
+1 44
+1 45
+1 46
+1 47
+1 48
+1 49
+1 50
+1 51
+1 52
+1 53
+1 54
+1 55
+1 56
+1 57
+1 58
+1 59
+1 60
+1 61
+1 62
+1 63
+1 64
+1 65
+1 66
+1 67
+1 68
+1 69
+1 70
+1 71
+1 72
+1 73
+1 74
+1 75
+1 76
+1 77
+1 78
+1 79
+1 80
+1 81
+1 82
+1 83
+1 84
+1 85
+1 86
+1 87
+1 88
+1 89
+1 90
+1 91
+1 92
+1 93
+1 94
+1 95
+
+LINES 135 405
+2 1 0
+2 2 1
+2 3 2
+2 4 1
+2 5 4
+2 6 1
+2 7 6
+2 9 8
+2 10 5
+2 10 7
+2 10 9
+2 11 10
+2 12 9
+2 13 12
+2 14 9
+2 15 14
+2 17 16
+2 18 17
+2 19 18
+2 20 3
+2 20 7
+2 20 17
+2 21 20
+2 22 17
+2 23 22
+2 24 7
+2 25 24
+2 26 21
+2 26 23
+2 26 25
+2 27 26
+2 28 11
+2 28 15
+2 28 25
+2 29 28
+2 30 25
+2 31 30
+2 33 32
+2 34 33
+2 35 34
+2 36 33
+2 37 36
+2 38 3
+2 38 5
+2 38 33
+2 39 38
+2 40 5
+2 41 40
+2 42 37
+2 42 39
+2 42 41
+2 43 42
+2 44 41
+2 45 44
+2 46 11
+2 46 13
+2 46 41
+2 47 46
+2 48 3
+2 49 48
+2 50 49
+2 51 50
+2 52 35
+2 52 39
+2 52 49
+2 53 52
+2 54 19
+2 54 21
+2 54 49
+2 55 54
+2 56 11
+2 56 21
+2 56 39
+2 57 56
+2 58 53
+2 58 55
+2 58 57
+2 59 58
+2 60 43
+2 60 47
+2 60 57
+2 61 60
+2 62 27
+2 62 29
+2 62 57
+2 63 62
+2 65 64
+2 66 65
+2 67 66
+2 68 65
+2 69 68
+2 70 35
+2 70 37
+2 70 65
+2 71 70
+2 72 37
+2 73 72
+2 74 69
+2 74 71
+2 74 73
+2 75 74
+2 76 73
+2 77 76
+2 78 43
+2 78 45
+2 78 73
+2 79 78
+2 80 35
+2 81 80
+2 82 81
+2 83 82
+2 84 67
+2 84 71
+2 84 81
+2 85 84
+2 86 51
+2 86 53
+2 86 81
+2 87 86
+2 88 43
+2 88 53
+2 88 71
+2 89 88
+2 90 85
+2 90 87
+2 90 89
+2 91 90
+2 92 75
+2 92 79
+2 92 89
+2 93 92
+2 94 59
+2 94 61
+2 94 89
+2 95 94
+
+POINT_DATA 96
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14
+FIELD FieldData 4
+atom_type 1 96 double
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14
+material 1 96 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1
+region 1 96 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1
+shape 1 96 double
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0
+</vtk>
+            </molecule>
+            <polygon id="plane1">
+                <about>
+                    <style>-color green -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+7.46765 0 0 7.46765 9.50425 0 7.46765 0 9.50425
+7.46765 9.50425 9.50425
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+            <polygon id="plane2">
+                <about>
+                    <style>-color blue -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+0 4.75213 0 14.9353 4.75213 0 0 4.75213 9.50425
+14.9353 4.75213 9.50425
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+            <polygon id="plane3">
+                <about>
+                    <style>-color red -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+0 0 4.75213 14.9353 0 4.75213 0 9.50425 4.75213
+14.9353 9.50425 4.75213
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+        </drawing>
+        <drawing id="structure1">
+            <about>
+                <label>Basis</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="structure1">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 8 float
+0 0 0 1.35775 1.35775 1.35775 2.7155 2.7155 0
+4.07325 4.07325 1.35775 2.7155 0 2.7155 4.07325 1.35775 4.07325
+0 2.7155 2.7155 1.35775 4.07325 4.07325
+VERTICES 8 16
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+
+LINES 7 21
+2 1 0
+2 2 1
+2 3 2
+2 4 1
+2 5 4
+2 6 1
+2 7 6
+
+POINT_DATA 8
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14
+FIELD FieldData 4
+atom_type 1 8 double
+14 14 14 14 14 14 14 14
+material 1 8 double
+1 1 1 1 1 1 1 1
+region 1 8 double
+1 1 1 1 1 1 1 1
+shape 1 8 double
+0 0 0 0 0 0 0 0
+</vtk>
+            </molecule>
+        </drawing>
+        <string id="latt_info">
+            <about>
+                <label>Crystal Info</label>
+            </about>
+            <current>=======================================
+STRUCTURE INFORMATION
+=======================================
+
+Crystal type : diamond
+Material     : Si
+
+Primitive cell basis atoms (x,y,z) [nm]:
+    atom 0 (type: Si) = (        0,        0,        0)
+    atom 1 (type: Si) = ( 0.135775, 0.135775, 0.135775)
+
+Primitive cell Bravais vectors (x,y,z) [nm]:
+    a1 = (        0,  0.27155,  0.27155)
+    a2 = (  0.27155,        0,  0.27155)
+    a3 = (  0.27155,  0.27155,        0)
+
+Conventional cell basis atoms (x,y,z) [nm]:
+    atom 0 (type: Si) = (        0,        0,        0)
+    atom 1 (type: Si) = ( 0.135775, 0.135775, 0.135775)
+
+Conventional cell Bravais vectors (x,y,z) [nm]:
+    a1 = (   0.5431,        0,        0)
+    a2 = (        0,   0.5431,        0)
+    a3 = (        0,        0,   0.5431)
+
+Reciprocal lattice vectors (x,y,z) [nm-1]:
+    b0 = (  3.85637,       -0,        0)
+    b1 = (        0,  5.78456,        0)
+    b2 = (        0,        0,  5.78456)
+
+Translation vectors (x,y,z) [nm]:
+    V0 = (   1.6293,        0,        0)
+    V1 = (        0,   1.0862,        0)
+    V2 = (        0,        0,   1.0862)
+</current>
+        </string>
+        <drawing id="plane1_side_A">
+            <about>
+                <label>Crystal on one side of plane 1</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="plane1_side_A">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 60 float
+8.1465 2.7155 0 9.50425 4.07325 1.35775 8.1465 0 2.7155
+9.50425 1.35775 4.07325 8.1465 2.7155 5.431 9.50425 4.07325 6.78875
+8.1465 0 8.1465 9.50425 1.35775 9.50425 8.1465 8.1465 0
+9.50425 9.50425 1.35775 8.1465 5.431 2.7155 9.50425 6.78875 4.07325
+8.1465 8.1465 5.431 9.50425 9.50425 6.78875 8.1465 5.431 8.1465
+9.50425 6.78875 9.50425 10.862 0 0 12.2197 1.35775 1.35775
+13.5775 2.7155 0 14.9353 4.07325 1.35775 13.5775 0 2.7155
+14.9353 1.35775 4.07325 10.862 2.7155 2.7155 12.2197 4.07325 4.07325
+10.862 0 5.431 12.2197 1.35775 6.78875 13.5775 2.7155 5.431
+14.9353 4.07325 6.78875 13.5775 0 8.1465 14.9353 1.35775 9.50425
+10.862 2.7155 8.1465 12.2197 4.07325 9.50425 10.862 5.431 0
+12.2197 6.78875 1.35775 13.5775 8.1465 0 14.9353 9.50425 1.35775
+13.5775 5.431 2.7155 14.9353 6.78875 4.07325 10.862 8.1465 2.7155
+12.2197 9.50425 4.07325 10.862 5.431 5.431 12.2197 6.78875 6.78875
+13.5775 8.1465 5.431 14.9353 9.50425 6.78875 13.5775 5.431 8.1465
+14.9353 6.78875 9.50425 10.862 8.1465 8.1465 12.2197 9.50425 9.50425
+7.46765 2.03665 0.67885 7.46765 0.67885 2.03665 7.46765 3.39435 4.75215
+7.46765 2.03665 6.10985 7.46765 0.67885 7.46765 7.46765 7.46765 0.67885
+7.46765 4.75215 3.39435 7.46765 6.10985 2.03665 7.46765 8.82535 4.75215
+7.46765 7.46765 6.10985 7.46765 4.75215 8.82535 7.46765 6.10985 7.46765
+
+VERTICES 48 96
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+1 8
+1 9
+1 10
+1 11
+1 12
+1 13
+1 14
+1 15
+1 16
+1 17
+1 18
+1 19
+1 20
+1 21
+1 22
+1 23
+1 24
+1 25
+1 26
+1 27
+1 28
+1 29
+1 30
+1 31
+1 32
+1 33
+1 34
+1 35
+1 36
+1 37
+1 38
+1 39
+1 40
+1 41
+1 42
+1 43
+1 44
+1 45
+1 46
+1 47
+
+LINES 73 219
+2 0 48
+2 1 0
+2 2 49
+2 3 2
+2 4 3
+2 4 50
+2 4 51
+2 5 4
+2 6 52
+2 7 6
+2 8 53
+2 9 8
+2 10 1
+2 10 54
+2 10 55
+2 11 10
+2 12 11
+2 12 56
+2 12 57
+2 13 12
+2 14 5
+2 14 58
+2 14 59
+2 15 14
+2 17 16
+2 18 17
+2 19 18
+2 20 17
+2 21 20
+2 22 1
+2 22 3
+2 22 17
+2 23 22
+2 24 3
+2 25 24
+2 26 21
+2 26 23
+2 26 25
+2 27 26
+2 28 25
+2 29 28
+2 30 5
+2 30 7
+2 30 25
+2 31 30
+2 32 1
+2 33 32
+2 34 33
+2 35 34
+2 36 19
+2 36 23
+2 36 33
+2 37 36
+2 38 9
+2 38 11
+2 38 33
+2 39 38
+2 40 5
+2 40 11
+2 40 23
+2 41 40
+2 42 37
+2 42 39
+2 42 41
+2 43 42
+2 44 27
+2 44 31
+2 44 41
+2 45 44
+2 46 13
+2 46 15
+2 46 41
+2 47 46
+
+POINT_DATA 60
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 1 1 1 1 1 1
+1 1 1 1 1 1
+FIELD FieldData 4
+atom_type 1 60 double
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14
+material 1 60 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1
+region 1 60 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1
+shape 1 60 double
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0
+</vtk>
+            </molecule>
+            <polygon id="plane1_side_A">
+                <about>
+                    <style>-color green -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+7.46765 0 0 7.46765 9.50425 0 7.46765 0 9.50425
+7.46765 9.50425 9.50425
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+        </drawing>
+        <drawing id="plane1_side_B">
+            <about>
+                <label>Crystal on the other side of plane 1</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="plane1_side_B">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 60 float
+0 0 0 1.35775 1.35775 1.35775 2.7155 2.7155 0
+4.07325 4.07325 1.35775 2.7155 0 2.7155 4.07325 1.35775 4.07325
+0 2.7155 2.7155 1.35775 4.07325 4.07325 0 0 5.431
+1.35775 1.35775 6.78875 2.7155 2.7155 5.431 4.07325 4.07325 6.78875
+2.7155 0 8.1465 4.07325 1.35775 9.50425 0 2.7155 8.1465
+1.35775 4.07325 9.50425 0 5.431 0 1.35775 6.78875 1.35775
+2.7155 8.1465 0 4.07325 9.50425 1.35775 2.7155 5.431 2.7155
+4.07325 6.78875 4.07325 0 8.1465 2.7155 1.35775 9.50425 4.07325
+0 5.431 5.431 1.35775 6.78875 6.78875 2.7155 8.1465 5.431
+4.07325 9.50425 6.78875 2.7155 5.431 8.1465 4.07325 6.78875 9.50425
+0 8.1465 8.1465 1.35775 9.50425 9.50425 5.431 0 0
+6.78875 1.35775 1.35775 5.431 2.7155 2.7155 6.78875 4.07325 4.07325
+5.431 0 5.431 6.78875 1.35775 6.78875 5.431 2.7155 8.1465
+6.78875 4.07325 9.50425 5.431 5.431 0 6.78875 6.78875 1.35775
+5.431 8.1465 2.7155 6.78875 9.50425 4.07325 5.431 5.431 5.431
+6.78875 6.78875 6.78875 5.431 8.1465 8.1465 6.78875 9.50425 9.50425
+7.46765 2.03665 0.67885 7.46765 0.67885 2.03665 7.46765 3.39435 4.75215
+7.46765 2.03665 6.10985 7.46765 0.67885 7.46765 7.46765 7.46765 0.67885
+7.46765 4.75215 3.39435 7.46765 6.10985 2.03665 7.46765 8.82535 4.75215
+7.46765 7.46765 6.10985 7.46765 4.75215 8.82535 7.46765 6.10985 7.46765
+
+VERTICES 48 96
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+1 8
+1 9
+1 10
+1 11
+1 12
+1 13
+1 14
+1 15
+1 16
+1 17
+1 18
+1 19
+1 20
+1 21
+1 22
+1 23
+1 24
+1 25
+1 26
+1 27
+1 28
+1 29
+1 30
+1 31
+1 32
+1 33
+1 34
+1 35
+1 36
+1 37
+1 38
+1 39
+1 40
+1 41
+1 42
+1 43
+1 44
+1 45
+1 46
+1 47
+
+LINES 74 222
+2 1 0
+2 2 1
+2 3 2
+2 4 1
+2 5 4
+2 6 1
+2 7 6
+2 9 8
+2 10 5
+2 10 7
+2 10 9
+2 11 10
+2 12 9
+2 13 12
+2 14 9
+2 15 14
+2 17 16
+2 18 17
+2 19 18
+2 20 3
+2 20 7
+2 20 17
+2 21 20
+2 22 17
+2 23 22
+2 24 7
+2 25 24
+2 26 21
+2 26 23
+2 26 25
+2 27 26
+2 28 11
+2 28 15
+2 28 25
+2 29 28
+2 30 25
+2 31 30
+2 33 32
+2 48 33
+2 49 33
+2 34 3
+2 34 5
+2 34 33
+2 35 34
+2 36 5
+2 37 36
+2 50 35
+2 51 37
+2 52 37
+2 38 11
+2 38 13
+2 38 37
+2 39 38
+2 40 3
+2 41 40
+2 53 41
+2 54 35
+2 55 41
+2 42 19
+2 42 21
+2 42 41
+2 43 42
+2 44 11
+2 44 21
+2 44 35
+2 45 44
+2 56 43
+2 57 45
+2 58 39
+2 59 45
+2 46 27
+2 46 29
+2 46 45
+2 47 46
+
+POINT_DATA 60
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 1 1 1 1 1 1
+1 1 1 1 1 1
+FIELD FieldData 4
+atom_type 1 60 double
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14
+material 1 60 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1
+region 1 60 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1
+shape 1 60 double
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0
+</vtk>
+            </molecule>
+            <polygon id="plane1_side_B">
+                <about>
+                    <style>-color green -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+7.46765 0 0 7.46765 9.50425 0 7.46765 0 9.50425
+7.46765 9.50425 9.50425
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+        </drawing>
+        <drawing id="plane2_side_A">
+            <about>
+                <label>Crystal on one side of plane 2</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="plane2_side_A">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 67 float
+0 5.431 0 1.35775 6.78875 1.35775 2.7155 8.1465 0
+4.07325 9.50425 1.35775 2.7155 5.431 2.7155 4.07325 6.78875 4.07325
+0 8.1465 2.7155 1.35775 9.50425 4.07325 0 5.431 5.431
+1.35775 6.78875 6.78875 2.7155 8.1465 5.431 4.07325 9.50425 6.78875
+2.7155 5.431 8.1465 4.07325 6.78875 9.50425 0 8.1465 8.1465
+1.35775 9.50425 9.50425 5.431 5.431 0 6.78875 6.78875 1.35775
+8.1465 8.1465 0 9.50425 9.50425 1.35775 8.1465 5.431 2.7155
+9.50425 6.78875 4.07325 5.431 8.1465 2.7155 6.78875 9.50425 4.07325
+5.431 5.431 5.431 6.78875 6.78875 6.78875 8.1465 8.1465 5.431
+9.50425 9.50425 6.78875 8.1465 5.431 8.1465 9.50425 6.78875 9.50425
+5.431 8.1465 8.1465 6.78875 9.50425 9.50425 10.862 5.431 0
+12.2197 6.78875 1.35775 13.5775 8.1465 0 14.9353 9.50425 1.35775
+13.5775 5.431 2.7155 14.9353 6.78875 4.07325 10.862 8.1465 2.7155
+12.2197 9.50425 4.07325 10.862 5.431 5.431 12.2197 6.78875 6.78875
+13.5775 8.1465 5.431 14.9353 9.50425 6.78875 13.5775 5.431 8.1465
+14.9353 6.78875 9.50425 10.862 8.1465 8.1465 12.2197 9.50425 9.50425
+3.39437 4.75213 2.03663 2.03663 4.75213 3.39437 0.678875 4.75213 4.75213
+3.39437 4.75213 7.46763 2.03663 4.75213 8.82537 4.75213 4.75213 0.678875
+8.82537 4.75213 2.03663 7.46763 4.75213 3.39437 4.75213 4.75213 6.10988
+6.10988 4.75213 4.75213 8.82537 4.75213 7.46763 7.46763 4.75213 8.82537
+10.1831 4.75213 0.678875 14.2564 4.75213 2.03663 12.8986 4.75213 3.39437
+10.1831 4.75213 6.10988 11.5408 4.75213 4.75213 14.2564 4.75213 7.46763
+12.8986 4.75213 8.82537
+VERTICES 48 96
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+1 8
+1 9
+1 10
+1 11
+1 12
+1 13
+1 14
+1 15
+1 16
+1 17
+1 18
+1 19
+1 20
+1 21
+1 22
+1 23
+1 24
+1 25
+1 26
+1 27
+1 28
+1 29
+1 30
+1 31
+1 32
+1 33
+1 34
+1 35
+1 36
+1 37
+1 38
+1 39
+1 40
+1 41
+1 42
+1 43
+1 44
+1 45
+1 46
+1 47
+
+LINES 77 231
+2 1 0
+2 2 1
+2 3 2
+2 4 48
+2 4 49
+2 4 1
+2 5 4
+2 6 1
+2 7 6
+2 8 50
+2 9 8
+2 10 5
+2 10 7
+2 10 9
+2 11 10
+2 12 51
+2 12 52
+2 12 9
+2 13 12
+2 14 9
+2 15 14
+2 16 53
+2 17 16
+2 18 17
+2 19 18
+2 20 54
+2 20 55
+2 20 17
+2 21 20
+2 22 3
+2 22 5
+2 22 17
+2 23 22
+2 24 56
+2 24 5
+2 24 57
+2 25 24
+2 26 21
+2 26 23
+2 26 25
+2 27 26
+2 28 58
+2 28 59
+2 28 25
+2 29 28
+2 30 11
+2 30 13
+2 30 25
+2 31 30
+2 32 60
+2 33 32
+2 34 33
+2 35 34
+2 36 61
+2 36 62
+2 36 33
+2 37 36
+2 38 19
+2 38 21
+2 38 33
+2 39 38
+2 40 63
+2 40 21
+2 40 64
+2 41 40
+2 42 37
+2 42 39
+2 42 41
+2 43 42
+2 44 65
+2 44 66
+2 44 41
+2 45 44
+2 46 27
+2 46 29
+2 46 41
+2 47 46
+
+POINT_DATA 67
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+FIELD FieldData 4
+atom_type 1 67 double
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14
+material 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+region 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+shape 1 67 double
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0
+</vtk>
+            </molecule>
+            <polygon id="plane2_side_A">
+                <about>
+                    <style>-color blue -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+0 4.75213 0 14.9353 4.75213 0 0 4.75213 9.50425
+14.9353 4.75213 9.50425
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+        </drawing>
+        <drawing id="plane2_side_B">
+            <about>
+                <label>Crystal on the other side of plane 2</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="plane2_side_B">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 67 float
+0 0 0 1.35775 1.35775 1.35775 2.7155 2.7155 0
+4.07325 4.07325 1.35775 2.7155 0 2.7155 4.07325 1.35775 4.07325
+0 2.7155 2.7155 1.35775 4.07325 4.07325 0 0 5.431
+1.35775 1.35775 6.78875 2.7155 2.7155 5.431 4.07325 4.07325 6.78875
+2.7155 0 8.1465 4.07325 1.35775 9.50425 0 2.7155 8.1465
+1.35775 4.07325 9.50425 5.431 0 0 6.78875 1.35775 1.35775
+8.1465 2.7155 0 9.50425 4.07325 1.35775 8.1465 0 2.7155
+9.50425 1.35775 4.07325 5.431 2.7155 2.7155 6.78875 4.07325 4.07325
+5.431 0 5.431 6.78875 1.35775 6.78875 8.1465 2.7155 5.431
+9.50425 4.07325 6.78875 8.1465 0 8.1465 9.50425 1.35775 9.50425
+5.431 2.7155 8.1465 6.78875 4.07325 9.50425 10.862 0 0
+12.2197 1.35775 1.35775 13.5775 2.7155 0 14.9353 4.07325 1.35775
+13.5775 0 2.7155 14.9353 1.35775 4.07325 10.862 2.7155 2.7155
+12.2197 4.07325 4.07325 10.862 0 5.431 12.2197 1.35775 6.78875
+13.5775 2.7155 5.431 14.9353 4.07325 6.78875 13.5775 0 8.1465
+14.9353 1.35775 9.50425 10.862 2.7155 8.1465 12.2197 4.07325 9.50425
+3.39437 4.75213 2.03663 2.03663 4.75213 3.39437 0.678875 4.75213 4.75213
+3.39437 4.75213 7.46763 2.03663 4.75213 8.82537 4.75213 4.75213 0.678875
+8.82537 4.75213 2.03663 7.46763 4.75213 3.39437 4.75213 4.75213 6.10988
+6.10988 4.75213 4.75213 8.82537 4.75213 7.46763 7.46763 4.75213 8.82537
+10.1831 4.75213 0.678875 14.2564 4.75213 2.03663 12.8986 4.75213 3.39437
+10.1831 4.75213 6.10988 11.5408 4.75213 4.75213 14.2564 4.75213 7.46763
+12.8986 4.75213 8.82537
+VERTICES 48 96
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+1 8
+1 9
+1 10
+1 11
+1 12
+1 13
+1 14
+1 15
+1 16
+1 17
+1 18
+1 19
+1 20
+1 21
+1 22
+1 23
+1 24
+1 25
+1 26
+1 27
+1 28
+1 29
+1 30
+1 31
+1 32
+1 33
+1 34
+1 35
+1 36
+1 37
+1 38
+1 39
+1 40
+1 41
+1 42
+1 43
+1 44
+1 45
+1 46
+1 47
+
+LINES 77 231
+2 1 0
+2 2 1
+2 3 2
+2 4 1
+2 5 4
+2 6 1
+2 7 6
+2 9 8
+2 10 5
+2 10 7
+2 10 9
+2 11 10
+2 12 9
+2 13 12
+2 14 9
+2 15 14
+2 48 3
+2 49 7
+2 50 7
+2 51 11
+2 52 15
+2 17 16
+2 18 17
+2 19 18
+2 20 17
+2 21 20
+2 22 3
+2 22 5
+2 22 17
+2 23 22
+2 24 5
+2 25 24
+2 26 21
+2 26 23
+2 26 25
+2 27 26
+2 28 25
+2 29 28
+2 30 11
+2 30 13
+2 30 25
+2 31 30
+2 53 3
+2 54 19
+2 55 23
+2 56 11
+2 57 23
+2 58 27
+2 59 31
+2 33 32
+2 34 33
+2 35 34
+2 36 33
+2 37 36
+2 38 19
+2 38 21
+2 38 33
+2 39 38
+2 40 21
+2 41 40
+2 42 37
+2 42 39
+2 42 41
+2 43 42
+2 44 41
+2 45 44
+2 46 27
+2 46 29
+2 46 41
+2 47 46
+2 60 19
+2 61 35
+2 62 39
+2 63 27
+2 64 39
+2 65 43
+2 66 47
+
+POINT_DATA 67
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+FIELD FieldData 4
+atom_type 1 67 double
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14
+material 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+region 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+shape 1 67 double
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0
+</vtk>
+            </molecule>
+            <polygon id="plane2_side_B">
+                <about>
+                    <style>-color blue -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+0 4.75213 0 14.9353 4.75213 0 0 4.75213 9.50425
+14.9353 4.75213 9.50425
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+        </drawing>
+        <drawing id="plane3_side_A">
+            <about>
+                <label>Crystal on one side of plane 3</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="plane3_side_A">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 67 float
+0 0 5.431 1.35775 1.35775 6.78875 2.7155 2.7155 5.431
+4.07325 4.07325 6.78875 2.7155 0 8.1465 4.07325 1.35775 9.50425
+0 2.7155 8.1465 1.35775 4.07325 9.50425 0 5.431 5.431
+1.35775 6.78875 6.78875 2.7155 8.1465 5.431 4.07325 9.50425 6.78875
+2.7155 5.431 8.1465 4.07325 6.78875 9.50425 0 8.1465 8.1465
+1.35775 9.50425 9.50425 5.431 0 5.431 6.78875 1.35775 6.78875
+8.1465 2.7155 5.431 9.50425 4.07325 6.78875 8.1465 0 8.1465
+9.50425 1.35775 9.50425 5.431 2.7155 8.1465 6.78875 4.07325 9.50425
+5.431 5.431 5.431 6.78875 6.78875 6.78875 8.1465 8.1465 5.431
+9.50425 9.50425 6.78875 8.1465 5.431 8.1465 9.50425 6.78875 9.50425
+5.431 8.1465 8.1465 6.78875 9.50425 9.50425 10.862 0 5.431
+12.2197 1.35775 6.78875 13.5775 2.7155 5.431 14.9353 4.07325 6.78875
+13.5775 0 8.1465 14.9353 1.35775 9.50425 10.862 2.7155 8.1465
+12.2197 4.07325 9.50425 10.862 5.431 5.431 12.2197 6.78875 6.78875
+13.5775 8.1465 5.431 14.9353 9.50425 6.78875 13.5775 5.431 8.1465
+14.9353 6.78875 9.50425 10.862 8.1465 8.1465 12.2197 9.50425 9.50425
+3.39437 2.03663 4.75213 2.03663 3.39437 4.75213 0.678875 4.75213 4.75213
+3.39437 7.46763 4.75213 2.03663 8.82537 4.75213 4.75213 0.678875 4.75213
+8.82537 2.03663 4.75213 7.46763 3.39437 4.75213 4.75213 6.10988 4.75213
+6.10988 4.75213 4.75213 8.82537 7.46763 4.75213 7.46763 8.82537 4.75213
+10.1831 0.678875 4.75213 14.2564 2.03663 4.75213 12.8986 3.39437 4.75213
+10.1831 6.10988 4.75213 11.5408 4.75213 4.75213 14.2564 7.46763 4.75213
+12.8986 8.82537 4.75213
+VERTICES 48 96
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+1 8
+1 9
+1 10
+1 11
+1 12
+1 13
+1 14
+1 15
+1 16
+1 17
+1 18
+1 19
+1 20
+1 21
+1 22
+1 23
+1 24
+1 25
+1 26
+1 27
+1 28
+1 29
+1 30
+1 31
+1 32
+1 33
+1 34
+1 35
+1 36
+1 37
+1 38
+1 39
+1 40
+1 41
+1 42
+1 43
+1 44
+1 45
+1 46
+1 47
+
+LINES 77 231
+2 1 0
+2 2 48
+2 2 49
+2 2 1
+2 3 2
+2 4 1
+2 5 4
+2 6 1
+2 7 6
+2 8 50
+2 9 8
+2 10 51
+2 10 52
+2 10 9
+2 11 10
+2 12 3
+2 12 7
+2 12 9
+2 13 12
+2 14 9
+2 15 14
+2 16 53
+2 17 16
+2 18 54
+2 18 55
+2 18 17
+2 19 18
+2 20 17
+2 21 20
+2 22 3
+2 22 5
+2 22 17
+2 23 22
+2 24 3
+2 24 56
+2 24 57
+2 25 24
+2 26 58
+2 26 59
+2 26 25
+2 27 26
+2 28 19
+2 28 23
+2 28 25
+2 29 28
+2 30 11
+2 30 13
+2 30 25
+2 31 30
+2 32 60
+2 33 32
+2 34 61
+2 34 62
+2 34 33
+2 35 34
+2 36 33
+2 37 36
+2 38 19
+2 38 21
+2 38 33
+2 39 38
+2 40 19
+2 40 63
+2 40 64
+2 41 40
+2 42 65
+2 42 66
+2 42 41
+2 43 42
+2 44 35
+2 44 39
+2 44 41
+2 45 44
+2 46 27
+2 46 29
+2 46 41
+2 47 46
+
+POINT_DATA 67
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+FIELD FieldData 4
+atom_type 1 67 double
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14
+material 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+region 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+shape 1 67 double
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0
+</vtk>
+            </molecule>
+            <polygon id="plane3_side_A">
+                <about>
+                    <style>-color red -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+0 0 4.75213 14.9353 0 4.75213 0 9.50425 4.75213
+14.9353 9.50425 4.75213
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+        </drawing>
+        <drawing id="plane3_side_B">
+            <about>
+                <label>Crystal on the other side of plane 3</label>
+            </about>
+            <xaxis>
+                <label>X</label>
+                <units>A</units>
+            </xaxis>
+            <yaxis>
+                <label>Y</label>
+                <units>A</units>
+            </yaxis>
+            <zaxis>
+                <label>Z</label>
+                <units>A</units>
+            </zaxis>
+            <molecule id="plane3_side_B">
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 67 float
+0 0 0 1.35775 1.35775 1.35775 2.7155 2.7155 0
+4.07325 4.07325 1.35775 2.7155 0 2.7155 4.07325 1.35775 4.07325
+0 2.7155 2.7155 1.35775 4.07325 4.07325 0 5.431 0
+1.35775 6.78875 1.35775 2.7155 8.1465 0 4.07325 9.50425 1.35775
+2.7155 5.431 2.7155 4.07325 6.78875 4.07325 0 8.1465 2.7155
+1.35775 9.50425 4.07325 5.431 0 0 6.78875 1.35775 1.35775
+8.1465 2.7155 0 9.50425 4.07325 1.35775 8.1465 0 2.7155
+9.50425 1.35775 4.07325 5.431 2.7155 2.7155 6.78875 4.07325 4.07325
+5.431 5.431 0 6.78875 6.78875 1.35775 8.1465 8.1465 0
+9.50425 9.50425 1.35775 8.1465 5.431 2.7155 9.50425 6.78875 4.07325
+5.431 8.1465 2.7155 6.78875 9.50425 4.07325 10.862 0 0
+12.2197 1.35775 1.35775 13.5775 2.7155 0 14.9353 4.07325 1.35775
+13.5775 0 2.7155 14.9353 1.35775 4.07325 10.862 2.7155 2.7155
+12.2197 4.07325 4.07325 10.862 5.431 0 12.2197 6.78875 1.35775
+13.5775 8.1465 0 14.9353 9.50425 1.35775 13.5775 5.431 2.7155
+14.9353 6.78875 4.07325 10.862 8.1465 2.7155 12.2197 9.50425 4.07325
+3.39437 2.03663 4.75213 2.03663 3.39437 4.75213 0.678875 4.75213 4.75213
+3.39437 7.46763 4.75213 2.03663 8.82537 4.75213 4.75213 0.678875 4.75213
+8.82537 2.03663 4.75213 7.46763 3.39437 4.75213 4.75213 6.10988 4.75213
+6.10988 4.75213 4.75213 8.82537 7.46763 4.75213 7.46763 8.82537 4.75213
+10.1831 0.678875 4.75213 14.2564 2.03663 4.75213 12.8986 3.39437 4.75213
+10.1831 6.10988 4.75213 11.5408 4.75213 4.75213 14.2564 7.46763 4.75213
+12.8986 8.82537 4.75213
+VERTICES 48 96
+1 0
+1 1
+1 2
+1 3
+1 4
+1 5
+1 6
+1 7
+1 8
+1 9
+1 10
+1 11
+1 12
+1 13
+1 14
+1 15
+1 16
+1 17
+1 18
+1 19
+1 20
+1 21
+1 22
+1 23
+1 24
+1 25
+1 26
+1 27
+1 28
+1 29
+1 30
+1 31
+1 32
+1 33
+1 34
+1 35
+1 36
+1 37
+1 38
+1 39
+1 40
+1 41
+1 42
+1 43
+1 44
+1 45
+1 46
+1 47
+
+LINES 77 231
+2 1 0
+2 2 1
+2 3 2
+2 4 1
+2 5 4
+2 6 1
+2 7 6
+2 48 5
+2 49 7
+2 9 8
+2 10 9
+2 11 10
+2 12 3
+2 12 7
+2 12 9
+2 13 12
+2 14 9
+2 15 14
+2 50 7
+2 51 13
+2 52 15
+2 17 16
+2 18 17
+2 19 18
+2 20 17
+2 21 20
+2 22 3
+2 22 5
+2 22 17
+2 23 22
+2 53 5
+2 54 21
+2 55 23
+2 24 3
+2 25 24
+2 26 25
+2 27 26
+2 28 19
+2 28 23
+2 28 25
+2 29 28
+2 30 11
+2 30 13
+2 30 25
+2 31 30
+2 56 13
+2 57 23
+2 58 29
+2 59 31
+2 33 32
+2 34 33
+2 35 34
+2 36 33
+2 37 36
+2 38 19
+2 38 21
+2 38 33
+2 39 38
+2 60 21
+2 61 37
+2 62 39
+2 40 19
+2 41 40
+2 42 41
+2 43 42
+2 44 35
+2 44 39
+2 44 41
+2 45 44
+2 46 27
+2 46 29
+2 46 41
+2 47 46
+2 63 29
+2 64 39
+2 65 45
+2 66 47
+
+POINT_DATA 67
+SCALARS element float
+LOOKUP_TABLE default
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+FIELD FieldData 4
+atom_type 1 67 double
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14 14 14 14 14 14
+14 14 14 14
+material 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+region 1 67 double
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1 1 1 1 1 1
+1 1 1 1
+shape 1 67 double
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0
+0 0 0 0
+</vtk>
+            </molecule>
+            <polygon id="plane3_side_B">
+                <about>
+                    <style>-color red -edges 0 -lighting 0 -opacity 0.85</style>
+                </about>
+                <vtk># vtk DataFile Version 3.0
+vtk output
+ASCII
+DATASET POLYDATA
+POINTS 4 float
+0 0 4.75213 14.9353 0 4.75213 0 9.50425 4.75213
+14.9353 9.50425 4.75213
+POLYGONS 4 16
+3 3 0 1
+3 0 1 2
+3 1 2 3
+3 2 3 0
+
+POINT_DATA 4
+SCALARS scalars float
+LOOKUP_TABLE default
+0 0 0 0
+</vtk>
+            </polygon>
+        </drawing>
+        <time>Thu Mar 05 06:59:35 PM EST 2026</time>
+        <status>ok</status>
+        <user>denphi</user>
+        <session>2826052</session>
+        <filename>/home/nanohub/denphi/data/results/2826052/run1772755170142000.xml</filename>
+        <version>1.7</version>
+    </output>
+</run>

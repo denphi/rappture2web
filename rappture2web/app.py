@@ -25,7 +25,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .xml_parser import ToolDef, parse_tool_xml, strip_units as _strip_units_impl
+from .xml_parser import (
+    ToolDef,
+    check_output_against_contract,
+    missing_contract_outputs,
+    parse_tool_xml,
+    strip_units as _strip_units_impl,
+)
 from .simulator import RunHistory, run_simulation, run_uq_simulation, build_driver_xml_string
 from .encoding import to_data_uri, is_encoded
 
@@ -38,11 +44,10 @@ logger = logging.getLogger(__name__)
 # set once and treated as read-only thereafter, with the exception of _session
 # and _running_process which are reset on each /simulate request.
 #
-# This means concurrent /simulate requests are not safe: the second would
-# clobber _session while the first is still running.  The frontend prevents
-# this by disabling the Simulate button while a run is in progress.  No server-
-# side mutex is used intentionally — adding one would queue rather than reject
-# concurrent runs, which is a worse user experience for a single-user tool.
+# Concurrent /simulate requests are guarded by _simulate_lock below: while a
+# run is in progress, additional /simulate requests are rejected with HTTP
+# 409 (rather than queued) so a client that fires a stray second request
+# cannot corrupt _session or _running_process.
 
 _tool_def: ToolDef | None = None
 _tool_xml_path: str = ""
@@ -69,6 +74,18 @@ _ws_clients: list[WebSocket] = []
 
 # Currently running subprocess (set by simulator, used by /stop)
 _running_process: asyncio.subprocess.Process | None = None
+
+# Lock acquired by /simulate to reject overlapping runs.  Created lazily on
+# first use so the import-time module load doesn't bind it to an event loop
+# that hasn't started yet.
+_simulate_lock: asyncio.Lock | None = None
+
+
+def _get_simulate_lock() -> asyncio.Lock:
+    global _simulate_lock
+    if _simulate_lock is None:
+        _simulate_lock = asyncio.Lock()
+    return _simulate_lock
 
 # Server's own URL (set by CLI for library mode)
 _server_url: str = ""
@@ -147,17 +164,22 @@ def set_tool(xml_path: str, cache_dir: str | None = None,
 # ─── Broadcast helpers ────────────────────────────────────────────────────────
 
 async def _broadcast(message: dict):
-    # _ws_clients is only mutated in asyncio tasks — safe because Python's
-    # cooperative scheduler cannot switch during a non-await statement.
+    # Iterate over a snapshot: send_json is an await point, so a concurrent
+    # websocket_endpoint disconnect could mutate _ws_clients mid-loop.  We
+    # collect failed sockets first, then remove them after the loop completes.
+    snapshot = list(_ws_clients)
     dead = []
-    for ws in _ws_clients:
+    for ws in snapshot:
         try:
             await ws.send_json(message)
         except Exception as exc:
             logger.debug("WebSocket send failed (client disconnected): %s", exc)
             dead.append(ws)
     for ws in dead:
-        _ws_clients.remove(ws)
+        try:
+            _ws_clients.remove(ws)
+        except ValueError:
+            pass  # already removed by websocket_endpoint's finally block
 
 
 def _build_inputs_report(input_values: dict) -> dict:
@@ -315,124 +337,146 @@ async def simulate(request: Request):
     if _tool_def is None:
         return JSONResponse({"status": "error", "log": "No tool loaded"}, status_code=400)
 
-    data = await request.json()
-    input_values = data.get("inputs", {})
-    uq_inputs = data.get("uq_inputs", {})  # UQ distribution specs keyed by Rappture path
-    job_id = uuid.uuid4().hex[:8]
+    lock = _get_simulate_lock()
+    if lock.locked():
+        # A run is already in progress.  Reject rather than queue so a stray
+        # client request can't clobber the active session.
+        return JSONResponse(
+            {"status": "error",
+             "log": "A simulation is already running. Wait for it to finish or call /stop first."},
+            status_code=409,
+        )
 
-    _session = _new_session(job_id, input_values)
-    _running_process = None
-    await _broadcast({"type": "status", "status": "running", "job_id": job_id})
-    await _broadcast({"type": "progress", "percent": 0, "message": "Simulation started"})
+    async with lock:
+        data = await request.json()
+        input_values = data.get("inputs", {})
+        uq_inputs = data.get("uq_inputs", {})  # UQ distribution specs keyed by Rappture path
+        job_id = uuid.uuid4().hex[:8]
 
-    async def _stream_log(text: str):
-        _session["log"] += text
-        await _broadcast({"type": "log", "text": text})
-
-    async def _stream_output(oid: str, odata: dict):
-        _session["outputs"][oid] = odata
-        await _broadcast({"type": "output", "id": oid, "data": odata})
-
-    async def _stream_progress(percent: float, message: str):
-        _session["progress"] = {"percent": percent, "message": message}
-        await _broadcast({"type": "progress", "percent": percent, "message": message})
-
-    async def _stream_status(message: str):
-        await _broadcast({"type": "status", "status": message})
-
-    def _on_process(proc):
-        global _running_process
-        _running_process = proc
-
-    try:
-        if uq_inputs:
-            # UQ mode: run with PUQ
-            def _override_inputs(new_inputs: dict):
-                """Update session inputs for each collocation point run (library mode)."""
-                _session["inputs"] = new_inputs
-
-            result = await run_uq_simulation(
-                tool_xml_path=_tool_xml_path,
-                input_values=input_values,
-                uq_inputs=uq_inputs,
-                server_url=_server_url,
-                use_library_mode=_use_library_mode,
-                history=_history,
-                log_callback=_stream_log,
-                process_callback=_on_process,
-                inputs_override_callback=_override_inputs,
-            )
-        else:
-            result = await run_simulation(
-                tool_xml_path=_tool_xml_path,
-                input_values=input_values,
-                server_url=_server_url,
-                use_library_mode=_use_library_mode,
-                history=_history,
-                use_cache=_use_cache,
-                cache_url=_cache_url,
-                cache_write_url=_cache_write_url,
-                log_callback=_stream_log,
-                process_callback=_on_process,
-                output_callback=_stream_output,
-                progress_callback=_stream_progress,
-                status_callback=_stream_status,
-                timeout=_timeout,
-            )
-    except Exception as exc:
-        import traceback
-        tb = traceback.format_exc()
-        logger.error(tb)
+        _session = _new_session(job_id, input_values)
         _running_process = None
-        _session.update({"status": "error", "log": tb})
-        await _broadcast({"type": "status", "status": "error", "log": tb})
-        return JSONResponse({"status": "error", "log": tb}, status_code=500)
-    _running_process = None
+        await _broadcast({"type": "status", "status": "running", "job_id": job_id})
+        await _broadcast({"type": "progress", "percent": 0, "message": "Simulation started"})
 
-    # In library mode, api_simulate_done already recorded the run with real
-    # outputs. Pull run_id/run_num from _session (set by api_simulate_done).
-    if _use_library_mode and not result.get("cached"):
-        result["outputs"] = _session.get("outputs", {})
-        result["log"] = _session.get("log", "")
-        result["run_id"] = _session.get("run_id")
-        result["run_num"] = _session.get("run_num")
+        async def _stream_log(text: str):
+            _session["log"] += text
+            await _broadcast({"type": "log", "text": text})
 
-    _session.update({
-        "status": result["status"],
-        "outputs": result.get("outputs", {}),
-        "log": result.get("log", ""),
-        "progress": {"percent": 100, "message": "Complete"} if result["status"] == "success"
-                    else _session.get("progress", {"percent": None, "message": ""}),
-        "run_id": result.get("run_id"),
-        "run_num": result.get("run_num"),
-        "cached": result.get("cached", False),
-    })
+        async def _stream_output(oid: str, odata: dict):
+            _session["outputs"][oid] = odata
+            await _broadcast({"type": "output", "id": oid, "data": odata})
 
-    # Inject inputs report and driver XML (only for non-library, non-cached runs —
-    # library mode injects them in api_simulate_done; cached runs already have them).
-    if not _use_library_mode and not result.get("cached") and result["status"] == "success":
-        report = _build_inputs_report(input_values)
-        result.setdefault("outputs", {})["__inputs__"] = report
-        _session["outputs"]["__inputs__"] = report
-        driver_out = _build_driver_xml_output(input_values)
-        if driver_out:
-            result["outputs"]["__driver_xml__"] = driver_out
-            _session["outputs"]["__driver_xml__"] = driver_out
+        async def _stream_progress(percent: float, message: str):
+            _session["progress"] = {"percent": percent, "message": message}
+            await _broadcast({"type": "progress", "percent": percent, "message": message})
 
-    # In library mode, api_simulate_done already broadcast the done message
-    # with the correct outputs.  For cache hits and classic mode, broadcast now.
-    if not _use_library_mode or result.get("cached"):
-        await _broadcast({
-            "type": "done",
+        async def _stream_status(message: str):
+            await _broadcast({"type": "status", "status": message})
+
+        def _on_process(proc):
+            global _running_process
+            _running_process = proc
+
+        try:
+            if uq_inputs:
+                # UQ mode: run with PUQ
+                def _override_inputs(new_inputs: dict):
+                    """Update session inputs for each collocation point run (library mode)."""
+                    _session["inputs"] = new_inputs
+
+                result = await run_uq_simulation(
+                    tool_xml_path=_tool_xml_path,
+                    input_values=input_values,
+                    uq_inputs=uq_inputs,
+                    server_url=_server_url,
+                    use_library_mode=_use_library_mode,
+                    history=_history,
+                    log_callback=_stream_log,
+                    process_callback=_on_process,
+                    inputs_override_callback=_override_inputs,
+                )
+            else:
+                result = await run_simulation(
+                    tool_xml_path=_tool_xml_path,
+                    input_values=input_values,
+                    server_url=_server_url,
+                    use_library_mode=_use_library_mode,
+                    history=_history,
+                    use_cache=_use_cache,
+                    cache_url=_cache_url,
+                    cache_write_url=_cache_write_url,
+                    log_callback=_stream_log,
+                    process_callback=_on_process,
+                    output_callback=_stream_output,
+                    progress_callback=_stream_progress,
+                    status_callback=_stream_status,
+                    timeout=_timeout,
+                )
+        except Exception as exc:
+            # Log the full traceback server-side; expose only a short message
+            # to clients so stack traces don't leak file paths or versions.
+            logger.exception("simulate failed")
+            short = f"{type(exc).__name__}: {exc}"
+            _running_process = None
+            _session.update({"status": "error", "log": short})
+            await _broadcast({"type": "status", "status": "error", "log": short})
+            # Emit one and only one terminal broadcast in the error path.
+            await _broadcast({
+                "type": "done",
+                "status": "error",
+                "outputs": _session.get("outputs", {}),
+                "log": short,
+                "run_id": None,
+                "run_num": None,
+                "cached": False,
+            })
+            return JSONResponse({"status": "error", "log": short}, status_code=500)
+        _running_process = None
+
+        # In library mode, api_simulate_done already recorded the run with real
+        # outputs. Pull run_id/run_num from _session (set by api_simulate_done).
+        if _use_library_mode and not result.get("cached"):
+            result["outputs"] = _session.get("outputs", {})
+            result["log"] = _session.get("log", "")
+            result["run_id"] = _session.get("run_id")
+            result["run_num"] = _session.get("run_num")
+
+        _session.update({
             "status": result["status"],
             "outputs": result.get("outputs", {}),
             "log": result.get("log", ""),
+            "progress": {"percent": 100, "message": "Complete"} if result["status"] == "success"
+                        else _session.get("progress", {"percent": None, "message": ""}),
             "run_id": result.get("run_id"),
             "run_num": result.get("run_num"),
             "cached": result.get("cached", False),
         })
 
-    return JSONResponse(result)
+        # Inject inputs report and driver XML (only for non-library, non-cached runs —
+        # library mode injects them in api_simulate_done; cached runs already have them).
+        if not _use_library_mode and not result.get("cached") and result["status"] == "success":
+            report = _build_inputs_report(input_values)
+            result.setdefault("outputs", {})["__inputs__"] = report
+            _session["outputs"]["__inputs__"] = report
+            driver_out = _build_driver_xml_output(input_values)
+            if driver_out:
+                result["outputs"]["__driver_xml__"] = driver_out
+                _session["outputs"]["__driver_xml__"] = driver_out
+
+        # In library mode, api_simulate_done already broadcast the done message
+        # with the correct outputs.  For cache hits and classic mode, broadcast now.
+        if not _use_library_mode or result.get("cached"):
+            await _broadcast({
+                "type": "done",
+                "status": result["status"],
+                "outputs": result.get("outputs", {}),
+                "log": result.get("log", ""),
+                "run_id": result.get("run_id"),
+                "run_num": result.get("run_num"),
+                "cached": result.get("cached", False),
+            })
+
+        return JSONResponse(result)
 
 
 # ─── Remote cache service endpoints ──────────────────────────────────────────
@@ -674,27 +718,11 @@ async def api_get_inputs():
 
 
 def _check_output_vs_contract(output_id: str, output_type: str) -> None:
-    """Raise ValueError when a produced output violates the contract.
-
-    Internal sentinel outputs (__inputs__, __driver_xml__) and tools without
-    a contract declaration are never checked.
-    """
-    if _tool_def is None or not _tool_def.contract:
-        return
-    contract_outputs = _tool_def.contract.get("outputs", {})
-    if not contract_outputs:
-        return
-    if output_id.startswith("__"):
-        return
-    if output_id not in contract_outputs:
-        raise ValueError(
-            f"Output '{output_id}' (type={output_type!r}) is not declared in the tool contract."
-        )
-    declared_type = contract_outputs[output_id].get("type", "")
-    if output_type and declared_type and declared_type != output_type:
-        raise ValueError(
-            f"Output '{output_id}': contract declares type '{declared_type}' but got '{output_type}'."
-        )
+    """Raise ValueError when a produced output violates the contract."""
+    contract = _tool_def.contract if _tool_def is not None else {}
+    err = check_output_against_contract(contract, output_id, output_type)
+    if err:
+        raise ValueError(err)
 
 
 @app.post("/api/output")
@@ -758,14 +786,14 @@ async def api_simulate_done(request: Request):
         _session["outputs"]["__driver_xml__"] = driver_out
 
     # If all declared contract outputs were not produced, downgrade success to error.
-    if _tool_def is not None and _tool_def.contract and status == "success":
-        contract_outputs = _tool_def.contract.get("outputs", {})
-        produced = {k for k in _session["outputs"] if not k.startswith("__")}
-        missing_outputs = set(contract_outputs.keys()) - produced
+    if _tool_def is not None and status == "success":
+        missing_outputs = missing_contract_outputs(
+            _tool_def.contract, _session["outputs"].keys()
+        )
         if missing_outputs:
             status = "error"
             _session["status"] = "error"
-            missing_str = ", ".join(sorted(missing_outputs))
+            missing_str = ", ".join(missing_outputs)
             logger.error(
                 "%s: successful exit but missing declared contract outputs: %s — marking as error",
                 _tool_xml_path, missing_str,
@@ -1066,10 +1094,20 @@ async def api_upload_run(file: UploadFile = File(...)):
                 logger.warning("Could not persist uploaded XML: %s", exc)
                 saved_xml_path = None
         else:
+            # No cache_dir configured: the upload survives only until restart.
+            # Warn so operators understand they should pass --cache-dir for
+            # persistent history.
+            logger.warning(
+                "uploaded run %s has no cache_dir; history will not survive restart",
+                label,
+            )
             saved_xml_path = None
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+            try:
+                os.unlink(tmp_path)
+            except OSError as exc:
+                logger.debug("temp upload cleanup failed: %s", exc)
 
     run_record = _history.add(
         input_values={},
@@ -1106,6 +1144,21 @@ async def get_tool_info():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    """Stream live simulation events to the browser.
+
+    Security note: this endpoint performs no authentication of its own.  The
+    rappture2web server is designed to run as a single-user tool behind one
+    of two trust boundaries:
+
+      1. nanoHUB deployment: wrwroxy authenticates the user via the hub
+         session cookie before forwarding any traffic to this process.
+      2. Local development: the server binds 127.0.0.1 by default (see
+         cli.py), so only the local machine can connect.
+
+    Do NOT expose this process directly to a public network: any connecting
+    client receives the full current session (inputs, outputs, log) and can
+    observe every subsequent broadcast.
+    """
     await ws.accept()
     _ws_clients.append(ws)
     # Send current state on connect
@@ -1126,5 +1179,7 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             await ws.receive_text()  # keep alive; client pings
     except WebSocketDisconnect:
+        pass
+    finally:
         if ws in _ws_clients:
             _ws_clients.remove(ws)

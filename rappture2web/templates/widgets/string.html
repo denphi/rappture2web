@@ -13,7 +13,7 @@
               name="{{ widget.path }}"
               rows="{{ widget.attrs.height|default(5) }}"
               cols="{{ widget.attrs.width|default(40) }}"
-              {% if widget.description %}aria-describedby="{{ input_id }}-desc"{% endif %}
+              {% if widget.description or widget.hints %}aria-describedby="{% if widget.description %}{{ input_id }}-desc{% endif %}{% if widget.hints %} {{ input_id }}-hint{% endif %}"{% endif %}
               placeholder="{{ widget.hints }}">{{ widget.default }}</textarea>
     {% else %}
     <input type="text"
@@ -21,10 +21,10 @@
            class="rp-input rp-input-string"
            name="{{ widget.path }}"
            value="{{ widget.default }}"
-           {% if widget.description %}aria-describedby="{{ input_id }}-desc"{% endif %}
+           {% if widget.description or widget.hints %}aria-describedby="{% if widget.description %}{{ input_id }}-desc{% endif %}{% if widget.hints %} {{ input_id }}-hint{% endif %}"{% endif %}
            placeholder="{{ widget.hints }}">
     {% endif %}
     {% if widget.hints %}
-    <small class="rp-hints" aria-hidden="true">{{ widget.hints }}</small>
+    <small id="{{ input_id }}-hint" class="rp-hints">{{ widget.hints }}</small>
     {% endif %}
 </div>

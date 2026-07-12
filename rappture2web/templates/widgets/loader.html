@@ -1,3 +1,4 @@
+{% set input_id = "inp-" ~ widget.path | replace('.','_') | replace('(','_') | replace(')','_') | replace(':','_') %}
 <div class="rp-widget rp-loader" data-path="{{ widget.path }}" data-type="loader"
      {% if widget.enable %}data-enable='{{ widget.enable }}'{% endif %}
      data-upload-targets="{{ widget.attrs.upload_targets | join(',') }}"
@@ -5,11 +6,11 @@
      data-loader-default="{{ widget.attrs.loader_default or '' }}"
      data-example="{{ widget.attrs.example or '*.xml' }}"
      data-examples='{{ widget.attrs.examples | tojson if widget.attrs.examples else "[]" }}'>
-    <label class="rp-label" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">
+    <label class="rp-label" for="{{ input_id }}" data-rp-tooltip='{{ {"desc": widget.description} | tojson }}' title="{{ widget.description }}">
         {{ widget.label or "Load Example" }}
     </label>
     <div class="rp-loader-controls" style="display:flex;flex-direction:column;gap:4px">
-        <select class="rp-input rp-loader-select" style="font-size:13px"
+        <select id="{{ input_id }}" class="rp-input rp-loader-select" style="font-size:13px"
                 onchange="rappture.loadExampleByName(this)">
             <option value="">— select example —</option>
         </select>
