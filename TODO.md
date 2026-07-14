@@ -8,15 +8,27 @@
 > tests. The unchecked alternatives below are retained as design history and
 > possible follow-up refinements.
 >
-> **Fixed 2026-07-13 — dead Results/⋯ buttons in script-blocked iframes:**
-> hosts that embed with `<iframe sandbox>` lacking `allow-scripts` rendered the
-> pane-switch and overflow buttons but no JS ran, leaving results and toolbar
-> actions permanently `display:none`. The narrow-layout rules that depend on JS
-> are now gated on an `html.rp-js` marker class (set by an inline script in
-> `base.html`); without scripts the UI falls back to a static stacked layout
-> with both panes visible, an inline toolbar, no dead buttons, and a
-> `<noscript>` banner telling the embedder to allow scripts. Regression test:
-> `test_iframe_with_scripts_blocked_degrades_gracefully` (41 visual cases now).
+> **Fixed 2026-07-13/14 — dead Results/⋯ buttons in embedded iframes.** Two
+> distinct causes, both fixed:
+>
+> 1. *Script-blocked iframes* (`<iframe sandbox>` without `allow-scripts`):
+>    the buttons rendered but no JS ran, leaving results and toolbar actions
+>    permanently `display:none`. JS-dependent narrow-layout rules are now gated
+>    on an `html.rp-js` marker class (inline script in `base.html`); without
+>    scripts the UI falls back to a static stacked layout with both panes
+>    visible, an inline toolbar, no dead buttons, and a `<noscript>` banner.
+>    Regression test: `test_iframe_with_scripts_blocked_degrades_gracefully`.
+>
+> 2. *com_mcp chat / rappturemcp MCP-App transport* (the reported case):
+>    rappturemcp strips rappture2web's REST/WebSocket bootstrap from the
+>    inlined JS and re-implements the init calls — but its list predated
+>    `initCompactLayout()`, so the pane switch and ⋯ menu were never wired
+>    even though scripts ran. Fixed on both sides: `rappture.js` now registers
+>    the UI-local wiring in its own `DOMContentLoaded` listener outside the
+>    strippable bootstrap block (idempotent), and rappturemcp's bootstrap now
+>    calls `rappture.initCompactLayout()` (guarded) for older inlined assets.
+>    Verified end-to-end against the exact com_mcp srcdoc iframe
+>    (`sandbox="allow-scripts allow-forms"`).
 
 Goal: make the tool UI usable and pleasant in narrow, short viewports — the kind
 of embed an MCP host or a docs iframe gives you (roughly **360–700px wide**,

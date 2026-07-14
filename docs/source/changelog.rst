@@ -1,6 +1,27 @@
 Changelog
 =========
 
+0.1.18
+------
+
+- Fixed dead Inputs/Results pane switch and "⋯" toolbar menu in embedded
+  iframes:
+
+  - MCP-App transports (e.g. rappturemcp/com_mcp chat) that strip the
+    REST/WebSocket bootstrap no longer lose the narrow-layout controls —
+    the UI-local wiring (``initCompactLayout``) now registers in its own
+    ``DOMContentLoaded`` listener outside the strippable bootstrap block
+    and is idempotent.
+  - Script-blocked iframes (``<iframe sandbox>`` without ``allow-scripts``)
+    now degrade to a static stacked layout: both panes visible, inline
+    toolbar, no dead buttons, and a ``<noscript>`` banner telling the
+    embedder to allow scripts.  JS-dependent narrow-layout CSS is gated on
+    an ``html.rp-js`` marker class set by an inline script.
+
+- Added a Playwright visual/layout test suite (``tests/visual/``, 41 cases)
+  covering MCP-iframe viewport sizes, sandboxed-iframe degradation, and
+  real curve/field/3D renderer output at embed sizes.
+
 0.1.8 (unreleased)
 -------------------
 

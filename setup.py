@@ -1,6 +1,6 @@
 """setup.py for compatibility with pip < 21.3 (pre-PEP-517 builds)."""
 import os
-from setuptools import setup, find_packages
+from setuptools import setup
 
 version = {}
 with open(os.path.join("rappture2web", "_version.py")) as f:
@@ -20,7 +20,10 @@ setup(
     long_description_content_type="text/markdown",
     license="MIT",
     python_requires=">=3.7",
-    packages=find_packages(include=["rappture2web", "rappture2web.*"]),
+    # Explicit list instead of find_packages(): package discovery follows
+    # symlinks, and sibling-project symlinks in this repo (com_mcp →
+    # rappturemcp → rappture2web → …) form a cycle that hangs the build.
+    packages=["rappture2web", "rappture2web.puq"],
     package_data={
         "rappture2web": [
             "templates/**/*.html",

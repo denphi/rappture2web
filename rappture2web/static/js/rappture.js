@@ -103,6 +103,10 @@ const rappture = {
     },
 
     initCompactLayout() {
+        // Idempotent: embedding transports (e.g. rappturemcp) may call this
+        // again after replacing the server bootstrap — don't double-wire.
+        if (this._compactLayoutInitialized) return;
+        this._compactLayoutInitialized = true;
         let saved = 'inputs';
         try { saved = localStorage.getItem(this._paneStorageKey()) || 'inputs'; } catch (_) { }
         this._setPaneMode(saved, false);
@@ -3573,9 +3577,16 @@ overlay = document.createElement('div');
     },
 };
 
+// ── UI-local wiring ──────────────────────────────────────────────────────────
+// Registered separately from the server bootstrap below: embedding transports
+// (e.g. rappturemcp's MCP App srcdoc) strip the REST/WebSocket bootstrap and
+// provide their own server bridge, but the compact-layout controls
+// (Inputs/Results pane switch, toolbar overflow menu, 3D panel auto-collapse)
+// are pure client-side UI and must be wired in every transport.
+document.addEventListener('DOMContentLoaded', () => rappture.initCompactLayout());
+
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    rappture.initCompactLayout();
     rappture.initEnableConditions();
     rappture.initColorInputs();
     rappture.initTabAccessibility();
