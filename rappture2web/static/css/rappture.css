@@ -70,6 +70,17 @@
 }
 .rp-skip-link:focus { top: 0; outline: 3px solid #fff; outline-offset: 2px; }
 
+/* Shown only when scripts cannot run (e.g. sandboxed iframe without
+   allow-scripts): explains why Simulate and interactive controls are dead. */
+.rp-noscript-banner {
+    padding: 8px 14px;
+    background: #fef3c7;
+    border-bottom: 1px solid #fcd34d;
+    color: #92400e;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 /* Global focus-visible: consistent across all interactive elements */
 :focus-visible {
     outline: 3px solid var(--rp-primary);
@@ -1474,7 +1485,7 @@ body {
 
 /* Responsive and embedded layouts */
 @container (max-width: 900px) {
-    .rp-pane-switch { display: flex; }
+    html.rp-js .rp-pane-switch { display: flex; }
     .rp-layout {
         flex-direction: column;
         gap: 8px;
@@ -1493,7 +1504,7 @@ body {
         flex: 1 1 auto;
         min-height: 150px;
     }
-    .rp-main:not(.rp-pane-results) .rp-content { display: none; }
+    html.rp-js .rp-main:not(.rp-pane-results) .rp-content { display: none; }
     .rp-main.rp-pane-results .rp-sidebar { display: none; }
     .rp-main.rp-pane-results .rp-content { flex: 1; }
 }
@@ -1535,7 +1546,7 @@ body {
 }
 
 @media (max-width: 900px) {
-    .rp-pane-switch { display: flex; }
+    html.rp-js .rp-pane-switch { display: flex; }
     .rp-layout {
         flex-direction: column;
         gap: 8px;
@@ -1560,7 +1571,7 @@ body {
         box-shadow: 0 -8px 12px rgba(255,255,255,0.9);
     }
     .rp-content { flex: 1 1 auto; min-height: 150px; }
-    .rp-main:not(.rp-pane-results) .rp-content { display: none; }
+    html.rp-js .rp-main:not(.rp-pane-results) .rp-content { display: none; }
     .rp-main.rp-pane-results .rp-sidebar { display: none; }
     .rp-main.rp-pane-results .rp-content { flex: 1; }
 
@@ -1655,7 +1666,9 @@ body {
     .rp-brand { padding-right: 48px; }
     .rp-nanohub-logo { height: 24px; }
     .rp-title { font-size: 15px; }
-    .rp-toolbar {
+    /* The "⋯" overflow menu needs JS to open; without it (html lacks .rp-js,
+       e.g. a sandboxed iframe blocking scripts) keep the classic inline bar. */
+    html.rp-js .rp-toolbar {
         position: relative;
         height: 0;
         min-height: 0;
@@ -1663,15 +1676,15 @@ body {
         border-bottom: 0;
         background: transparent;
     }
-    .rp-toolbar-inner { height: 0; min-height: 0; padding: 0; }
-    .rp-toolbar-overflow-toggle { display: inline-flex; }
-    .rp-toolbar-overflow-toggle {
+    html.rp-js .rp-toolbar-inner { height: 0; min-height: 0; padding: 0; }
+    html.rp-js .rp-toolbar-overflow-toggle { display: inline-flex; }
+    html.rp-js .rp-toolbar-overflow-toggle {
         position: absolute;
         right: 12px;
         bottom: 4px;
         background: var(--rp-toolbar-bg);
     }
-    .rp-toolbar-actions {
+    html.rp-js .rp-toolbar-actions {
         display: none;
         position: absolute;
         z-index: 20;
@@ -1686,8 +1699,9 @@ body {
         background: var(--rp-toolbar-bg);
         box-shadow: 0 8px 24px rgba(0,0,0,0.28);
     }
-    .rp-toolbar.rp-toolbar-menu-open .rp-toolbar-actions { display: flex; }
-    .rp-toolbar-actions li, .rp-toolbar-link { width: 100%; }
+    html.rp-js .rp-toolbar.rp-toolbar-menu-open .rp-toolbar-actions { display: flex; }
+    html.rp-js .rp-toolbar-actions li, html.rp-js .rp-toolbar-link { width: 100%; }
+    html:not(.rp-js) .rp-toolbar-actions { flex-wrap: wrap; }
     .rp-footer { min-height: 32px; padding-inline: 10px; }
     .rp-footer-stats { display: none; }
 }

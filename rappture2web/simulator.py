@@ -235,9 +235,16 @@ def _apply_loader_defaults(root, tool_xml_path: str, input_values: dict) -> None
             for driver_struct in root.iter("structure"):
                 if struct_id and driver_struct.get("id") != struct_id:
                     continue
-                # Check if user already provided this structure
-                # (Approximate: build path for driver_struct and check)
-                already_set = any("structure" in p for p in user_structure_paths)
+                # Check if the user already provided THIS structure (by id), so
+                # setting one structure does not suppress defaults for others.
+                if struct_id:
+                    already_set = any(
+                        f"structure({struct_id})" in p for p in user_structure_paths
+                    )
+                else:
+                    already_set = any(
+                        "structure" in p for p in user_structure_paths
+                    )
                 if already_set:
                     break
 
@@ -1491,7 +1498,7 @@ async def run_simulation(
             )
             await process.wait()
         except asyncio.TimeoutError:
-            process.kill()
+            await _kill_and_wait(process, "simulation")
             _poll_done.set()
             if poll_task:
                 poll_task.cancel()
@@ -1512,6 +1519,7 @@ async def run_simulation(
         # ── Parse output (classic and native rappture modes) ──────────────────
         outputs = {}
         run_xml_path = None
+        _classic_contract_errors: list = []
 
         if not use_library_mode:
             # Native rappture writes the run XML path to stdout as =RAPPTURE-RUN=>
@@ -1531,7 +1539,6 @@ async def run_simulation(
                 else:
                     run_xml_path = driver_path  # tool may have modified driver in place
 
-            _classic_contract_errors: list = []
             if run_xml_path and os.path.exists(run_xml_path):
                 try:
                     outputs = parse_run_xml(run_xml_path)

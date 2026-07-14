@@ -63,8 +63,21 @@ _ELEM_ID_RE = re.compile(r'^([A-Za-z_][A-Za-z0-9_.-]*)\(([^)]+)\)$')
 # ─── URL / file detection ──────────────────────────────────────────────────────
 
 def _is_url(s: str) -> bool:
-    """Return True if s looks like an http/https URL."""
-    return s.startswith("http://") or s.startswith("https://")
+    """Return True if s looks like a server URL rather than a local file path.
+
+    Recognizes an explicit http/https scheme, a scheme-less host:port form
+    (e.g. 'localhost:8080'), and '//host' — anything that is clearly a network
+    address so it is not mistaken for a filesystem path and silently opened as
+    a (missing) file.
+    """
+    s = s.strip()
+    if s.startswith(("http://", "https://", "//")):
+        return True
+    # host:port with no path component and no other filesystem-y characters,
+    # e.g. 'localhost:8080' or 'cache.example.com:5000'.
+    if re.match(r"^[A-Za-z0-9.\-]+:\d+(?:/|$)", s) and not os.path.exists(s):
+        return True
+    return False
 
 # ─── Output path parser ───────────────────────────────────────────────────────
 
@@ -172,30 +185,56 @@ class _OutputStore:
         if not prop_path:
             return
 
-        # Special handling for xy data (xy gets appended as text)
+        # Special handling for xy data (xy gets appended as text).
+        # Parse only the newly-arrived text incrementally so streaming a curve
+        # point-by-point stays O(total points) rather than O(points^2); a
+        # partial trailing line is carried over to the next append.
         if prop_path == "component.xy":
             buf_key = rec.get("id", "") + ".xy"
-            if append:
-                self._xy_buffers[buf_key] = self._xy_buffers.get(buf_key, "") + value
+            state = self._xy_buffers.get(buf_key)
+            if state is None or not append:
+                state = {"pending": "", "x": [], "y": []}
+                self._xy_buffers[buf_key] = state
+
+            pending = state["pending"] + value
+            # Everything up to the last newline is complete; keep the rest.
+            if "\n" in pending:
+                complete, state["pending"] = pending.rsplit("\n", 1)
             else:
-                self._xy_buffers[buf_key] = value
-            rec.setdefault("traces", [])
-            # Parse all xy text into a trace
-            xy_text = self._xy_buffers[buf_key]
-            x_vals, y_vals = [], []
-            for line in xy_text.strip().split("\n"):
-                cols = line.strip().split()
+                complete, state["pending"] = "", pending
+
+            for line in complete.split("\n"):
+                cols = line.split()
                 if len(cols) >= 2:
                     try:
-                        x_vals.append(float(cols[0]))
-                        y_vals.append(float(cols[1]))
+                        x = float(cols[0])
+                        y = float(cols[1])
                     except ValueError:
-                        pass
-            # Replace first trace
+                        print(f"[rp_library] Warning: dropping malformed xy row "
+                              f"{line.strip()!r} in {rec.get('id', '')!r}",
+                              file=sys.stderr)
+                        continue
+                    state["x"].append(x)
+                    state["y"].append(y)
+
+            # Include a complete-but-unterminated final row (e.g. a lone "x y"
+            # put without a trailing newline) in the snapshot without consuming
+            # it, so a later append that continues the line still works.
+            x_snap, y_snap = state["x"], state["y"]
+            tail = state["pending"].split()
+            if len(tail) >= 2:
+                try:
+                    x_snap = state["x"] + [float(tail[0])]
+                    y_snap = state["y"] + [float(tail[1])]
+                except ValueError:
+                    pass
+
+            trace = {"x": x_snap, "y": y_snap, "label": ""}
+            rec.setdefault("traces", [])
             if rec["traces"]:
-                rec["traces"][0] = {"x": x_vals, "y": y_vals, "label": ""}
+                rec["traces"][0] = trace
             else:
-                rec["traces"].append({"x": x_vals, "y": y_vals, "label": ""})
+                rec["traces"].append(trace)
             return
 
         # Map dot-path to nested dicts
@@ -375,8 +414,15 @@ class _OutputStore:
             return normalized
 
         if out_type == "mesh":
-            # Parse dim to int
-            dim = int(rec.get("dim", 3))
+            # Parse dim to int, tolerating a malformed value rather than
+            # crashing the whole simulation script at flush time.
+            try:
+                dim = int(rec.get("dim", 3))
+            except (TypeError, ValueError):
+                print(f"[rp_library] Warning: mesh {rec.get('id', '')!r} has "
+                      f"invalid dim {rec.get('dim')!r}, defaulting to 3",
+                      file=sys.stderr)
+                dim = 3
             normalized = dict(rec)
             normalized["dim"] = dim
             # Parse unstructured.points text → [[x,y,z], ...]
@@ -402,7 +448,13 @@ class _OutputStore:
             if isinstance(comp, dict):
                 mesh_ref = comp.get("mesh", "")
                 values_text = comp.get("values", "")
-                extents = int(comp.get("extents", "1") or "1")
+                try:
+                    extents = int(comp.get("extents", "1") or "1")
+                except (TypeError, ValueError):
+                    print(f"[rp_library] Warning: field {rec.get('id', '')!r} has "
+                          f"invalid extents {comp.get('extents')!r}, defaulting to 1",
+                          file=sys.stderr)
+                    extents = 1
 
                 # Parse values: scalar (1 token/line) or vector (extents tokens/line)
                 values = []

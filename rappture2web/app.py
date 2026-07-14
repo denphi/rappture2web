@@ -338,16 +338,20 @@ async def simulate(request: Request):
         return JSONResponse({"status": "error", "log": "No tool loaded"}, status_code=400)
 
     lock = _get_simulate_lock()
+    # Reject (not queue) a second run.  asyncio is single-threaded, so checking
+    # locked() and then acquire()-ing with no await in between is atomic: no
+    # other task can grab the lock between the two lines.  Using `async with`
+    # here instead would queue the second request and let it clobber the
+    # session once the first finished.
     if lock.locked():
-        # A run is already in progress.  Reject rather than queue so a stray
-        # client request can't clobber the active session.
         return JSONResponse(
             {"status": "error",
              "log": "A simulation is already running. Wait for it to finish or call /stop first."},
             status_code=409,
         )
+    await lock.acquire()
 
-    async with lock:
+    try:
         data = await request.json()
         input_values = data.get("inputs", {})
         uq_inputs = data.get("uq_inputs", {})  # UQ distribution specs keyed by Rappture path
@@ -477,6 +481,8 @@ async def simulate(request: Request):
             })
 
         return JSONResponse(result)
+    finally:
+        lock.release()
 
 
 # ─── Remote cache service endpoints ──────────────────────────────────────────
@@ -508,10 +514,16 @@ def _extract_input_values(xml_str: str) -> dict:
     return input_values
 
 
+_UPLOAD_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @app.post("/cache/request")
 async def cache_request(request: Request):
     """Check cache for a matching driver XML. Returns run.xml on hit (200) or 404."""
-    driver_xml = (await request.body()).decode("utf-8", errors="replace")
+    body = await request.body()
+    if len(body) > _UPLOAD_MAX_BYTES:
+        return Response(status_code=413)
+    driver_xml = body.decode("utf-8", errors="replace")
     if not driver_xml.strip():
         return Response(status_code=400)
     try:
@@ -528,9 +540,6 @@ async def cache_request(request: Request):
     except Exception as exc:
         logger.warning("cache/request failed: %s", exc)
         return Response(status_code=404)
-
-
-_UPLOAD_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @app.post("/cache/store")
@@ -577,14 +586,19 @@ async def cache_store(request: Request):
 async def stop_simulation():
     """Kill the currently running simulation process."""
     global _running_process, _session
+    # Capture the job we intend to stop up front.  A /simulate that starts a new
+    # run between here and the broadcast would otherwise have this handler emit a
+    # terminal 'done' for the wrong (newer) job.
+    target_job = _session.get("job_id")
     proc = _running_process
     if proc is not None:
         try:
             proc.kill()
         except Exception as exc:
             logger.debug("Could not kill simulation process: %s", exc)
-        _running_process = None
-    if _session.get("status") == "running":
+        if _running_process is proc:
+            _running_process = None
+    if _session.get("job_id") == target_job and _session.get("status") == "running":
         _session["status"] = "stopped"
         await _broadcast({"type": "status", "status": "stopped"})
         await _broadcast({"type": "done", "status": "stopped", "outputs": {}, "log": _session.get("log", ""),
@@ -725,10 +739,22 @@ def _check_output_vs_contract(output_id: str, output_type: str) -> None:
         raise ValueError(err)
 
 
+def _session_accepting_ingest() -> bool:
+    """True while the current session should accept streamed output/log/progress.
+
+    Once a run is stopped (or otherwise terminal), late posts from a killed or
+    superseded tool process must not mutate the session.  This is a coarse guard;
+    a per-job token in the streaming protocol would be the complete fix.
+    """
+    return _session.get("status") == "running"
+
+
 @app.post("/api/output")
 async def api_post_output(request: Request):
     """Receive and broadcast one output item from the tool script."""
     data = await request.json()
+    if not _session_accepting_ingest():
+        return JSONResponse({"ok": False, "ignored": "no active run"}, status_code=409)
     output_id = data.get("id") or data.get("type", "output")
     _check_output_vs_contract(output_id, data.get("type", ""))
     _session["outputs"][output_id] = data
@@ -740,16 +766,24 @@ async def api_post_output(request: Request):
 async def api_post_log(request: Request):
     """Append a log chunk from the tool script."""
     data = await request.json()
+    if not _session_accepting_ingest():
+        return JSONResponse({"ok": False, "ignored": "no active run"}, status_code=409)
     text = data.get("text", "")
     _session["log"] += text
     await _broadcast({"type": "log", "text": text})
     return JSONResponse({"ok": True})
 
 
+_TERMINAL_STATUSES = {"stopped", "success", "error", "idle"}
+
+
 @app.post("/api/progress")
 async def api_post_progress(request: Request):
     """Receive and broadcast simulation progress updates."""
     data = await request.json()
+    if _session.get("status") in _TERMINAL_STATUSES:
+        # Late progress from a killed/superseded run; don't resurrect the session.
+        return JSONResponse({"ok": False, "ignored": "no active run"}, status_code=409)
     percent_raw = data.get("percent", data.get("pct", 0))
     message = str(data.get("message", "")).strip()
     try:
@@ -774,6 +808,10 @@ async def api_post_progress(request: Request):
 async def api_simulate_done(request: Request):
     """Called by rp_library when the simulation completes."""
     data = await request.json()
+    if _session.get("status") == "stopped":
+        # The run was already stopped by the user; a late completion from the
+        # killed process must not overwrite that or record a spurious run.
+        return JSONResponse({"ok": False, "ignored": "run was stopped"}, status_code=409)
     status = data.get("status", "success")
     _session["status"] = status
     if status == "success":

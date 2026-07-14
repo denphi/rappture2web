@@ -15,24 +15,53 @@ RPENC_B64 = 2
 RPENC_Z = 1
 RPENC_ZB64 = 3
 
+# Cap decompressed output so a crafted (or accidentally huge) zb64 payload
+# cannot exhaust memory. 256 MiB comfortably exceeds any legitimate Rappture
+# field/image while bounding the blast radius of a zlib bomb.
+_MAX_DECODED_BYTES = 256 * 1024 * 1024
+
+# Marker + optional separator (newline, spaces, or none). data.strip() removes
+# any trailing newline, so the payload may be adjacent to the marker.
+_ZB64_RE = re.compile(r"^@@RP-ENC:zb64\s*", re.DOTALL)
+_B64_RE = re.compile(r"^@@RP-ENC:b64\s*", re.DOTALL)
+
+
+def _bounded_decompress(raw: bytes) -> bytes:
+    """zlib-decompress *raw* but never allocate more than _MAX_DECODED_BYTES."""
+    dobj = zlib.decompressobj()
+    out = dobj.decompress(raw, _MAX_DECODED_BYTES)
+    if dobj.unconsumed_tail:
+        raise ValueError("compressed payload exceeds maximum decoded size")
+    return out
+
 
 def decode(data: str) -> bytes:
-    """Decode Rappture-encoded data string to raw bytes."""
+    """Decode Rappture-encoded data string to raw bytes.
+
+    Malformed encoded payloads degrade to the raw fallback rather than raising,
+    matching the un-prefixed base64 path.
+    """
     data = data.strip()
 
-    if data.startswith("@@RP-ENC:zb64\n"):
-        payload = data[len("@@RP-ENC:zb64\n"):]
-        raw = base64.b64decode(payload)
-        return zlib.decompress(raw)
-    elif data.startswith("@@RP-ENC:b64\n"):
-        payload = data[len("@@RP-ENC:b64\n"):]
-        return base64.b64decode(payload)
-    else:
-        # Try to decode as raw base64 (used in Rappture example XMLs)
+    m = _ZB64_RE.match(data)
+    if m:
         try:
-            return base64.b64decode(data)
+            return _bounded_decompress(base64.b64decode(data[m.end():]))
         except Exception:
             return data.encode("utf-8")
+
+    m = _B64_RE.match(data)
+    if m:
+        try:
+            return base64.b64decode(data[m.end():])
+        except Exception:
+            return data.encode("utf-8")
+
+    # Try to decode as raw base64 (used in Rappture example XMLs)
+    try:
+        return base64.b64decode(data)
+    except Exception:
+        return data.encode("utf-8")
 
 
 def encode(data: bytes, encoding: int = RPENC_ZB64) -> str:

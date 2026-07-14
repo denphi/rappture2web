@@ -92,10 +92,31 @@ def parse_rappture_path(path: str) -> list[tuple[str, str]]:
 
     'input.number(temperature)' → [('input',''), ('number','temperature')]
     '(temperature)' → [('','temperature')]  (bare-id wildcard for fuzzy matching)
+    'output.curve(sweep.1)' → [('output',''), ('curve','sweep.1')]  (dots in ids
+    are preserved — only dots outside parentheses separate segments.)
     Empty segments (from double dots) are skipped.
     """
+    # Split on '.' only when not inside parentheses, so ids containing dots
+    # (e.g. parametric-sweep ids like 'sweep.1') stay intact.
+    segments = []
+    depth = 0
+    current = ""
+    for ch in path:
+        if ch == "(":
+            depth += 1
+            current += ch
+        elif ch == ")":
+            depth = max(0, depth - 1)
+            current += ch
+        elif ch == "." and depth == 0:
+            segments.append(current)
+            current = ""
+        else:
+            current += ch
+    segments.append(current)
+
     parts = []
-    for seg in path.split("."):
+    for seg in segments:
         if not seg:
             continue
         if "(" in seg and seg.endswith(")"):
@@ -113,7 +134,7 @@ CONTAINER_TYPES = {"group", "phase", "structure"}
 # Input widget types that are leaf inputs
 INPUT_TYPES = {
     "number", "integer", "boolean", "string", "choice", "multichoice",
-    "image", "note", "periodicelement", "loader", "drawing",
+    "image", "note", "periodicelement", "loader", "drawing", "file",
 }
 
 # Output element types
@@ -631,6 +652,7 @@ TYPE_PARSERS = {
     "drawing": parse_drawing_input,
     "structure": None,  # Handled specially to pass parent_path
     "image": lambda e, n: None,
+    "file": lambda e, n: n.attrs.update({"accept": _get_text(e, "accept")}),
     "note": lambda e, n: n.attrs.update({"contents": _get_text(e, "contents")}),
     "periodicelement": lambda e, n: n.attrs.update({
         "returnvalue": _get_text(e, "returnvalue") or "symbol",
@@ -1856,7 +1878,7 @@ def _parse_image_output(elem):
         try:
             if s.startswith("@@RP-ENC:zb64"):
                 payload = s[len("@@RP-ENC:zb64"):].strip()
-                raw = _zlib.decompress(base64.b64decode(payload))
+                raw = _bounded_decompress(base64.b64decode(payload))
                 data_uri = "data:image/*;base64," + base64.b64encode(raw).decode("ascii")
             elif s.startswith("@@RP-ENC:b64"):
                 payload = s[len("@@RP-ENC:b64"):].strip()
@@ -1903,9 +1925,12 @@ def _parse_table_output(elem):
     label_col_idx = None
     for i, col in enumerate(columns):
         u = col["units"].lower().replace(" ", "")
-        if u in _ENERGY_UNITS:
+        # Match exact energy units or compound forms like "eV/atom", "meV/cm".
+        base_u = re.split(r"[/*]", u, 1)[0]
+        if energy_col_idx is None and (u in _ENERGY_UNITS or base_u in _ENERGY_UNITS):
             energy_col_idx = i
-        elif not col["units"]:
+        elif label_col_idx is None and not col["units"]:
+            # First unitless column is the row label; don't let a later one win.
             label_col_idx = i
 
     return {
@@ -1921,9 +1946,11 @@ def _parse_table_output(elem):
 def _parse_mesh_element(elem):
     """Parse a <mesh> element into a dict with points and optional cells."""
     about = elem.find("about")
+    dim_text = _get_text(elem, "dim") or "3"
     try:
-        dim = int(float(_get_text(elem, "dim") or "3"))
+        dim = int(float(dim_text))
     except (ValueError, OverflowError):
+        logger.warning("mesh: invalid <dim> %r, defaulting to 3", dim_text)
         dim = 3
     units = _get_text(elem, "units")
     hide = _get_text(elem, "hide") == "yes"
@@ -1939,6 +1966,7 @@ def _parse_mesh_element(elem):
     if unstructured is not None:
         pts_text = _get_text(unstructured, "points")
         points = []
+        dropped_short = 0
         for line in pts_text.strip().splitlines():
             coords = line.split()
             if len(coords) >= dim:
@@ -1946,6 +1974,12 @@ def _parse_mesh_element(elem):
                     points.append([float(c) for c in coords[:dim]])
                 except ValueError:
                     logger.warning("Skipping malformed mesh point: %r", line)
+            elif coords:
+                dropped_short += 1
+        if dropped_short:
+            logger.warning(
+                "mesh: dropped %d point line(s) with fewer than dim=%d coordinates "
+                "(check the <dim> value)", dropped_short, dim)
         result["mesh_type"] = "unstructured"
         result["points"] = points
 
@@ -2040,13 +2074,28 @@ def _interpolate_to_grid(points, values, grid_n=20):
     }
 
 
+# Cap decompressed output so a crafted zb64 payload embedded in an uploaded
+# run.xml cannot exhaust server memory (zlib bomb). 256 MiB exceeds any
+# legitimate Rappture field/image while bounding the blast radius.
+_MAX_DECODED_BYTES = 256 * 1024 * 1024
+
+
+def _bounded_decompress(raw, wbits=15):
+    """zlib-decompress *raw* but never allocate more than _MAX_DECODED_BYTES."""
+    import zlib as _zlib
+    dobj = _zlib.decompressobj(wbits)
+    out = dobj.decompress(raw, _MAX_DECODED_BYTES)
+    if dobj.unconsumed_tail:
+        raise ValueError("compressed payload exceeds maximum decoded size")
+    return out
+
+
 def _decode_rp_enc(text):
     """Decode a @@RP-ENC:zb64 or @@RP-ENC:b64 encoded string to bytes."""
-    import zlib as _zlib
     text = text.strip()
     if text.startswith("@@RP-ENC:zb64"):
         raw = base64.b64decode(text[len("@@RP-ENC:zb64"):].strip())
-        return _zlib.decompress(raw, 47)  # wbits=47 → auto-detect zlib/gzip
+        return _bounded_decompress(raw, 47)  # wbits=47 → auto-detect zlib/gzip
     elif text.startswith("@@RP-ENC:b64"):
         return base64.b64decode(text[len("@@RP-ENC:b64"):].strip())
     return text.encode()

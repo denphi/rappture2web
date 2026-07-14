@@ -12,7 +12,10 @@ import re
 import puq
 from puq.jpickle import unpickle
 import Rappture
-import StringIO
+try:
+    from io import StringIO  # Python 3 (and 2.7 for unicode text)
+except ImportError:  # pragma: no cover
+    from StringIO import StringIO  # Python 2 fallback
 from scipy.spatial import ConvexHull
 # geometry library
 from shapely.geometry import Polygon
@@ -73,7 +76,7 @@ def plot_pdf_curve(io, h5, xvals, vname, percent):
     if percent == 0:
         pts += '\n'
     else:
-        for x, y in reversed(zip(xarr, ym)):
+        for x, y in reversed(list(zip(xarr, ym))):
             pts += "%s %s " % (x, y)
         pts += "%s %s\n" % (xarr[0], yp[0])
 
@@ -201,7 +204,7 @@ def write_params(h5, out):
 
 
 def write_summary(io, h5):
-    outstr = StringIO.StringIO()
+    outstr = StringIO()
     write_params(h5, outstr)
     uqtype = h5.attrs['UQtype']
     for v in h5[uqtype]:
@@ -307,14 +310,12 @@ for vname in xvals:
     plot_pdf_curve(io, h5, xvals, vname, 50)
 
 for vname in acurves:
-    try:
-        plot_pdf_acurve(io, h5, acurves, vname, 95)
-    except:
-        pass
-    try:
-        plot_pdf_acurve(io, h5, acurves, vname, 50)
-    except:
-        pass
+    for pct in (95, 50):
+        try:
+            plot_pdf_acurve(io, h5, acurves, vname, pct)
+        except Exception as exc:
+            print("Warning: could not plot acurve for %r at %d%%: %s"
+                  % (vname, pct, exc), file=sys.stderr)
 
 write_sensitivity(io, h5)
 write_responses(io, h5)

@@ -229,6 +229,13 @@ def main():
              "When set, results are looked up before running and stored after success.",
     )
     parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Maximum simulation run time in seconds. When exceeded, the tool "
+             "process is killed and the run fails. Default: no limit.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose/debug logging to stdout.",
@@ -315,6 +322,7 @@ def main():
         nanohub_terminate_url=nanohub_terminate_url,
         nanohub_about_url=nanohub_about_url,
         nanohub_questions_url=nanohub_questions_url,
+        timeout=args.timeout,
         cache_url=cache_url,
         cache_write_url=cache_write_url,
     )

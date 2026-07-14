@@ -7,6 +7,16 @@
 > configured suite passes all 40 viewport/iframe and real-renderer cases plus 176 non-visual
 > tests. The unchecked alternatives below are retained as design history and
 > possible follow-up refinements.
+>
+> **Fixed 2026-07-13 — dead Results/⋯ buttons in script-blocked iframes:**
+> hosts that embed with `<iframe sandbox>` lacking `allow-scripts` rendered the
+> pane-switch and overflow buttons but no JS ran, leaving results and toolbar
+> actions permanently `display:none`. The narrow-layout rules that depend on JS
+> are now gated on an `html.rp-js` marker class (set by an inline script in
+> `base.html`); without scripts the UI falls back to a static stacked layout
+> with both panes visible, an inline toolbar, no dead buttons, and a
+> `<noscript>` banner telling the embedder to allow scripts. Regression test:
+> `test_iframe_with_scripts_blocked_degrades_gracefully` (41 visual cases now).
 
 Goal: make the tool UI usable and pleasant in narrow, short viewports — the kind
 of embed an MCP host or a docs iframe gives you (roughly **360–700px wide**,

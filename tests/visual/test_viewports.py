@@ -246,6 +246,61 @@ def test_inside_iframe(browser, server_url, frame_size):
         context.close()
 
 
+def test_iframe_with_scripts_blocked_degrades_gracefully(browser, server_url):
+    """Sandboxed iframe without allow-scripts: no dead buttons, content reachable.
+
+    MCP-style hosts often embed with a restrictive sandbox.  Without JS the
+    html element never gets the .rp-js class, so the JS-dependent narrow
+    layout (exclusive panes, ⋯ overflow menu) must fall back to a static
+    stacked layout: both panes visible, toolbar actions inline, and the
+    pane-switch / overflow buttons not rendered at all.
+    """
+    w, h = 420, 600
+    context = browser.new_context(viewport={"width": w + 120, "height": h + 120})
+    page = context.new_page()
+    try:
+        page.set_content(
+            f'<iframe src="{server_url}" width="{w}" height="{h}" '
+            f'sandbox="allow-same-origin"></iframe>'
+        )
+        iframe_el = page.wait_for_selector("iframe")
+        frame = iframe_el.content_frame()
+        frame.wait_for_selector(".rp-layout", state="attached")
+        page.wait_for_load_state("networkidle")
+
+        state = frame.evaluate(
+            """() => {
+                const vis = sel => {
+                    const el = document.querySelector(sel);
+                    return el ? getComputedStyle(el).display : '(missing)';
+                };
+                return {
+                    jsMarker: document.documentElement.classList.contains('rp-js'),
+                    content: vis('.rp-content'),
+                    sidebar: vis('.rp-sidebar'),
+                    paneSwitch: vis('.rp-pane-switch'),
+                    toolbarActions: vis('.rp-toolbar-actions'),
+                    overflowToggle: vis('.rp-toolbar-overflow-toggle'),
+                    noscriptBanner: vis('.rp-noscript-banner'),
+                };
+            }"""
+        )
+        iframe_el.screenshot(path=str(SCREENSHOT_DIR / "iframe_noscript_420x600.png"))
+        assert not state["jsMarker"], "sandbox unexpectedly allowed scripts"
+        assert state["content"] != "none", "results pane unreachable without JS"
+        assert state["sidebar"] != "none", "inputs pane unreachable without JS"
+        assert state["paneSwitch"] == "none", "dead pane-switch buttons rendered"
+        assert state["overflowToggle"] == "none", "dead ⋯ toggle rendered"
+        assert state["toolbarActions"] not in ("none", "(missing)"), (
+            "toolbar actions unreachable without JS"
+        )
+        assert state["noscriptBanner"] not in ("none", "(missing)"), (
+            "noscript explanation banner not shown"
+        )
+    finally:
+        context.close()
+
+
 # ── Real Rappture output fixtures ────────────────────────────────────────────
 
 def _upload_run(page, xml_path):
